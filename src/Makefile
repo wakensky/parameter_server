@@ -1,7 +1,7 @@
 CC = g++
 # CC = clang
 
-# OPT = -O3 -ggdb
+# OPT = -O3 -ggdb -g -gdwarf-2
 OPT = -O0 -ggdb -g -gdwarf-2
 
 BIN = ../bin

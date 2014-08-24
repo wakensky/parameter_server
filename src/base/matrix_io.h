@@ -82,6 +82,11 @@ MatrixPtrList<V> readMatricesFromProto(
     CHECK(r.ReadProtocolMessage(&i));
     info = mergeInstanceInfo(info, i);
     readers.push_back(r);
+
+    // maximum number of data files a worker could load
+    if (worker_load_limit >= 0 && readers.size() >= worker_load_limit) {
+        break;
+    }
   }
   // LL << info.DebugString();
 
@@ -100,11 +105,6 @@ MatrixPtrList<V> readMatricesFromProto(
   Instance record;
   size_t loading_file_idx = 0;
   for (auto& r : readers) {
-    // maximum number of data files a worker could load
-    if (worker_load_limit >= 0 && loading_file_idx >= worker_load_limit) {
-        break;
-    }
-
     // report: which data file I am loading
     if (verbose) {
         LI << "[" << i_am << "] loading data files: " <<

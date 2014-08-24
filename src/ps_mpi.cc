@@ -103,7 +103,7 @@ int produceProtoData(const size_t worker_id, const string& i_am,
 
     // the file list I will process
     std::vector<string> my_files;
-    const uint32 shard_size = std::ceil(
+    const uint32 shard_size = std::floor(
         all_files.size() / static_cast<float>(FLAGS_num_workers));
     for (size_t i = 0; i < all_files.size(); ++i) {
         if (i >= worker_id * shard_size && i < (worker_id + 1) * shard_size) {

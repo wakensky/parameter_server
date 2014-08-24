@@ -350,7 +350,7 @@ RiskMinProgress BlockCoordDescL1LR::evaluateProgress() {
             if (1 == label) {
                 positive_label_count++;
             }
-            else if (0 == label) {
+            else if (0 == label || -1 == label) {
                 negative_label_count++;
             }
             else {

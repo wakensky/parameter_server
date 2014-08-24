@@ -159,7 +159,7 @@ void BatchSolver::assignDataToWorker(DataConfig *data_config) {
         "I cannnot locate my position among colleagues";
 
     data_config->clear_file();
-    size_t shard_size = std::ceil(
+    size_t shard_size = std::floor(
         all_data.file_size() / static_cast<float>(colleagues.size()));
     for (size_t i = 0; i < all_data.file_size(); ++i) {
         if (i >= shard_size * my_rank && i < shard_size * (my_rank + 1)) {
@@ -196,12 +196,20 @@ void BatchSolver::prepareData(const Message& msg) {
     y_ = training_data[0];
     X_ = training_data[1]->localize(&(w_->key()));
     CHECK_EQ(y_->rows(), X_->rows());
+    if (FLAGS_verbose) {
+        LI << "[" << exec_.myNodePrintable() << "] localization finished.";
+    }
 
     if (app_cf_.block_solver().feature_block_ratio() > 0) {
       if (FLAGS_verbose) {
         LI << "[" << exec_.myNodePrintable() << "] toColMajor...";
       }
+
       X_ = X_->toColMajor();
+
+      if (FLAGS_verbose) {
+          LI << "[" << exec_.myNodePrintable() << "] toColMajor finished.";
+      }
     }
 
     // sync keys and fetch initial value of w_
