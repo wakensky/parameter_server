@@ -358,7 +358,7 @@ RiskMinProgress BlockCoordDescL1LR::evaluateProgress() {
             }
         }
 
-        LI << "worker[" << exec_.myNodePrintable() << "] " <<
+        LI << "worker[" << myNodePrintable() << "] " <<
             "dual_.sum[" << dual_.eigenArray().sum() << "] " <<
             "dual_.rows[" << dual_.eigenArray().rows() << "] " <<
             "dual_.avg[" << dual_.eigenArray().sum() / static_cast<double>(

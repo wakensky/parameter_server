@@ -72,12 +72,6 @@ class Executor {
 
   Customer& obj() { return obj_; }
   Node& myNode() { return my_node_; }
-  string myNodePrintable() {
-    return my_node_.id() + ":" +
-        my_node_.hostname() + ":" +
-        std::to_string(my_node_.port()) + ":" +
-        std::to_string(getpid());
-  }
   bool isWorker() { return my_node_.role() == Node::CLIENT; }
   bool isServer() { return my_node_.role() == Node::SERVER; }
 

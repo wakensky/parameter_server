@@ -34,7 +34,8 @@ class KVVector : public SharedParameter<K,V> {
 
   // aggregate the data from all worker, call *update*
   void roundTripForServer(
-      int time, const Range<K>& range = Range<K>::all(), Fn update = Fn());
+      int time, const Range<K>& range = Range<K>::all(), Fn update = Fn(),
+      const string& invoker = "");
 
   // return the data received at time t, then *delete* it
   AlignedArrayList<V> received(int t);
@@ -189,7 +190,7 @@ void KVVector<K, V>::roundTripForWorker (
 
 template <typename K, typename V>
 void KVVector<K, V>::roundTripForServer(
-    int time, const Range<K>& range, Fn update) {
+    int time, const Range<K>& range, Fn update, const string& invoker) {
   auto wk = taskpool(kWorkerGroup);
   // none of my bussiness
   if (!key_.empty() && range.setIntersection(key_.range()).empty()) {
@@ -197,9 +198,23 @@ void KVVector<K, V>::roundTripForServer(
     return;
   }
 
+  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+    "is waiting IncomingTask [" << time << "]";
+
   wk->waitIncomingTask(time);
+
+  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+    "leaves waiting IncomingTask; updating [" << time << "]";
+
   update(time);
+
+  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+    "leaves updating; backuping time+1 [" << time + 1 << "]";
+
   backup(kWorkerGroup, time+1, range);
+
+  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+    "leaves backup time+1 [" << time + 1 << "]";
 
   // time 1: mark it as finished so that all blocked pulls can be started
   wk->finishIncomingTask(time+1);

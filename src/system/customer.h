@@ -38,6 +38,13 @@ class Customer {
   // the uique node id running this customer
   NodeID myNodeID() { return exec_.myNode().id(); }
 
+  string myNodePrintable() {
+    return myNodeID() + ":" +
+        exec_.myNode().hostname() + ":" +
+        std::to_string(exec_.myNode().port()) + ":" +
+        std::to_string(getpid());
+  }
+
   Executor& exec() { return exec_; }
   RNodePtr taskpool(const NodeID& k) { return exec_.rnode(k); }
 

@@ -169,7 +169,7 @@ void BatchSolver::assignDataToWorker(DataConfig *data_config) {
 
     if (FLAGS_verbose) {
         std::stringstream ss;
-        ss << "[" << exec_.myNodePrintable() << "] " << data_config->file_size();
+        ss << "[" << myNodePrintable() << "] " << data_config->file_size();
         for (size_t i = 0; i < data_config->file_size(); ++i) {
             ss << " " << data_config->file(i);
         }
@@ -185,30 +185,30 @@ void BatchSolver::prepareData(const Message& msg) {
 
     auto training_data = readMatrices<double>(
         app_cf_.training_data(),
-        exec_.myNodePrintable(),
+        myNodePrintable(),
         FLAGS_worker_load_limit,
         FLAGS_verbose);
     CHECK_EQ(training_data.size(), 2);
 
     if (FLAGS_verbose) {
-        LI << "[" << exec_.myNodePrintable() << "] localizing...";
+        LI << "[" << myNodePrintable() << "] localizing...";
     }
     y_ = training_data[0];
     X_ = training_data[1]->localize(&(w_->key()));
     CHECK_EQ(y_->rows(), X_->rows());
     if (FLAGS_verbose) {
-        LI << "[" << exec_.myNodePrintable() << "] localization finished.";
+        LI << "[" << myNodePrintable() << "] localization finished.";
     }
 
     if (app_cf_.block_solver().feature_block_ratio() > 0) {
       if (FLAGS_verbose) {
-        LI << "[" << exec_.myNodePrintable() << "] toColMajor...";
+        LI << "[" << myNodePrintable() << "] toColMajor...";
       }
 
       X_ = X_->toColMajor();
 
       if (FLAGS_verbose) {
-          LI << "[" << exec_.myNodePrintable() << "] toColMajor finished.";
+          LI << "[" << myNodePrintable() << "] toColMajor finished.";
       }
     }
 
@@ -361,7 +361,7 @@ void BatchSolver::computeEvaluationAUC(AUCData *data) {
   CHECK(app_cf_.has_validation_data());
   auto validation_data = readMatrices<double>(
     app_cf_.validation_data(),
-    exec_.myNodePrintable(),
+    myNodePrintable(),
     FLAGS_worker_load_limit,
     FLAGS_verbose);
   CHECK_EQ(validation_data.size(), 2);

@@ -170,6 +170,10 @@ void Executor::run() {
     bool do_process = false;
     {
       std::unique_lock<std::mutex> lk(recved_msg_mu_);
+
+      LI << "[" << obj_.myNodePrintable() << "] " <<
+        "before entering task loop; recved_msgs_ size [" << recved_msgs_.size() << "]";
+
       // pickup a message with dependency satisfied
       for (auto it = recved_msgs_.begin(); it != recved_msgs_.end(); ++it) {
         int wait_time = it->task.wait_time();
@@ -186,6 +190,10 @@ void Executor::run() {
           // if (it->task.type() != Task::REPLY &&
           //     worker(it->sender)->in_task_.hasFinished(it->task.time()))
           //   LL << it->debugString();
+
+          LI << "[" << obj_.myNodePrintable() << "] " <<
+            "I have got a task on wait_time [" << wait_time << "]";
+
           do_process = true;
           active_msg_ = *it;
           recved_msgs_.erase(it);
@@ -193,6 +201,10 @@ void Executor::run() {
         }
       }
       if (!do_process) {
+
+        LI << "[" << obj_.myNodePrintable() << "] " <<
+          "I got nothing; waiting Executor::accept";
+
         dag_cond_.wait(lk);
         // if (dag_cond_.wait_for(lk, std::chrono::seconds(5)) == std::cv_status::timeout) {
         //   LL << node().id() << " " << obj_.name() << ": timeout, recved #msg " << recved_msgs_.size();
