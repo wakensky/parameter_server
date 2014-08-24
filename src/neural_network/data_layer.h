@@ -9,7 +9,7 @@ template<typename V>
 class DataLayer : public Layer<V>  {
  public:
   void init() {
-    data_ = readMatrices<V>(cf_.data());
+    data_ = readMatrices<V>(cf_.data(), "", -1, false);
     CHECK_EQ(data_.size(), cf_.out_size());
     // TODO normalization
 

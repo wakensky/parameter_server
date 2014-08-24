@@ -30,6 +30,8 @@ class RNode {
 
   // query about the remote node info
   const NodeID& id() { return node_.id(); }
+  string hostname() { return node_.hostname(); }
+  uint32 port() { return node_.port(); }
   typename Node::Role role() { return node_.role(); }
   // the key range this node maintains
   Range<Key> keyRange() { return Range<Key>(node_.key()); }

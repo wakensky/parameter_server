@@ -21,6 +21,7 @@ class BatchSolver : public LinearMethod {
   void computeEvaluationAUC(AUCData *data);
   void saveModel(const Message& msg);
   void saveAsDenseData(const Message& msg);
+  void assignDataToWorker(DataConfig *data_config);
 
   // training data, available at the workers
   MatrixPtr<double> y_, X_;

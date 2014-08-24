@@ -7,6 +7,12 @@
 #include "base/io.h"
 
 namespace PS {
+
+DEFINE_string(center, "",
+    "indicates whether training/validation data resides on local filesystem; "
+    "if specified, scheduler reads keys from center path; "
+    "if not, scheduler reads keys from AppConfig");
+
 namespace LM {
 
 void LinearMethod::init() {
@@ -30,7 +36,23 @@ void LinearMethod::init() {
 void LinearMethod::startSystem() {
   // load global data information
   CHECK(app_cf_.has_training_data());
-  auto tr_cf = searchFiles(app_cf_.training_data());
+  DataConfig tr_cf;
+  if (FLAGS_center.empty()) {
+    tr_cf = searchFiles(app_cf_.training_data());
+  }
+  else {
+    DataConfig center_tr_cf = app_cf_.training_data();
+    center_tr_cf.clear_file();
+
+    // replace file path while reserving file names
+    for (size_t i = 0; i < app_cf_.training_data().file_size(); ++i) {
+        center_tr_cf.add_file(
+            FLAGS_center + "/training_data/" +
+            filename(app_cf_.training_data().file(i)));
+    }
+
+    tr_cf = searchFiles(center_tr_cf);
+  }
   InstanceInfo tr_info = readInstanceInfo(tr_cf);
   for (int i = 1; i < tr_info.fea_group_size(); ++i) {
     g_training_info_.push_back(readMatrixInfo<double>(tr_info, i));
@@ -43,7 +65,22 @@ void LinearMethod::startSystem() {
 
   DataConfig va_cf;
   if (app_cf_.has_validation_data()) {
-    va_cf = searchFiles(app_cf_.validation_data());
+    if (FLAGS_center.empty()) {
+        va_cf = searchFiles(app_cf_.validation_data());
+    }
+    else {
+        DataConfig center_va_cf = app_cf_.validation_data();
+        center_va_cf.clear_file();
+
+        // replace file path while reserving file names
+        for (size_t i = 0; i < app_cf_.validation_data().file_size(); ++i) {
+            center_va_cf.add_file(
+                FLAGS_center + "/validation_data/" +
+                filename(app_cf_.validation_data().file(i)));
+        }
+
+        va_cf = searchFiles(center_va_cf);
+    }
     InstanceInfo va_info = readInstanceInfo(va_cf);
     for (int i = 1; i < va_info.fea_group_size(); ++i) {
       g_validation_info_.push_back(readMatrixInfo<double>(va_info, i));
@@ -81,7 +118,9 @@ void LinearMethod::startSystem() {
   }
   int time = 0, k = 0;
   start.mutable_mng_app()->set_cmd(ManageApp::ADD);
+  *(start.mutable_mng_app()->mutable_app_config()) = app_cf_;
   for (auto& w : exec_.group(kActiveGroup)) {
+    /*
     auto cf = app_cf_;
     cf.clear_training_data();
     cf.clear_validation_data();
@@ -92,6 +131,8 @@ void LinearMethod::startSystem() {
       *cf.mutable_training_data() = split_tr_cf[k++];
     }
     *(start.mutable_mng_app()->mutable_app_config()) = cf;
+    */
+    // start workers and servers
     CHECK_EQ(time, w->submit(start));
   }
   taskpool(kActiveGroup)->waitOutgoingTask(time);

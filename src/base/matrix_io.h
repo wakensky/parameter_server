@@ -67,7 +67,11 @@ MatrixInfo readMatrixInfo(const InstanceInfo& info, int i) {
 // label, feature_group 1, feature_group 2, ...
 // TODO do not support dense feature group yet...
 template<typename V>
-MatrixPtrList<V> readMatricesFromProto(const std::vector<std::string>& files) {
+MatrixPtrList<V> readMatricesFromProto(
+    const std::vector<std::string>& files,
+    const string& i_am,
+    const int32 worker_load_limit,
+    const bool verbose) {
   // load info
   std::vector<RecordReader> readers;
   InstanceInfo info;
@@ -94,7 +98,20 @@ MatrixPtrList<V> readMatricesFromProto(const std::vector<std::string>& files) {
   // file data
   uint64 offset_pos = 0, index_pos = 0, value_pos = 0, label_pos = 0;
   Instance record;
+  size_t loading_file_idx = 0;
   for (auto& r : readers) {
+    // maximum number of data files a worker could load
+    if (worker_load_limit >= 0 && loading_file_idx >= worker_load_limit) {
+        break;
+    }
+
+    // report: which data file I am loading
+    if (verbose) {
+        LI << "[" << i_am << "] loading data files: " <<
+            loading_file_idx + 1 << "/" << readers.size();
+    }
+    loading_file_idx++;
+
     while (r.ReadProtocolMessage(&record)) {
       label[label_pos++] = record.label();
       int n = record.fea_id_size();
@@ -208,7 +225,11 @@ MatrixPtrList<V> readMatricesFromBin(
 }
 
 template<typename V>
-MatrixPtrList<V> readMatrices(const DataConfig& config) {
+MatrixPtrList<V> readMatrices(
+    const DataConfig& config,
+    const string& i_am,
+    const int32 worker_load_limit,
+    const bool verbose) {
   std::vector<std::string> files;
   for (int i = 0; i < config.file_size(); ++i) files.push_back(config.file(i));
   if (config.format() == DataConfig::BIN) {
@@ -216,7 +237,7 @@ MatrixPtrList<V> readMatrices(const DataConfig& config) {
     if (config.has_range()) outer_range.copyFrom(config.range());
     return readMatricesFromBin<V>(outer_range, files);
   } else if (config.format() == DataConfig::PROTO) {
-    return readMatricesFromProto<V>(files);
+    return readMatricesFromProto<V>(files, i_am, worker_load_limit, verbose);
   } else {
     CHECK(false) << "unknonw data format: " << config.DebugString();
   }

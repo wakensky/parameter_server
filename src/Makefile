@@ -2,7 +2,7 @@ CC = g++
 # CC = clang
 
 # OPT = -O3 -ggdb
-OPT = -O0 -ggdb
+OPT = -O0 -ggdb -g -gdwarf-2
 
 BIN = ../bin
 LIB = ../lib
@@ -26,6 +26,8 @@ MPICC = $(THIRD_BIN)/mpic++
 #-Wconversion -fPIC
 WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare
 INCPATH = -I. -I${THIRD_INC}
+
+STATIC := 1
 
 ifeq (${STATIC}, 1)
 # TODO a lot of warning on mac with llvm
@@ -85,7 +87,7 @@ TESTS = \
         sparse_matrix_multi_thread_perf \
 	fault_tolerance_press \
 
-all: dir $(addprefix $(BIN)/, ps ps_mpi)  # ps ps_local
+all: dir $(addprefix $(BIN)/, ps_cdn ps_cdn_mpi)  # ps ps_local
 data: $(addprefix $(BIN)/, text2proto showins proto2bin)
 test: $(addprefix $(BIN)/, $(TESTS))
 
@@ -122,10 +124,10 @@ $(LIB)/libps.a: $(OBJS) #gtest
 # $(BIN)/ps: ps.cc $(LIB)/libps.so
 # 	$(CC) $(CFLAGS) ps.cc $(LDFLAGS) -Wl,-rpath=../lib  -o $@
 
-$(BIN)/ps: ps.cc $(LIB)/libps.a
+$(BIN)/ps_cdn: ps.cc $(LIB)/libps.a
 	$(MPICC) $(CFLAGS) ps.cc $(LDFLAGS) -o $@
 
-$(BIN)/ps_mpi: ps_mpi.cc $(LIB)/libps.a
+$(BIN)/ps_cdn_mpi: ps_mpi.cc $(LIB)/libps.a
 	$(MPICC) $(CFLAGS) ps_mpi.cc $(LDFLAGS) -o $@
 
 # $(BIN)/text2bin: data/text2bin.cc data/text2bin.h $(LIB)/libps.a

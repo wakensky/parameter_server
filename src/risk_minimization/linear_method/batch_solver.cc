@@ -1,8 +1,17 @@
 #include "risk_minimization/linear_method/batch_solver.h"
 #include "base/matrix_io.h"
 #include "base/sparse_matrix.h"
+#include "base/io.h"
 
 namespace PS {
+
+DECLARE_string(center);
+DECLARE_bool(verbose);
+
+DEFINE_int32(worker_load_limit, -1,
+    "maximum number of training/validation files a worker could load; "
+    "-1 in default: no restrict");
+
 namespace LM {
 
 void BatchSolver::init() {
@@ -121,17 +130,80 @@ void BatchSolver::runIteration() {
   }
 }
 
+void BatchSolver::assignDataToWorker(DataConfig *data_config) {
+    CHECK_EQ(data_config->format(), DataConfig::PROTO) <<
+        "TODO: support more formats";
+
+    // all data files I can see
+    auto all_data = searchFiles(*data_config);
+
+    // all workers I can see
+    const auto all_workers = exec_.group(kWorkerGroup);
+
+    // I will share data files with these workers
+    std::vector<string> colleagues;
+    for (const auto& worker : all_workers) {
+        if (!FLAGS_center.empty()) {
+            if (worker->hostname() != exec_.myNode().hostname()) {
+                continue;
+            }
+        }
+        colleagues.push_back(worker->id());
+    }
+    std::sort(colleagues.begin(), colleagues.end());
+
+    // my rank among colleagues
+    size_t my_rank = std::distance(colleagues.begin(),
+        std::lower_bound(colleagues.begin(), colleagues.end(), myNodeID()));
+    CHECK_LE(my_rank, colleagues.size()) <<
+        "I cannnot locate my position among colleagues";
+
+    data_config->clear_file();
+    size_t shard_size = std::ceil(
+        all_data.file_size() / static_cast<float>(colleagues.size()));
+    for (size_t i = 0; i < all_data.file_size(); ++i) {
+        if (i >= shard_size * my_rank && i < shard_size * (my_rank + 1)) {
+            data_config->add_file(all_data.file(i));
+        }
+    }
+
+    if (FLAGS_verbose) {
+        std::stringstream ss;
+        ss << "[" << exec_.myNodePrintable() << "] " << data_config->file_size();
+        for (size_t i = 0; i < data_config->file_size(); ++i) {
+            ss << " " << data_config->file(i);
+        }
+        LI << ss.str();
+    }
+}
+
 void BatchSolver::prepareData(const Message& msg) {
   int time = msg.task.time() * 10;
   if (exec_.isWorker()) {
-    auto training_data = readMatrices<double>(app_cf_.training_data());
+    // assign training data
+    assignDataToWorker(app_cf_.mutable_training_data());
+
+    auto training_data = readMatrices<double>(
+        app_cf_.training_data(),
+        exec_.myNodePrintable(),
+        FLAGS_worker_load_limit,
+        FLAGS_verbose);
     CHECK_EQ(training_data.size(), 2);
+
+    if (FLAGS_verbose) {
+        LI << "[" << exec_.myNodePrintable() << "] localizing...";
+    }
     y_ = training_data[0];
     X_ = training_data[1]->localize(&(w_->key()));
     CHECK_EQ(y_->rows(), X_->rows());
+
     if (app_cf_.block_solver().feature_block_ratio() > 0) {
+      if (FLAGS_verbose) {
+        LI << "[" << exec_.myNodePrintable() << "] toColMajor...";
+      }
       X_ = X_->toColMajor();
     }
+
     // sync keys and fetch initial value of w_
     SArrayList<double> empty;
     std::promise<void> promise;
@@ -279,7 +351,11 @@ void BatchSolver::showProgress(int iter) {
 void BatchSolver::computeEvaluationAUC(AUCData *data) {
   if (!exec_.isWorker()) return;
   CHECK(app_cf_.has_validation_data());
-  auto validation_data = readMatrices<double>(app_cf_.validation_data());
+  auto validation_data = readMatrices<double>(
+    app_cf_.validation_data(),
+    exec_.myNodePrintable(),
+    FLAGS_worker_load_limit,
+    FLAGS_verbose);
   CHECK_EQ(validation_data.size(), 2);
 
   y_ = validation_data[0];

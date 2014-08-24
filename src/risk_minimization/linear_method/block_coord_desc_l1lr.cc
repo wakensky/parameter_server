@@ -3,6 +3,9 @@
 #include "base/sparse_matrix.h"
 
 namespace PS {
+
+DEFINE_bool(verbose, false, "print detailed process info");
+
 namespace LM {
 
 // quite similar to BatchSolver::run(), but diffs at the KKT filter
@@ -334,6 +337,39 @@ RiskMinProgress BlockCoordDescL1LR::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.get());
     busy_timer_.reset();
+
+    // label statistics
+    if (FLAGS_verbose) {
+        size_t positive_label_count = 0;
+        size_t negative_label_count = 0;
+        size_t bad_label_count = 0;
+
+        for (size_t i = 0; i < y_->value().size(); ++i) {
+            int label = y_->value()[i];
+
+            if (1 == label) {
+                positive_label_count++;
+            }
+            else if (0 == label) {
+                negative_label_count++;
+            }
+            else {
+                bad_label_count++;
+            }
+        }
+
+        LI << "worker[" << exec_.myNodePrintable() << "] " <<
+            "dual_.sum[" << dual_.eigenArray().sum() << "] " <<
+            "dual_.rows[" << dual_.eigenArray().rows() << "] " <<
+            "dual_.avg[" << dual_.eigenArray().sum() / static_cast<double>(
+                dual_.eigenArray().rows()) << "] " <<
+            "y_.positive[" << positive_label_count << "] " <<
+            "y_.negative[" << negative_label_count << "] " <<
+            "y_.bad[" << bad_label_count << "] " <<
+            "y_.positive_ratio[" << positive_label_count / static_cast<double>(
+                positive_label_count + negative_label_count + bad_label_count) << "] " <<
+            std::endl;
+    }
   } else {
     size_t nnz_w = 0;
     double objv = 0;
