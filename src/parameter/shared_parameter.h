@@ -148,7 +148,9 @@ void SharedParameter<K,V>::process(Message* msg) {
     typedef CallSharedPara Call;
 
     case Call::PUSH:
-      if (req) setValue(msg);
+      if (req) {
+        setValue(msg);
+      }
       break;
 
     case Call::PULL:

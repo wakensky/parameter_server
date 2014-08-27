@@ -52,6 +52,8 @@ struct Message {
        << ", " << key.size() << " keys, [" << value.size() << "] value: ";
     for (const auto& x: value)
       ss << x.size() << " ";
+    ss << "[valid]:" << valid << " ";
+    ss << "[finished]:" << finished << " ";
     ss << "[task]:" << task.ShortDebugString();
     return ss.str();
   }

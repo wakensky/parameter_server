@@ -46,6 +46,8 @@ message Task {
   // applications
   optional RiskMinCall risk = 301;
   optional CallSketch sketch = 302;
+
+  optional bool need_push_pull = 401 [default = true];
 }
 
 message ManageNode {

@@ -3,6 +3,8 @@
 #include <thread>
 namespace PS {
 
+DECLARE_bool(verbose);
+
 void Executor::replace(const Node& dead, const Node& live) {
   auto dead_id = dead.id();
   auto live_id = live.id();
@@ -171,8 +173,10 @@ void Executor::run() {
     {
       std::unique_lock<std::mutex> lk(recved_msg_mu_);
 
-      LI << "[" << obj_.myNodePrintable() << "] " <<
-        "before entering task loop; recved_msgs_ size [" << recved_msgs_.size() << "]";
+      if (FLAGS_verbose) {
+        LI << "[" << obj_.myNodePrintable() << "] " <<
+            "before entering task loop; recved_msgs_ size [" << recved_msgs_.size() << "]";
+      }
 
       // pickup a message with dependency satisfied
       for (auto it = recved_msgs_.begin(); it != recved_msgs_.end(); ++it) {
@@ -191,8 +195,11 @@ void Executor::run() {
           //     worker(it->sender)->in_task_.hasFinished(it->task.time()))
           //   LL << it->debugString();
 
-          LI << "[" << obj_.myNodePrintable() << "] " <<
-            "I have got a task on wait_time [" << wait_time << "]";
+          if (FLAGS_verbose) {
+            LI << "[" << obj_.myNodePrintable() << "] " <<
+              "picked up an active_msg_ from recved_msgs_ [size] " <<
+              recved_msgs_.size() << " [msg] " << it->shortDebugString();
+          }
 
           do_process = true;
           active_msg_ = *it;
@@ -202,8 +209,11 @@ void Executor::run() {
       }
       if (!do_process) {
 
-        LI << "[" << obj_.myNodePrintable() << "] " <<
-          "I got nothing; waiting Executor::accept";
+        if (FLAGS_verbose) {
+          LI << "[" << obj_.myNodePrintable() << "] " <<
+            "picked nothing from recved_msgs_ [size] " <<
+            recved_msgs_.size() << "; waiting Executor::accept";
+        }
 
         dag_cond_.wait(lk);
         // if (dag_cond_.wait_for(lk, std::chrono::seconds(5)) == std::cv_status::timeout) {
@@ -242,9 +252,13 @@ void Executor::run() {
         {
           Lock lk(w->mu_);
           auto b = w->msg_receive_handle_.find(t);
-          if (b != w->msg_receive_handle_.end()) h = b->second;
+          if (b != w->msg_receive_handle_.end()) {
+            h = b->second;
+          }
         }
-        if (h) h();
+        if (h) {
+          h();
+        }
 
         w->outgoing_task_.finish(t);
 
@@ -262,14 +276,26 @@ void Executor::run() {
         auto o_w = rnode(o_recver);
         // LL << obj_.sid() << " try wait t " << t << ": " << o_w->tryWaitOutTask(t);
         if (o_w->tryWaitOutgoingTask(t)) {
+          if (FLAGS_verbose) {
+            LI << "[" << obj_.myNodePrintable() << "] completed [t] " <<
+              t << "[msg] " << active_msg_.shortDebugString();
+          }
+
           RNode::Callback h;
           {
             Lock lk(o_w->mu_);
             auto a = o_w->msg_finish_handle_.find(t);
             if (a != o_w->msg_finish_handle_.end()) h = a->second;
           }
-          if (h) h();
+          if (h) {
+            h();
+          }
           // if (t % 10 == 2 && !h && node().id() != "H") LL << node().id() << " " << t;
+        } else {
+            if (FLAGS_verbose) {
+              LI << "[" << obj_.myNodePrintable() << "] still running [t] " <<
+                t << "[msg] " << active_msg_.shortDebugString();
+            }
         }
       }
     // }

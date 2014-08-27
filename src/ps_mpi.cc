@@ -26,6 +26,7 @@ DEFINE_string(utility_dir, "./", "utility directory contains text2proto and text
 DEFINE_int32(worker_refresh_limit, -1,
     "how many training/validation files a worker could refresh;"
     "-1 in default: no restrict");
+DEFINE_bool(log_to_file, false, "redirect INFO log to file; eg. log_w1_datetime");
 
 int execute(const string& cmd, const bool show) {
     if (show) {
@@ -269,6 +270,10 @@ void Init() {
              std::to_string(FLAGS_port+my_rank) + ",id:'" + id + "'";
   FLAGS_my_node = my_node;
 
+  if (FLAGS_log_to_file) {
+      google::SetLogDestination(google::INFO, ("./log_" + id + "_").c_str());
+  }
+
   if (FLAGS_refresh_data &&
         string::npos != my_node.find("role:CLIENT") &&
         0 != refreshData(my_rank - 1, my_node)) {
@@ -299,8 +304,11 @@ void Init() {
 } // namespace PS
 
 int main(int argc, char *argv[]) {
-  FLAGS_logtostderr = 1;
   google::ParseCommandLineFlags(&argc, &argv, true);
+
+  if (!PS::FLAGS_log_to_file) {
+    FLAGS_logtostderr = 1;
+  }
   google::InitGoogleLogging(argv[0]);
 
   CHECK(!MPI_Init(&argc, &argv));

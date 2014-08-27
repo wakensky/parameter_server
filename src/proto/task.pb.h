@@ -372,6 +372,13 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::CallSketch* release_sketch();
   inline void set_allocated_sketch(::PS::CallSketch* sketch);
 
+  // optional bool need_push_pull = 401 [default = true];
+  inline bool has_need_push_pull() const;
+  inline void clear_need_push_pull();
+  static const int kNeedPushPullFieldNumber = 401;
+  inline bool need_push_pull() const;
+  inline void set_need_push_pull(bool value);
+
   // @@protoc_insertion_point(class_scope:PS.Task)
  private:
   inline void set_has_type();
@@ -404,18 +411,21 @@ class Task : public ::google::protobuf::Message {
   inline void clear_has_risk();
   inline void set_has_sketch();
   inline void clear_has_sketch();
+  inline void set_has_need_push_pull();
+  inline void clear_has_need_push_pull();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int type_;
   ::google::protobuf::int32 time_;
   ::std::string* customer_;
-  bool request_;
-  bool has_key_;
   ::google::protobuf::int32 wait_time_;
   ::google::protobuf::int32 priority_;
-  ::google::protobuf::uint32 key_signature_;
   ::PS::PbRange* key_range_;
+  bool request_;
+  bool has_key_;
+  bool need_push_pull_;
+  ::google::protobuf::uint32 key_signature_;
   ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > uncompressed_size_;
   ::std::string* msg_;
   ::PS::ManageNode* mng_node_;
@@ -425,7 +435,7 @@ class Task : public ::google::protobuf::Message {
   ::PS::CallSketch* sketch_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(16 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(17 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -1681,6 +1691,28 @@ inline void Task::set_allocated_sketch(::PS::CallSketch* sketch) {
   } else {
     clear_has_sketch();
   }
+}
+
+// optional bool need_push_pull = 401 [default = true];
+inline bool Task::has_need_push_pull() const {
+  return (_has_bits_[0] & 0x00010000u) != 0;
+}
+inline void Task::set_has_need_push_pull() {
+  _has_bits_[0] |= 0x00010000u;
+}
+inline void Task::clear_has_need_push_pull() {
+  _has_bits_[0] &= ~0x00010000u;
+}
+inline void Task::clear_need_push_pull() {
+  need_push_pull_ = true;
+  clear_has_need_push_pull();
+}
+inline bool Task::need_push_pull() const {
+  return need_push_pull_;
+}
+inline void Task::set_need_push_pull(bool value) {
+  set_has_need_push_pull();
+  need_push_pull_ = value;
 }
 
 // -------------------------------------------------------------------

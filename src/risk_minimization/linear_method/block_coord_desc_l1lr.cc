@@ -94,6 +94,11 @@ void BlockCoordDescL1LR::updateModel(Message* msg) {
   Range<Key> global_range(call.key());
   auto local_range = w_->localRange(global_range);
 
+  if (FLAGS_verbose) {
+    LI << "[" << myNodePrintable() << "] updateModel [msg] " <<
+      msg->shortDebugString();
+  }
+
   if (exec_.isWorker()) {
     busy_timer_.start();
     auto local_grads = computeGradients(local_range);

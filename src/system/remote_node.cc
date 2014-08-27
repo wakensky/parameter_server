@@ -108,8 +108,9 @@ void RNode::finishIncomingTask(int time) {
 // }
 
 Message RNode::cacheKeySender(const Message& msg) {
-  if (!FLAGS_key_cache || !msg.task.has_key_range() || msg.key.size() == 0)
+  if (!FLAGS_key_cache || !msg.task.has_key_range() || msg.key.size() == 0) {
     return msg;
+  }
 
   Message ret = msg;
   Range<Key> range(ret.task.key_range());

@@ -35,7 +35,7 @@ class KVVector : public SharedParameter<K,V> {
   // aggregate the data from all worker, call *update*
   void roundTripForServer(
       int time, const Range<K>& range = Range<K>::all(), Fn update = Fn(),
-      const string& invoker = "");
+      const bool verbose = false);
 
   // return the data received at time t, then *delete* it
   AlignedArrayList<V> received(int t);
@@ -190,31 +190,34 @@ void KVVector<K, V>::roundTripForWorker (
 
 template <typename K, typename V>
 void KVVector<K, V>::roundTripForServer(
-    int time, const Range<K>& range, Fn update, const string& invoker) {
+    int time, const Range<K>& range, Fn update, const bool verbose) {
   auto wk = taskpool(kWorkerGroup);
   // none of my bussiness
+#if 0
   if (!key_.empty() && range.setIntersection(key_.range()).empty()) {
     // cl->finishInTask(cl->incrClock(3));
+    if (verbose) {
+        LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+            "skipped task [" << time << "]";
+    }
     return;
   }
+#endif
 
-  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
-    "is waiting IncomingTask [" << time << "]";
+  if (verbose) {
+    LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+        "is waiting IncomingTask [" << time << "]";
+  }
 
   wk->waitIncomingTask(time);
 
-  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
-    "leaves waiting IncomingTask; updating [" << time << "]";
+  if (verbose) {
+    LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
+        "leaves waiting IncomingTask; updating [" << time << "]";
+  }
 
   update(time);
-
-  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
-    "leaves updating; backuping time+1 [" << time + 1 << "]";
-
   backup(kWorkerGroup, time+1, range);
-
-  LI << "[" << KVVector<K, V>::myNodePrintable() << "] " <<
-    "leaves backup time+1 [" << time + 1 << "]";
 
   // time 1: mark it as finished so that all blocked pulls can be started
   wk->finishIncomingTask(time+1);
@@ -269,6 +272,10 @@ template <typename K, typename V>
 void KVVector<K,V>::getValue(Message* msg) {
   // if (msg->key.empty()) return;
   CHECK_EQ(key_.size(), val_.size());
+  if (msg->task.has_need_push_pull() && !msg->task.need_push_pull()) {
+    return;
+  }
+
   SArray<K> recv_key(msg->key);
   size_t n = 0;
   Range<Key> range = recv_key.range().setUnion(key_.range());
@@ -283,6 +290,9 @@ void KVVector<K,V>::getValue(Message* msg) {
 template <typename K, typename V>
 void KVVector<K,V>::setValue(Message* msg) {
   Lock l(recved_val_mu_);
+  if (msg->task.has_need_push_pull() && !msg->task.need_push_pull()) {
+    return;
+  }
   SArray<K> recv_key(msg->key);
   Range<K> key_range(msg->task.key_range());
 
@@ -333,10 +343,16 @@ decomposeTemplate(const Message& msg, const std::vector<K>& partition) {
     if (Range<K>(partition[i], partition[i+1]).setIntersection(
             Range<K>(msg.task.key_range())).empty()) {
       // mark as do_not_send, because the remote node does not maintain this key range
-      part.valid = false;
+      // part.valid = false;
+      // part.valid = false;
+
+      // I will still send part to remote, while telling remote drop it automaitically
+      part.valid = true;
+      part.task.set_need_push_pull(false);
       // LL << myNodeID() << " " << part.shortDebugString() << " " << i;
     } else {
       part.valid = true;
+      part.task.set_need_push_pull(true);
       if (pos[i] == -1)
         pos[i] = std::lower_bound(key.begin(), key.end(), partition[i]) - key.begin();
       if (pos[i+1] == -1)
