@@ -11,6 +11,7 @@ class RiskMinimization : public App {
   void mergeProgress(int iter);
   void mergeAUC(AUC* auc);
  protected:
+  virtual InstanceInfo loadData(const Message &msg) = 0;
   virtual void prepareData(const Message& msg) = 0;
   virtual void updateModel(Message* msg) = 0;
   virtual RiskMinProgress evaluateProgress() = 0;

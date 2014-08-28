@@ -8,7 +8,7 @@
 
 namespace PS {
 
-DECLARE_string(center);
+DECLARE_bool(nfs);
 DECLARE_bool(verbose);
 
 DEFINE_string(interface, "",
@@ -136,46 +136,6 @@ int produceProtoData(const size_t worker_id, const string& i_am,
             FLAGS_utility_dir << "./text2proto -format 'adfea' > " <<
             output_data_file_path.str();
             execute(cmd.str(), FLAGS_verbose);
-
-        if (!FLAGS_center.empty()) {
-            // store meta info into center directory
-            //  scheduler could read global key range from files in center directory
-
-            // make sure center directory exists
-            string center_dir = FLAGS_center + "/";
-            if (is_training) {
-                center_dir += "training_data/";
-            }
-            else {
-                center_dir += "validation_data/";
-            }
-            execute("mkdir -p " + center_dir, FLAGS_verbose);
-
-            // the first protobuf in file just produced contains meta data
-            // copy it out to a new tiny file
-            InstanceInfo instance_info;
-            {
-                File *data_file = File::openOrDie(output_data_file_path.str(), "r");
-                RecordReader reader(data_file);
-                reader.ReadProtocolMessage(&instance_info);
-                reader.Close();  // also closes data_file
-            }
-
-            // make sure target directory exists
-            const char *sub_dir = is_training ? "training_data/" : "validation_data/";
-            execute("mkdir -p " + FLAGS_center + "/" + sub_dir, FLAGS_verbose);
-
-            {
-                File *new_meta_file = File::openOrDie(
-                    FLAGS_center + "/" + sub_dir + output_data_file_name,
-                    "w");
-                RecordWriter protobuf_writer(new_meta_file);
-                protobuf_writer.WriteProtocolMessage(instance_info);
-                protobuf_writer.Close();  // also closes new_meta_file
-                // NOTICE: the destructor of Recordwriter/Recordreader
-                //  does not close File pointer it holds
-            }
-        }
     }
 
     return 0;

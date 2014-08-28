@@ -92,6 +92,7 @@ message RiskMinCall {
     SAVE_AS_DENSE = 7;     // save X * w in a given key range
     RECOVER = 5;
     COMPUTE_VALIDATION_AUC = 6;
+    LOAD_DATA = 8;
   }
   required Command cmd = 1;
   optional PbRange key = 2;

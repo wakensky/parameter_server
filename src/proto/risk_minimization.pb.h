@@ -92,11 +92,12 @@ enum RiskMinCall_Command {
   RiskMinCall_Command_SAVE_MODEL = 4,
   RiskMinCall_Command_SAVE_AS_DENSE = 7,
   RiskMinCall_Command_RECOVER = 5,
-  RiskMinCall_Command_COMPUTE_VALIDATION_AUC = 6
+  RiskMinCall_Command_COMPUTE_VALIDATION_AUC = 6,
+  RiskMinCall_Command_LOAD_DATA = 8
 };
 bool RiskMinCall_Command_IsValid(int value);
 const RiskMinCall_Command RiskMinCall_Command_Command_MIN = RiskMinCall_Command_PREPARE_DATA;
-const RiskMinCall_Command RiskMinCall_Command_Command_MAX = RiskMinCall_Command_SAVE_AS_DENSE;
+const RiskMinCall_Command RiskMinCall_Command_Command_MAX = RiskMinCall_Command_LOAD_DATA;
 const int RiskMinCall_Command_Command_ARRAYSIZE = RiskMinCall_Command_Command_MAX + 1;
 
 const ::google::protobuf::EnumDescriptor* RiskMinCall_Command_descriptor();
@@ -797,6 +798,7 @@ class RiskMinCall : public ::google::protobuf::Message {
   static const Command SAVE_AS_DENSE = RiskMinCall_Command_SAVE_AS_DENSE;
   static const Command RECOVER = RiskMinCall_Command_RECOVER;
   static const Command COMPUTE_VALIDATION_AUC = RiskMinCall_Command_COMPUTE_VALIDATION_AUC;
+  static const Command LOAD_DATA = RiskMinCall_Command_LOAD_DATA;
   static inline bool Command_IsValid(int value) {
     return RiskMinCall_Command_IsValid(value);
   }

@@ -11,6 +11,7 @@ class BatchSolver : public LinearMethod {
   virtual void run();
 
  protected:
+  InstanceInfo loadData(const Message &msg);
   virtual void prepareData(const Message& msg);
   virtual void updateModel(Message* msg);
   virtual void runIteration();

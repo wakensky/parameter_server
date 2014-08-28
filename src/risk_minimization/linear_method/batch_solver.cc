@@ -5,7 +5,10 @@
 
 namespace PS {
 
-DECLARE_string(center);
+DEFINE_bool(nfs, false,
+    "whether training data and validation data "
+    "resides on NFS filesystem (such as: HDFS/Moose FS). "
+    "default: false");
 DECLARE_bool(verbose);
 
 DEFINE_int32(worker_load_limit, -1,
@@ -23,6 +26,44 @@ void BatchSolver::init() {
 
 void BatchSolver::run() {
   LinearMethod::startSystem();
+
+  // drive workers: load data, get key range from training data
+  InstanceInfo tr_info;
+  Task load_data;
+  load_data.set_type(Task::CALL_CUSTOMER);
+  load_data.mutable_risk()->set_cmd(RiskMinCall::LOAD_DATA);
+  taskpool(kWorkerGroup)->submitAndWait(load_data, [&]() {
+    InstanceInfo info;
+    CHECK(info.ParseFromString(exec_.lastRecvReply()));
+    tr_info = mergeInstanceInfo(tr_info, info);
+  });
+
+  for (int i = 1; i < tr_info.fea_group_size(); ++i) {
+    g_training_info_.push_back(readMatrixInfo<double>(tr_info, i));
+  }
+  g_fea_range_ = Range<Key>(
+    tr_info.fea_group(0).fea_begin(), tr_info.fea_group(0).fea_end());
+  g_num_training_ins_ = tr_info.num_ins();
+
+  fprintf(stderr, "training data info: %lu examples with feature range %s\n",
+    g_num_training_ins_, g_fea_range_.toString().data());
+
+  // broadcast split key range
+  Task broadcast_key_range;
+  broadcast_key_range.set_request(true);
+  broadcast_key_range.set_customer(name());
+  broadcast_key_range.set_type(Task::MANAGE);
+  broadcast_key_range.mutable_mng_node()->set_cmd(ManageNode::INIT);
+  int s = 0;
+  for (auto &it : nodes_) {
+    auto &node = it.second;
+    auto key = node.role() != Node::SERVER ? g_fea_range_ :
+      g_fea_range_.evenDivide(FLAGS_num_servers, s++);
+    key.to(node.mutable_key());
+    *broadcast_key_range.mutable_mng_node()->add_nodes() = node;
+  }
+  sys_.manageNode(broadcast_key_range);
+  taskpool(kActiveGroup)->submitAndWait(broadcast_key_range);
 
   // evenly partition feature blocks
   CHECK(app_cf_.has_block_solver());
@@ -46,14 +87,13 @@ void BatchSolver::run() {
       }
     }
   }
-  fprintf(stderr, "features are partitioned into %lu blocks\n",
-  fea_blocks_.size());
+  fprintf(stderr, "features are partitioned into %lu blocks\n", fea_blocks_.size());
 
   // a simple block order
   block_order_.clear();
   for (int i = 0; i < fea_blocks_.size(); ++i) block_order_.push_back(i);
 
-  // load data
+  // workers fetch initialized w_ from servers
   Task prepare;
   prepare.set_type(Task::CALL_CUSTOMER);
   prepare.mutable_risk()->set_cmd(RiskMinCall::PREPARE_DATA);
@@ -143,7 +183,7 @@ void BatchSolver::assignDataToWorker(DataConfig *data_config) {
     // I will share data files with these workers
     std::vector<string> colleagues;
     for (const auto& worker : all_workers) {
-        if (!FLAGS_center.empty()) {
+        if (!FLAGS_nfs) {
             if (worker->hostname() != exec_.myNode().hostname()) {
                 continue;
             }
@@ -177,9 +217,50 @@ void BatchSolver::assignDataToWorker(DataConfig *data_config) {
     }
 }
 
+InstanceInfo BatchSolver::loadData(const Message &msg) {
+    InstanceInfo instance_info;
+    if (!exec_.isWorker()) {
+        return instance_info;
+    }
+
+    // assign training data
+    assignDataToWorker(app_cf_.mutable_training_data());
+
+    auto training_data = readMatrices<double>(
+        app_cf_.training_data(),
+        instance_info,
+        myNodePrintable(),
+        FLAGS_worker_load_limit,
+        FLAGS_verbose);
+    CHECK_EQ(training_data.size(), 2);
+
+    if (FLAGS_verbose) {
+        LI << "[" << myNodePrintable() << "] localizing...";
+    }
+    y_ = training_data[0];
+    X_ = training_data[1]->localize(&(w_->key()));
+    CHECK_EQ(y_->rows(), X_->rows());
+    if (FLAGS_verbose) {
+        LI << "[" << myNodePrintable() << "] localization finished.";
+    }
+
+    if (app_cf_.block_solver().feature_block_ratio() > 0) {
+        if (FLAGS_verbose) {
+            LI << "[" << myNodePrintable() << "] toColMajor...";
+        }
+        X_ = X_->toColMajor();
+        if (FLAGS_verbose) {
+            LI << "[" << myNodePrintable() << "] toColMajor finished.";
+        }
+    }
+
+    return instance_info;
+}
+
 void BatchSolver::prepareData(const Message& msg) {
   int time = msg.task.time() * 10;
   if (exec_.isWorker()) {
+    /*
     // assign training data
     assignDataToWorker(app_cf_.mutable_training_data());
 
@@ -211,6 +292,7 @@ void BatchSolver::prepareData(const Message& msg) {
           LI << "[" << myNodePrintable() << "] toColMajor finished.";
       }
     }
+    */
 
     // sync keys and fetch initial value of w_
     SArrayList<double> empty;
@@ -359,8 +441,10 @@ void BatchSolver::showProgress(int iter) {
 void BatchSolver::computeEvaluationAUC(AUCData *data) {
   if (!exec_.isWorker()) return;
   CHECK(app_cf_.has_validation_data());
+  InstanceInfo info;
   auto validation_data = readMatrices<double>(
     app_cf_.validation_data(),
+    info,
     myNodePrintable(),
     FLAGS_worker_load_limit,
     FLAGS_verbose);

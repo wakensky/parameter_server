@@ -68,19 +68,19 @@ MatrixInfo readMatrixInfo(const InstanceInfo& info, int i) {
 // TODO do not support dense feature group yet...
 template<typename V>
 MatrixPtrList<V> readMatricesFromProto(
+    InstanceInfo &out_instance_info,
     const std::vector<std::string>& files,
     const string& i_am,
     const int32 worker_load_limit,
     const bool verbose) {
   // load info
   std::vector<RecordReader> readers;
-  InstanceInfo info;
   for (auto& f : files) {
     File* in = File::openOrDie(f, "r");
     InstanceInfo i;
     RecordReader r(in);
     CHECK(r.ReadProtocolMessage(&i));
-    info = mergeInstanceInfo(info, i);
+    out_instance_info = mergeInstanceInfo(out_instance_info, i);
     readers.push_back(r);
 
     // maximum number of data files a worker could load
@@ -88,17 +88,17 @@ MatrixPtrList<V> readMatricesFromProto(
         break;
     }
   }
-  // LL << info.DebugString();
+  // LL << out_instance_info.DebugString();
 
   // allocate data
-  SArray<V> label(info.num_ins());
-  SArray<size_t> offset(info.num_ins()+1);
+  SArray<V> label(out_instance_info.num_ins());
+  SArray<size_t> offset(out_instance_info.num_ins()+1);
   offset[0] = 0;
-  CHECK_GT(info.fea_group_size(), 1);
-  SArray<uint64> index(info.fea_group(0).nnz());
+  CHECK_GT(out_instance_info.fea_group_size(), 1);
+  SArray<uint64> index(out_instance_info.fea_group(0).nnz());
   SArray<V> value;
-  bool binary = info.fea_type() == InstanceInfo::SPARSE_BINARY;
-  if (!binary) value.resize(info.fea_group(0).nnz());
+  bool binary = out_instance_info.fea_type() == InstanceInfo::SPARSE_BINARY;
+  if (!binary) value.resize(out_instance_info.fea_group(0).nnz());
 
   // file data
   uint64 offset_pos = 0, index_pos = 0, value_pos = 0, label_pos = 0;
@@ -131,16 +131,16 @@ MatrixPtrList<V> readMatricesFromProto(
   MatrixPtrList<V> res;
   MatrixInfo label_info;
   string label_str = "type: DENSE row_major: true row { begin: 0 end: "
-                     + std::to_string(info.num_ins())
+                     + std::to_string(out_instance_info.num_ins())
                      + " } col { begin: 0 end: 1 } nnz: "
-                     + std::to_string(info.num_ins())
+                     + std::to_string(out_instance_info.num_ins())
                      + " sizeof_value: " + std::to_string(sizeof(V));
   google::protobuf::TextFormat::ParseFromString(label_str, &label_info);
   res.push_back(MatrixPtr<V>(new DenseMatrix<V>(label_info, label)));
 
-  MatrixInfo f = readMatrixInfo<V>(info, 0);
-  for (int i = 1; i < info.fea_group_size(); ++i) {
-    *f.add_group_info() = info.fea_group(i);
+  MatrixInfo f = readMatrixInfo<V>(out_instance_info, 0);
+  for (int i = 1; i < out_instance_info.fea_group_size(); ++i) {
+    *f.add_group_info() = out_instance_info.fea_group(i);
   }
   res.push_back(MatrixPtr<V>(new SparseMatrix<uint64, V>(f, offset, index, value)));
 
@@ -227,6 +227,7 @@ MatrixPtrList<V> readMatricesFromBin(
 template<typename V>
 MatrixPtrList<V> readMatrices(
     const DataConfig& config,
+    InstanceInfo &instance_info,
     const string& i_am,
     const int32 worker_load_limit,
     const bool verbose) {
@@ -237,7 +238,8 @@ MatrixPtrList<V> readMatrices(
     if (config.has_range()) outer_range.copyFrom(config.range());
     return readMatricesFromBin<V>(outer_range, files);
   } else if (config.format() == DataConfig::PROTO) {
-    return readMatricesFromProto<V>(files, i_am, worker_load_limit, verbose);
+    return readMatricesFromProto<V>(
+        instance_info, files, i_am, worker_load_limit, verbose);
   } else {
     CHECK(false) << "unknonw data format: " << config.DebugString();
   }

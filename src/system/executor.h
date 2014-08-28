@@ -25,7 +25,7 @@ class Executor {
   ~Executor() { }
 
   // not thread-safe, so call it before being used by other threads
-  void init(const std::vector<Node>& nodes);
+  void init(const std::vector<Node> &nodes);
 
   // (somewhat) thread-safe, will called by postoffice's recving thread
   void replace(const Node& dead, const Node& live);

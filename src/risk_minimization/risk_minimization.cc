@@ -7,6 +7,7 @@ namespace PS {
 
 void RiskMinimization::process(Message* msg) {
   typedef RiskMinCall Call;
+  InstanceInfo info;
   switch (getCall(*msg).cmd()) {
     case Call::EVALUATE_PROGRESS: {
       auto prog = evaluateProgress();
@@ -14,6 +15,11 @@ void RiskMinimization::process(Message* msg) {
       prog.SerializeToString(&reply);
       sys_.reply(msg->sender, msg->task, reply);
       msg->replied = true;
+      break;
+    }
+    case Call::LOAD_DATA: {
+      info = loadData(*msg);
+      sys_.replyProtocalMessage(msg, info);
       break;
     }
     case Call::PREPARE_DATA:

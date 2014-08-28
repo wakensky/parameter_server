@@ -36,7 +36,6 @@ class RNode {
   // the key range this node maintains
   Range<Key> keyRange() { return Range<Key>(node_.key()); }
 
-
   // submit a task to this remote node from the local node
   //
   // msg: task info, keys, and values
@@ -94,6 +93,7 @@ class RNode {
   // TODO lock guard?
   int incrClock(int delta = 1) { time_ += delta; return time_; }
   int time() { return incrClock(0); }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(RNode);
 

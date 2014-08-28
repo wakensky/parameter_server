@@ -29,7 +29,14 @@ class Postoffice {
              const Task& task,
              const string& reply_msg = string());
 
-  void reply(const Message& msg, const string& reply_msg = string());
+  // reply message *msg* with protocal message *proto*
+  template <class P> void replyProtocalMessage(Message* msg, const P& proto) {
+      string str; proto.SerializeToString(&str);
+      reply(msg->sender, msg->task, str);
+      msg->replied = true;
+  }
+
+void reply(const Message& msg, const string& reply_msg = string());
 
   // add the nodes in _pt_ into the system
   void manageNode(const Task& pt);

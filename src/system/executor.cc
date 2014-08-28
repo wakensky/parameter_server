@@ -51,6 +51,11 @@ void Executor::replace(const Node& dead, const Node& live) {
 }
 
 void Executor::init(const std::vector<Node>& nodes) {
+  // clear
+  nodes_.clear();
+  node_groups_.clear();
+  node_key_partition_.clear();
+
   // insert virtual group nodes
   for (auto id : {
       kServerGroup, kWorkerGroup, kActiveGroup, kReplicaGroup, kOwnerGroup, kLiveGroup}) {
@@ -174,8 +179,9 @@ void Executor::run() {
       std::unique_lock<std::mutex> lk(recved_msg_mu_);
 
       if (FLAGS_verbose) {
-        LI << "[" << obj_.myNodePrintable() << "] " <<
-            "before entering task loop; recved_msgs_ size [" << recved_msgs_.size() << "]";
+        LI << "[" << obj_.myNodePrintable() << "] " << obj_.name() <<
+            " before entering task loop; recved_msgs_ size [" << recved_msgs_.size() << "]";
+        google::FlushLogFiles(google::GLOG_INFO);
       }
 
       // pickup a message with dependency satisfied
@@ -196,8 +202,8 @@ void Executor::run() {
           //   LL << it->debugString();
 
           if (FLAGS_verbose) {
-            LI << "[" << obj_.myNodePrintable() << "] " <<
-              "picked up an active_msg_ from recved_msgs_ [size] " <<
+            LI << "[" << obj_.myNodePrintable() << "] " << obj_.name() <<
+              " picked up an active_msg_ from recved_msgs_ [size] " <<
               recved_msgs_.size() << " [msg] " << it->shortDebugString();
           }
 
@@ -210,8 +216,8 @@ void Executor::run() {
       if (!do_process) {
 
         if (FLAGS_verbose) {
-          LI << "[" << obj_.myNodePrintable() << "] " <<
-            "picked nothing from recved_msgs_ [size] " <<
+          LI << "[" << obj_.myNodePrintable() << "] " << obj_.name() <<
+            " picked nothing from recved_msgs_ [size] " <<
             recved_msgs_.size() << "; waiting Executor::accept";
         }
 
