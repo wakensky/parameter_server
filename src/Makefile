@@ -51,6 +51,7 @@ SRCS = $(PROTOS_CC) \
 	util/threadpool.cc \
 	system/van.cc \
 	system/postoffice.cc \
+	system/running_status.cc \
 	system/yellow_pages.cc \
 	system/remote_node.cc \
 	system/executor.cc \

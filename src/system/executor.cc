@@ -181,7 +181,6 @@ void Executor::run() {
       if (FLAGS_verbose) {
         LI << "[" << obj_.myNodePrintable() << "] " << obj_.name() <<
             " before entering task loop; recved_msgs_ size [" << recved_msgs_.size() << "]";
-        google::FlushLogFiles(google::GLOG_INFO);
       }
 
       // pickup a message with dependency satisfied

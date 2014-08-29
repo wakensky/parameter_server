@@ -97,5 +97,11 @@ static string dbstr(const V* data, int n, int m = 5) {
   return ss.str();
 }
 
+enum class TimerType : unsigned char {
+    BUSY = 0,
+    NETWORK,
+    NUM,
+};
+
 
 } // namespace PS

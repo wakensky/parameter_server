@@ -1,5 +1,6 @@
 #include "data/text2proto.h"
 #include "util/resource_usage.h"
+#include "util/MurmurHash3.h"
 #include "base/matrix_io.h"
 // #include <bitset>
 
@@ -79,8 +80,16 @@ void Text2Proto::processAdFea(char *line) {
       uint64 group_id = (num << 62) | ((num & 0x3C) << 56) | ((num & 0x3C0) << 48);
       fea_id = (fea_id >> 10) | group_id;
 
+      // wakensky: switch group_id to the lowest 10 bits
+      // fea_id = ((fea_id << 10) | (fea_id >> 54));
+
+      // wakensky:  scattered with Murmur3 hash
+      // uint64 murmur_out[2];
+      // MurmurHash3_x64_128(&fea_id, 8, 512927377, murmur_out);
+      // fea_id = (murmur_out[0] ^ murmur_out[1]);
+
       feas.push_back(fea_id);
-      auto& ginfo = group_info_[num];
+      auto& ginfo = group_info_[/*1*/num];
       ginfo.set_fea_begin(std::min((uint64)ginfo.fea_begin(), fea_id));
       ginfo.set_fea_end(std::max((uint64)ginfo.fea_end(), fea_id + 1));
       ginfo.set_nnz(ginfo.nnz() + 1);

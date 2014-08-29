@@ -216,7 +216,10 @@ void KVVector<K, V>::roundTripForServer(
         "leaves waiting IncomingTask; updating [" << time << "]";
   }
 
+  this->sys_.runningStatus().startTimer(TimerType::BUSY);
   update(time);
+  this->sys_.runningStatus().stopTimer(TimerType::BUSY);
+
   backup(kWorkerGroup, time+1, range);
 
   // time 1: mark it as finished so that all blocked pulls can be started

@@ -264,12 +264,16 @@ void Init() {
 } // namespace PS
 
 int main(int argc, char *argv[]) {
+  google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
 
   if (!PS::FLAGS_log_to_file) {
     FLAGS_logtostderr = 1;
   }
-  google::InitGoogleLogging(argv[0]);
+  if (PS::FLAGS_verbose) {
+    // disable the buffer of glog
+    FLAGS_logbuflevel = -1;
+  }
 
   CHECK(!MPI_Init(&argc, &argv));
 

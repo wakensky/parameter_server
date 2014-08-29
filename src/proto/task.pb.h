@@ -45,17 +45,19 @@ class Timestamp;
 class CallSharedPara;
 class CallSketch;
 class SketchResponse;
+class RunningStatusReport;
 
 enum Task_Type {
   Task_Type_TERMINATE = 1,
   Task_Type_TERMINATE_CONFIRM = 2,
   Task_Type_REPLY = 3,
   Task_Type_MANAGE = 4,
-  Task_Type_CALL_CUSTOMER = 5
+  Task_Type_CALL_CUSTOMER = 5,
+  Task_Type_HEARTBEATING = 6
 };
 bool Task_Type_IsValid(int value);
 const Task_Type Task_Type_Type_MIN = Task_Type_TERMINATE;
-const Task_Type Task_Type_Type_MAX = Task_Type_CALL_CUSTOMER;
+const Task_Type Task_Type_Type_MAX = Task_Type_HEARTBEATING;
 const int Task_Type_Type_ARRAYSIZE = Task_Type_Type_MAX + 1;
 
 const ::google::protobuf::EnumDescriptor* Task_Type_descriptor();
@@ -210,6 +212,7 @@ class Task : public ::google::protobuf::Message {
   static const Type REPLY = Task_Type_REPLY;
   static const Type MANAGE = Task_Type_MANAGE;
   static const Type CALL_CUSTOMER = Task_Type_CALL_CUSTOMER;
+  static const Type HEARTBEATING = Task_Type_HEARTBEATING;
   static inline bool Type_IsValid(int value) {
     return Task_Type_IsValid(value);
   }
@@ -1137,6 +1140,198 @@ class SketchResponse : public ::google::protobuf::Message {
 
   void InitAsDefaultInstance();
   static SketchResponse* default_instance_;
+};
+// -------------------------------------------------------------------
+
+class RunningStatusReport : public ::google::protobuf::Message {
+ public:
+  RunningStatusReport();
+  virtual ~RunningStatusReport();
+
+  RunningStatusReport(const RunningStatusReport& from);
+
+  inline RunningStatusReport& operator=(const RunningStatusReport& from) {
+    CopyFrom(from);
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const {
+    return _unknown_fields_;
+  }
+
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields() {
+    return &_unknown_fields_;
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const RunningStatusReport& default_instance();
+
+  void Swap(RunningStatusReport* other);
+
+  // implements Message ----------------------------------------------
+
+  RunningStatusReport* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const RunningStatusReport& from);
+  void MergeFrom(const RunningStatusReport& from);
+  void Clear();
+  bool IsInitialized() const;
+
+  int ByteSize() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // optional int32 task_id = 1 [default = 0];
+  inline bool has_task_id() const;
+  inline void clear_task_id();
+  static const int kTaskIdFieldNumber = 1;
+  inline ::google::protobuf::int32 task_id() const;
+  inline void set_task_id(::google::protobuf::int32 value);
+
+  // optional uint32 seconds_since_epoch = 10;
+  inline bool has_seconds_since_epoch() const;
+  inline void clear_seconds_since_epoch();
+  static const int kSecondsSinceEpochFieldNumber = 10;
+  inline ::google::protobuf::uint32 seconds_since_epoch() const;
+  inline void set_seconds_since_epoch(::google::protobuf::uint32 value);
+
+  // optional uint32 total_time_micro = 3;
+  inline bool has_total_time_micro() const;
+  inline void clear_total_time_micro();
+  static const int kTotalTimeMicroFieldNumber = 3;
+  inline ::google::protobuf::uint32 total_time_micro() const;
+  inline void set_total_time_micro(::google::protobuf::uint32 value);
+
+  // optional uint32 busy_time_micro = 2;
+  inline bool has_busy_time_micro() const;
+  inline void clear_busy_time_micro();
+  static const int kBusyTimeMicroFieldNumber = 2;
+  inline ::google::protobuf::uint32 busy_time_micro() const;
+  inline void set_busy_time_micro(::google::protobuf::uint32 value);
+
+  // optional uint32 network_time_micro = 9;
+  inline bool has_network_time_micro() const;
+  inline void clear_network_time_micro();
+  static const int kNetworkTimeMicroFieldNumber = 9;
+  inline ::google::protobuf::uint32 network_time_micro() const;
+  inline void set_network_time_micro(::google::protobuf::uint32 value);
+
+  // optional float my_cpu_usage_user = 4;
+  inline bool has_my_cpu_usage_user() const;
+  inline void clear_my_cpu_usage_user();
+  static const int kMyCpuUsageUserFieldNumber = 4;
+  inline float my_cpu_usage_user() const;
+  inline void set_my_cpu_usage_user(float value);
+
+  // optional float my_cpu_usage_sys = 11;
+  inline bool has_my_cpu_usage_sys() const;
+  inline void clear_my_cpu_usage_sys();
+  static const int kMyCpuUsageSysFieldNumber = 11;
+  inline float my_cpu_usage_sys() const;
+  inline void set_my_cpu_usage_sys(float value);
+
+  // optional float host_cpu_usage_user = 5;
+  inline bool has_host_cpu_usage_user() const;
+  inline void clear_host_cpu_usage_user();
+  static const int kHostCpuUsageUserFieldNumber = 5;
+  inline float host_cpu_usage_user() const;
+  inline void set_host_cpu_usage_user(float value);
+
+  // optional float host_cpu_usage_sys = 12;
+  inline bool has_host_cpu_usage_sys() const;
+  inline void clear_host_cpu_usage_sys();
+  static const int kHostCpuUsageSysFieldNumber = 12;
+  inline float host_cpu_usage_sys() const;
+  inline void set_host_cpu_usage_sys(float value);
+
+  // optional uint32 my_virtual = 6;
+  inline bool has_my_virtual() const;
+  inline void clear_my_virtual();
+  static const int kMyVirtualFieldNumber = 6;
+  inline ::google::protobuf::uint32 my_virtual() const;
+  inline void set_my_virtual(::google::protobuf::uint32 value);
+
+  // optional uint32 my_rss = 7;
+  inline bool has_my_rss() const;
+  inline void clear_my_rss();
+  static const int kMyRssFieldNumber = 7;
+  inline ::google::protobuf::uint32 my_rss() const;
+  inline void set_my_rss(::google::protobuf::uint32 value);
+
+  // optional uint32 host_free_memory = 8;
+  inline bool has_host_free_memory() const;
+  inline void clear_host_free_memory();
+  static const int kHostFreeMemoryFieldNumber = 8;
+  inline ::google::protobuf::uint32 host_free_memory() const;
+  inline void set_host_free_memory(::google::protobuf::uint32 value);
+
+  // @@protoc_insertion_point(class_scope:PS.RunningStatusReport)
+ private:
+  inline void set_has_task_id();
+  inline void clear_has_task_id();
+  inline void set_has_seconds_since_epoch();
+  inline void clear_has_seconds_since_epoch();
+  inline void set_has_total_time_micro();
+  inline void clear_has_total_time_micro();
+  inline void set_has_busy_time_micro();
+  inline void clear_has_busy_time_micro();
+  inline void set_has_network_time_micro();
+  inline void clear_has_network_time_micro();
+  inline void set_has_my_cpu_usage_user();
+  inline void clear_has_my_cpu_usage_user();
+  inline void set_has_my_cpu_usage_sys();
+  inline void clear_has_my_cpu_usage_sys();
+  inline void set_has_host_cpu_usage_user();
+  inline void clear_has_host_cpu_usage_user();
+  inline void set_has_host_cpu_usage_sys();
+  inline void clear_has_host_cpu_usage_sys();
+  inline void set_has_my_virtual();
+  inline void clear_has_my_virtual();
+  inline void set_has_my_rss();
+  inline void clear_has_my_rss();
+  inline void set_has_host_free_memory();
+  inline void clear_has_host_free_memory();
+
+  ::google::protobuf::UnknownFieldSet _unknown_fields_;
+
+  ::google::protobuf::int32 task_id_;
+  ::google::protobuf::uint32 seconds_since_epoch_;
+  ::google::protobuf::uint32 total_time_micro_;
+  ::google::protobuf::uint32 busy_time_micro_;
+  ::google::protobuf::uint32 network_time_micro_;
+  float my_cpu_usage_user_;
+  float my_cpu_usage_sys_;
+  float host_cpu_usage_user_;
+  float host_cpu_usage_sys_;
+  ::google::protobuf::uint32 my_virtual_;
+  ::google::protobuf::uint32 my_rss_;
+  ::google::protobuf::uint32 host_free_memory_;
+
+  mutable int _cached_size_;
+  ::google::protobuf::uint32 _has_bits_[(12 + 31) / 32];
+
+  friend void  protobuf_AddDesc_proto_2ftask_2eproto();
+  friend void protobuf_AssignDesc_proto_2ftask_2eproto();
+  friend void protobuf_ShutdownFile_proto_2ftask_2eproto();
+
+  void InitAsDefaultInstance();
+  static RunningStatusReport* default_instance_;
 };
 // ===================================================================
 
@@ -2183,6 +2378,274 @@ inline ::google::protobuf::uint32 SketchResponse::key() const {
 inline void SketchResponse::set_key(::google::protobuf::uint32 value) {
   set_has_key();
   key_ = value;
+}
+
+// -------------------------------------------------------------------
+
+// RunningStatusReport
+
+// optional int32 task_id = 1 [default = 0];
+inline bool RunningStatusReport::has_task_id() const {
+  return (_has_bits_[0] & 0x00000001u) != 0;
+}
+inline void RunningStatusReport::set_has_task_id() {
+  _has_bits_[0] |= 0x00000001u;
+}
+inline void RunningStatusReport::clear_has_task_id() {
+  _has_bits_[0] &= ~0x00000001u;
+}
+inline void RunningStatusReport::clear_task_id() {
+  task_id_ = 0;
+  clear_has_task_id();
+}
+inline ::google::protobuf::int32 RunningStatusReport::task_id() const {
+  return task_id_;
+}
+inline void RunningStatusReport::set_task_id(::google::protobuf::int32 value) {
+  set_has_task_id();
+  task_id_ = value;
+}
+
+// optional uint32 seconds_since_epoch = 10;
+inline bool RunningStatusReport::has_seconds_since_epoch() const {
+  return (_has_bits_[0] & 0x00000002u) != 0;
+}
+inline void RunningStatusReport::set_has_seconds_since_epoch() {
+  _has_bits_[0] |= 0x00000002u;
+}
+inline void RunningStatusReport::clear_has_seconds_since_epoch() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+inline void RunningStatusReport::clear_seconds_since_epoch() {
+  seconds_since_epoch_ = 0u;
+  clear_has_seconds_since_epoch();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::seconds_since_epoch() const {
+  return seconds_since_epoch_;
+}
+inline void RunningStatusReport::set_seconds_since_epoch(::google::protobuf::uint32 value) {
+  set_has_seconds_since_epoch();
+  seconds_since_epoch_ = value;
+}
+
+// optional uint32 total_time_micro = 3;
+inline bool RunningStatusReport::has_total_time_micro() const {
+  return (_has_bits_[0] & 0x00000004u) != 0;
+}
+inline void RunningStatusReport::set_has_total_time_micro() {
+  _has_bits_[0] |= 0x00000004u;
+}
+inline void RunningStatusReport::clear_has_total_time_micro() {
+  _has_bits_[0] &= ~0x00000004u;
+}
+inline void RunningStatusReport::clear_total_time_micro() {
+  total_time_micro_ = 0u;
+  clear_has_total_time_micro();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::total_time_micro() const {
+  return total_time_micro_;
+}
+inline void RunningStatusReport::set_total_time_micro(::google::protobuf::uint32 value) {
+  set_has_total_time_micro();
+  total_time_micro_ = value;
+}
+
+// optional uint32 busy_time_micro = 2;
+inline bool RunningStatusReport::has_busy_time_micro() const {
+  return (_has_bits_[0] & 0x00000008u) != 0;
+}
+inline void RunningStatusReport::set_has_busy_time_micro() {
+  _has_bits_[0] |= 0x00000008u;
+}
+inline void RunningStatusReport::clear_has_busy_time_micro() {
+  _has_bits_[0] &= ~0x00000008u;
+}
+inline void RunningStatusReport::clear_busy_time_micro() {
+  busy_time_micro_ = 0u;
+  clear_has_busy_time_micro();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::busy_time_micro() const {
+  return busy_time_micro_;
+}
+inline void RunningStatusReport::set_busy_time_micro(::google::protobuf::uint32 value) {
+  set_has_busy_time_micro();
+  busy_time_micro_ = value;
+}
+
+// optional uint32 network_time_micro = 9;
+inline bool RunningStatusReport::has_network_time_micro() const {
+  return (_has_bits_[0] & 0x00000010u) != 0;
+}
+inline void RunningStatusReport::set_has_network_time_micro() {
+  _has_bits_[0] |= 0x00000010u;
+}
+inline void RunningStatusReport::clear_has_network_time_micro() {
+  _has_bits_[0] &= ~0x00000010u;
+}
+inline void RunningStatusReport::clear_network_time_micro() {
+  network_time_micro_ = 0u;
+  clear_has_network_time_micro();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::network_time_micro() const {
+  return network_time_micro_;
+}
+inline void RunningStatusReport::set_network_time_micro(::google::protobuf::uint32 value) {
+  set_has_network_time_micro();
+  network_time_micro_ = value;
+}
+
+// optional float my_cpu_usage_user = 4;
+inline bool RunningStatusReport::has_my_cpu_usage_user() const {
+  return (_has_bits_[0] & 0x00000020u) != 0;
+}
+inline void RunningStatusReport::set_has_my_cpu_usage_user() {
+  _has_bits_[0] |= 0x00000020u;
+}
+inline void RunningStatusReport::clear_has_my_cpu_usage_user() {
+  _has_bits_[0] &= ~0x00000020u;
+}
+inline void RunningStatusReport::clear_my_cpu_usage_user() {
+  my_cpu_usage_user_ = 0;
+  clear_has_my_cpu_usage_user();
+}
+inline float RunningStatusReport::my_cpu_usage_user() const {
+  return my_cpu_usage_user_;
+}
+inline void RunningStatusReport::set_my_cpu_usage_user(float value) {
+  set_has_my_cpu_usage_user();
+  my_cpu_usage_user_ = value;
+}
+
+// optional float my_cpu_usage_sys = 11;
+inline bool RunningStatusReport::has_my_cpu_usage_sys() const {
+  return (_has_bits_[0] & 0x00000040u) != 0;
+}
+inline void RunningStatusReport::set_has_my_cpu_usage_sys() {
+  _has_bits_[0] |= 0x00000040u;
+}
+inline void RunningStatusReport::clear_has_my_cpu_usage_sys() {
+  _has_bits_[0] &= ~0x00000040u;
+}
+inline void RunningStatusReport::clear_my_cpu_usage_sys() {
+  my_cpu_usage_sys_ = 0;
+  clear_has_my_cpu_usage_sys();
+}
+inline float RunningStatusReport::my_cpu_usage_sys() const {
+  return my_cpu_usage_sys_;
+}
+inline void RunningStatusReport::set_my_cpu_usage_sys(float value) {
+  set_has_my_cpu_usage_sys();
+  my_cpu_usage_sys_ = value;
+}
+
+// optional float host_cpu_usage_user = 5;
+inline bool RunningStatusReport::has_host_cpu_usage_user() const {
+  return (_has_bits_[0] & 0x00000080u) != 0;
+}
+inline void RunningStatusReport::set_has_host_cpu_usage_user() {
+  _has_bits_[0] |= 0x00000080u;
+}
+inline void RunningStatusReport::clear_has_host_cpu_usage_user() {
+  _has_bits_[0] &= ~0x00000080u;
+}
+inline void RunningStatusReport::clear_host_cpu_usage_user() {
+  host_cpu_usage_user_ = 0;
+  clear_has_host_cpu_usage_user();
+}
+inline float RunningStatusReport::host_cpu_usage_user() const {
+  return host_cpu_usage_user_;
+}
+inline void RunningStatusReport::set_host_cpu_usage_user(float value) {
+  set_has_host_cpu_usage_user();
+  host_cpu_usage_user_ = value;
+}
+
+// optional float host_cpu_usage_sys = 12;
+inline bool RunningStatusReport::has_host_cpu_usage_sys() const {
+  return (_has_bits_[0] & 0x00000100u) != 0;
+}
+inline void RunningStatusReport::set_has_host_cpu_usage_sys() {
+  _has_bits_[0] |= 0x00000100u;
+}
+inline void RunningStatusReport::clear_has_host_cpu_usage_sys() {
+  _has_bits_[0] &= ~0x00000100u;
+}
+inline void RunningStatusReport::clear_host_cpu_usage_sys() {
+  host_cpu_usage_sys_ = 0;
+  clear_has_host_cpu_usage_sys();
+}
+inline float RunningStatusReport::host_cpu_usage_sys() const {
+  return host_cpu_usage_sys_;
+}
+inline void RunningStatusReport::set_host_cpu_usage_sys(float value) {
+  set_has_host_cpu_usage_sys();
+  host_cpu_usage_sys_ = value;
+}
+
+// optional uint32 my_virtual = 6;
+inline bool RunningStatusReport::has_my_virtual() const {
+  return (_has_bits_[0] & 0x00000200u) != 0;
+}
+inline void RunningStatusReport::set_has_my_virtual() {
+  _has_bits_[0] |= 0x00000200u;
+}
+inline void RunningStatusReport::clear_has_my_virtual() {
+  _has_bits_[0] &= ~0x00000200u;
+}
+inline void RunningStatusReport::clear_my_virtual() {
+  my_virtual_ = 0u;
+  clear_has_my_virtual();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::my_virtual() const {
+  return my_virtual_;
+}
+inline void RunningStatusReport::set_my_virtual(::google::protobuf::uint32 value) {
+  set_has_my_virtual();
+  my_virtual_ = value;
+}
+
+// optional uint32 my_rss = 7;
+inline bool RunningStatusReport::has_my_rss() const {
+  return (_has_bits_[0] & 0x00000400u) != 0;
+}
+inline void RunningStatusReport::set_has_my_rss() {
+  _has_bits_[0] |= 0x00000400u;
+}
+inline void RunningStatusReport::clear_has_my_rss() {
+  _has_bits_[0] &= ~0x00000400u;
+}
+inline void RunningStatusReport::clear_my_rss() {
+  my_rss_ = 0u;
+  clear_has_my_rss();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::my_rss() const {
+  return my_rss_;
+}
+inline void RunningStatusReport::set_my_rss(::google::protobuf::uint32 value) {
+  set_has_my_rss();
+  my_rss_ = value;
+}
+
+// optional uint32 host_free_memory = 8;
+inline bool RunningStatusReport::has_host_free_memory() const {
+  return (_has_bits_[0] & 0x00000800u) != 0;
+}
+inline void RunningStatusReport::set_has_host_free_memory() {
+  _has_bits_[0] |= 0x00000800u;
+}
+inline void RunningStatusReport::clear_has_host_free_memory() {
+  _has_bits_[0] &= ~0x00000800u;
+}
+inline void RunningStatusReport::clear_host_free_memory() {
+  host_free_memory_ = 0u;
+  clear_has_host_free_memory();
+}
+inline ::google::protobuf::uint32 RunningStatusReport::host_free_memory() const {
+  return host_free_memory_;
+}
+inline void RunningStatusReport::set_host_free_memory(::google::protobuf::uint32 value) {
+  set_has_host_free_memory();
+  host_free_memory_ = value;
 }
 
 

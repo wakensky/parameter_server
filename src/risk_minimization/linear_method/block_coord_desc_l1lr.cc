@@ -100,15 +100,18 @@ void BlockCoordDescL1LR::updateModel(Message* msg) {
   }
 
   if (exec_.isWorker()) {
+    sys_.runningStatus().startTimer(TimerType::BUSY);
     busy_timer_.start();
     auto local_grads = computeGradients(local_range);
     busy_timer_.stop();
+    sys_.runningStatus().stopTimer(TimerType::BUSY);
 
     msg->finished = false;
     auto d = *msg;
     w_->roundTripForWorker(time, global_range, local_grads,
                            [this, local_range, d] (int time) {
         // update dual variable
+        sys_.runningStatus().startTimer(TimerType::BUSY);
         busy_timer_.start();
         if (!local_range.empty()) {
           auto data = w_->received(time);
@@ -118,6 +121,7 @@ void BlockCoordDescL1LR::updateModel(Message* msg) {
           updateDual(local_range, new_weight);
         }
         busy_timer_.stop();
+        sys_.runningStatus().stopTimer(TimerType::BUSY);
 
         taskpool(d.sender)->finishIncomingTask(d.task.time());
         sys_.reply(d);

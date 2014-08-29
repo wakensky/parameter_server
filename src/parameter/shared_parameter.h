@@ -148,12 +148,15 @@ void SharedParameter<K,V>::process(Message* msg) {
     typedef CallSharedPara Call;
 
     case Call::PUSH:
+      sys_.runningStatus().startTimer(TimerType::BUSY);
       if (req) {
         setValue(msg);
       }
+      sys_.runningStatus().stopTimer(TimerType::BUSY);
       break;
 
     case Call::PULL:
+      sys_.runningStatus().startTimer(TimerType::BUSY);
       if (req) {
         Message re = *msg;
         // re.value.clear();
@@ -168,6 +171,7 @@ void SharedParameter<K,V>::process(Message* msg) {
       } else {
         setValue(msg);
       }
+      sys_.runningStatus().stopTimer(TimerType::BUSY);
       break;
 
     case Call::PUSH_REPLICA:

@@ -1,3 +1,4 @@
+#include <iomanip>
 #include "system/postoffice.h"
 // #include <omp.h>
 #include "system/customer.h"
@@ -22,6 +23,11 @@ DEFINE_string(node_file, "./nodes", "node information");
 
 DEFINE_int32(num_threads, 2, "number of computational threads");
 
+DEFINE_int32(report_interval, 5,
+    "Servers/Workers report running status to scheduler "
+    "in every report_interval seconds. "
+    "default: 5; if set to 0, heartbeat is disabled");
+
 Postoffice::~Postoffice() {
   // sending_->join();
   // yp_.van().destroy();
@@ -34,6 +40,18 @@ void Postoffice::run() {
   yp_.init();
   recving_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::recv, this));
   sending_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::send, this));
+
+  if (FLAGS_report_interval > 0) {
+    if (Node::SCHEDULER == myNode().role()) {
+      monitoring_ = std::unique_ptr<std::thread>(
+        new std::thread(&Postoffice::monitor, this));
+      monitoring_->detach();
+    } else {
+      heartbeating_ = std::unique_ptr<std::thread>(
+        new std::thread(&Postoffice::heartbeat, this));
+      heartbeating_->detach();
+    }
+  }
 
   // omp_set_dynamic(0);
   // omp_set_num_threads(FLAGS_num_threads);
@@ -120,14 +138,124 @@ void Postoffice::recv() {
     } else if (tk.request() && tk.type() == Task::MANAGE) {
       if (tk.has_mng_app()) manage_app(tk);
       if (tk.has_mng_node()) manageNode(tk);
+    } else if (Task::HEARTBEATING == tk.type()) {
+      RunningStatusReport report;
+      report.ParseFromString(tk.msg());
+
+      {
+        Lock l(mu_dashboard_);
+        report.set_task_id(dashboard_[msg.sender].task_id());
+        dashboard_[msg.sender] = report;
+      }
+
+      continue;
     } else {
       yp_.customer(tk.customer())->exec().accept(msg);
+
+      if (Node::SCHEDULER == myNode().role() && FLAGS_report_interval > 0) {
+        Lock l(mu_dashboard_);
+        dashboard_[msg.sender].set_task_id(msg.task.time());
+      }
       continue;
     }
     auto ptr = yp_.customer(tk.customer());
     if (ptr != nullptr) ptr->exec().finish(msg);
     reply(msg);
   }
+}
+
+void Postoffice::heartbeat() {
+    while (true) {
+        if (yp_.van().connectivity("H").ok()) {
+            // serialize Runningstatusreport
+            string report;
+            running_status_.get().SerializeToString(&report);
+
+            // pack msg
+            Message msg;
+            msg.sender = myNode().id();
+            msg.recver = "H";
+            msg.original_recver = "H";
+            msg.valid = true;
+            msg.task.set_time(std::numeric_limits<int32>::min());
+            msg.task.set_request(false);
+            msg.task.set_customer("HB");
+            msg.task.set_type(Task::HEARTBEATING);
+            msg.task.set_msg(report);
+
+            // push to sending queue
+            queue(msg);
+
+            std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
+        }
+    };
+}
+
+string Postoffice::printDashboardTopRow() {
+    const size_t WIDTH = 10;
+
+    // time_t
+    std::time_t now_time = std::chrono::system_clock::to_time_t(
+        std::chrono::system_clock::now());
+    string time_str = ctime(&now_time);
+    time_str.resize(time_str.size() - 1);
+
+    std::stringstream ss;
+    ss << std::setiosflags(std::ios::left) <<
+        std::setw(WIDTH) << std::setfill('=') << "" << " Dashboard " <<
+        time_str + " " << std::setw(WIDTH) << std::setfill('=') << "" << "\n";
+    ss << std::setfill(' ') << std::setw(WIDTH) << "Node" <<
+        std::setw(WIDTH) << "Task" <<
+        std::setw(WIDTH) << "MyCPU(%)" <<
+        std::setw(WIDTH) << "MyRSS" <<
+        std::setw(WIDTH) << "MyVirt" <<
+        std::setw(WIDTH) << "BusyTime" <<
+        std::setw(WIDTH) << "HostCPU" <<
+        std::setw(WIDTH) << "HostFree";
+
+    return ss.str();
+}
+
+string Postoffice::printRunningStatusReport(
+    const string &node_id,
+    const RunningStatusReport &report) {
+    std::stringstream ss;
+    const size_t WIDTH = 10;
+
+    ss << std::setiosflags(std::ios::left) << std::setw(WIDTH) << node_id <<
+        std::setw(WIDTH) << report.task_id() <<
+        std::setw(WIDTH) << static_cast<uint32>(
+            report.my_cpu_usage_user() + report.my_cpu_usage_sys()) <<
+        std::setw(WIDTH) << report.my_rss() <<
+        std::setw(WIDTH) << report.my_virtual() <<
+        std::setw(WIDTH) << std::to_string(static_cast<uint32>(report.busy_time_micro() / 1e3)) + "(" +
+            std::to_string(static_cast<uint32>(100 * (
+                static_cast<float>(report.busy_time_micro()) / report.total_time_micro()))) + ")" <<
+        std::setw(WIDTH) << static_cast<uint32>(
+            report.host_cpu_usage_user() + report.host_cpu_usage_sys()) <<
+        std::setw(WIDTH) << report.host_free_memory();
+
+    return ss.str();
+}
+
+void Postoffice::monitor() {
+    while (true) {
+        if (!dashboard_.empty()) {
+            Lock l(mu_dashboard_);
+
+            // print progress for all Servers/Workers
+            std::stringstream ss;
+            ss << printDashboardTopRow() << "\n";
+            for (const auto& item : dashboard_) {
+                ss << printRunningStatusReport(item.first, item.second) << "\n";
+            }
+
+            // output
+            std::cerr << "\n\n" << ss.str();
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
+    };
 }
 
 void Postoffice::manage_app(const Task& tk) {

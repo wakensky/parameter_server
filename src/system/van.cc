@@ -4,7 +4,7 @@
 #include "base/shared_array_inl.h"
 
 namespace PS {
-// #define _DEBUG_VAN_
+#define _DEBUG_VAN_
 // static string van_filter = "";
 
 DEFINE_string(my_node, "role:SCHEDULER,hostname:'127.0.0.1',port:8000,id:'H'", "my node");
@@ -80,6 +80,16 @@ Status Van::connect(Node const& node) {
   // LL << my_node_.id() << ": connect to " << addr;
 #endif
   return Status::OK();
+}
+
+Status Van::connectivity(const string &node_id) {
+  auto it = senders_.find(node_id);
+  if (senders_.end() != it) {
+    return Status::OK();
+  }
+  else {
+    return Status::NotFound("there is no socket to node " + node_id);
+  }
 }
 
 // TODO use zmq_msg_t to allow zero_copy send

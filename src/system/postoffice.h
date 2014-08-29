@@ -3,6 +3,7 @@
 #include "system/message.h"
 #include "system/yellow_pages.h"
 #include "util/threadsafe_queue.h"
+#include "system/running_status.h"
 
 namespace PS {
 
@@ -44,6 +45,7 @@ void reply(const Message& msg, const string& reply_msg = string());
   // accessors and mutators
   YellowPages& yp() { return yp_; }
   Node& myNode() { return yp_.van().myNode(); }
+  RunningStatus& runningStatus() { return running_status_; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Postoffice);
@@ -52,17 +54,32 @@ void reply(const Message& msg, const string& reply_msg = string());
   void manage_app(const Task& pt);
   void send();
   void recv();
+  void heartbeat();
+  void monitor();
+
+  string printDashboardTopRow();
+  string printRunningStatusReport(
+    const string &node_id,
+    const RunningStatusReport &report);
 
   std::mutex mutex_;
   bool done_ = false;
 
   std::unique_ptr<std::thread> recving_;
   std::unique_ptr<std::thread> sending_;
+  std::unique_ptr<std::thread> heartbeating_;
+  std::unique_ptr<std::thread> monitoring_;
 
   threadsafe_queue<Message> sending_queue_;
 
   // yp_ should stay behind sending_queue_ so it will be destroied earlier
   YellowPages yp_;
+
+  RunningStatus running_status_;
+
+  // records running status for all workers/servers
+  std::map<NodeID, RunningStatusReport> dashboard_;
+  std::mutex mu_dashboard_;
 };
 
 } // namespace PS
