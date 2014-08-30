@@ -359,6 +359,8 @@ int main(int argc, char *argv[]) {
 
   convertor.write();
 
+  t.stop();
+
   std::cerr << "written " << convertor.num_lines_written()
             << " instances in " <<  t.get()  << " sec." << std::endl;
   if (convertor.num_lines_skipped()) {

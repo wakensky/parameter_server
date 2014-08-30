@@ -23,8 +23,13 @@ class Van {
   // check whether I could connect to a specified node
   Status connectivity(const string &node_id);
 
-  Status send(const Message& msg);
-  Status recv(Message* msg);
+  Status send(
+    const Message& msg,
+    size_t &send_bytes);
+
+  Status recv(
+    Message* msg,
+    size_t &recv_bytes);
 
   Node& myNode() { return my_node_; }
 

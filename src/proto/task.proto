@@ -121,7 +121,12 @@ message RunningStatusReport {
   // time spent on calculation (in microseconds)
   optional uint32 busy_time_micro = 2;
   // time spent on network (waiting other nodes)
-  optional uint32 network_time_micro = 9;
+  optional uint32 netin_time_micro = 9;
+  optional uint32 netout_time_micro = 13;
+
+  // netin / netout Bytes
+  optional uint32 in_bytes = 14;
+  optional uint32 out_bytes = 15;
 
   // process's cpu usage in user state (percent)
   optional float my_cpu_usage_user = 4;
@@ -137,4 +142,8 @@ message RunningStatusReport {
   optional uint32 my_rss = 7;
   // host's free memory in Mega Bytes
   optional uint32 host_free_memory = 8;
+
+  // host's in/out bandwidth usage (MB/s)
+  optional uint32 host_net_in_bw_usage = 16;
+  optional uint32 host_net_out_bw_usage = 17;
 }

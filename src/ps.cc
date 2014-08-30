@@ -5,7 +5,7 @@ int main(int argc, char *argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
 
-  PS::Postoffice::instance().run();
+  PS::Postoffice::instance().run("");
 
   LL << "done";
   return 0;

@@ -157,7 +157,7 @@ int refreshData(const size_t worker_id, const string& i_am) {
     return 0;
 }
 
-void Init() {
+void Init(string &interface_name) {
   int my_rank, rank_size;
   CHECK(!MPI_Comm_rank(MPI_COMM_WORLD, &my_rank));
   CHECK(!MPI_Comm_size(MPI_COMM_WORLD, &rank_size));
@@ -172,6 +172,7 @@ void Init() {
   string ip("");
   if (!FLAGS_interface.empty()) {
     ip = LocalMachine::IP(FLAGS_interface);
+    interface_name = FLAGS_interface;
   }
   else {
     // enumerate all inet address
@@ -186,6 +187,21 @@ void Init() {
         //  inet addr:10.4.160.9
         //  inet 10.4.160.9
         while (nullptr != fgets(line, sizeof(line), ifconfig_pipe)) {
+            if (' ' != line[0]) {
+                // get interface name
+                // the interface name may end with ' ' or ':'
+                const char *end_interface_1 = strstr(line, " ");
+                const char *end_interface_2 = strstr(line, ":");
+                const char *end_interface = end_interface_1;
+                if (nullptr == end_interface ||
+                    (nullptr != end_interface_2 && end_interface_2 < end_interface_1)) {
+                    end_interface = end_interface_2;
+                }
+                if (nullptr != end_interface) {
+                    interface_name.assign(line, end_interface - line);
+                }
+                continue;
+            }
             const char *start_inet = strstr(line, INET_PREFIX);
             if (nullptr != start_inet) {
                 const char *start_ip = start_inet + strnlen(INET_PREFIX, 32);
@@ -202,6 +218,8 @@ void Init() {
                 const char *start_space = strstr(start_ip, " ");
                 if (nullptr != start_space) {
                     ip.assign(start_ip, start_space - start_ip);
+                    CHECK(!interface_name.empty()) << "found no valid interface";
+                    break;
                 }
             }
         }
@@ -278,8 +296,9 @@ int main(int argc, char *argv[]) {
   CHECK(!MPI_Init(&argc, &argv));
 
   try {
-    PS::Init();
-    PS::Postoffice::instance().run();
+    std::string net_interface;
+    PS::Init(net_interface);
+    PS::Postoffice::instance().run(net_interface);
   } catch (std::exception& e) {
     LL << e.what();
   }

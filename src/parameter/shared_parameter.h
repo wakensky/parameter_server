@@ -156,22 +156,24 @@ void SharedParameter<K,V>::process(Message* msg) {
       break;
 
     case Call::PULL:
-      sys_.runningStatus().startTimer(TimerType::BUSY);
       if (req) {
         Message re = *msg;
         // re.value.clear();
         std::swap(re.sender, re.recver);
         re.task.set_request(false);
 
+        sys_.runningStatus().startTimer(TimerType::BUSY);
         getValue(&re);
+        sys_.runningStatus().stopTimer(TimerType::BUSY);
 
         sys_.queue(re);
         // do not let the system double reply it
         msg->replied = true;
       } else {
+        sys_.runningStatus().startTimer(TimerType::BUSY);
         setValue(msg);
+        sys_.runningStatus().stopTimer(TimerType::BUSY);
       }
-      sys_.runningStatus().stopTimer(TimerType::BUSY);
       break;
 
     case Call::PUSH_REPLICA:

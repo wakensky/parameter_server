@@ -99,7 +99,8 @@ static string dbstr(const V* data, int n, int m = 5) {
 
 enum class TimerType : unsigned char {
     BUSY = 0,
-    NETWORK,
+    NETIN,
+    NETOUT,
     NUM,
 };
 

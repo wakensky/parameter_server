@@ -36,8 +36,9 @@ Postoffice::~Postoffice() {
   sending_->join();
 }
 
-void Postoffice::run() {
+void Postoffice::run(const string &net_interface) {
   yp_.init();
+  running_status_.setInterface(net_interface);
   recving_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::recv, this));
   sending_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::send, this));
 
@@ -116,7 +117,10 @@ void Postoffice::send() {
     sending_queue_.wait_and_pop(msg);
     if (msg.terminate) break;
 
-    Status stat = yp_.van().send(msg);
+    size_t send_bytes = 0;
+    Status stat = yp_.van().send(msg, send_bytes);
+    running_status_.increaseOutBytes(send_bytes);
+
     if (!stat.ok()) {
       LL << "sending " << msg.debugString() << " failed\n"
          << "error: " << stat.ToString();
@@ -127,7 +131,10 @@ void Postoffice::send() {
 void Postoffice::recv() {
   Message msg;
   while (true) {
-    auto stat = yp_.van().recv(&msg);
+    size_t recv_bytes = 0;
+    auto stat = yp_.van().recv(&msg, recv_bytes);
+    running_status_.increaseInBytes(recv_bytes);
+
     // if (!stat.ok()) break;
     CHECK(stat.ok()) << stat.ToString();
     auto& tk = msg.task;
@@ -202,16 +209,20 @@ string Postoffice::printDashboardTopRow() {
 
     std::stringstream ss;
     ss << std::setiosflags(std::ios::left) <<
-        std::setw(WIDTH) << std::setfill('=') << "" << " Dashboard " <<
-        time_str + " " << std::setw(WIDTH) << std::setfill('=') << "" << "\n";
+        std::setw(WIDTH * 2) << std::setfill('=') << "" << " Dashboard " <<
+        time_str + " " << std::setw(WIDTH * 2) << std::setfill('=') << "" << "\n";
     ss << std::setfill(' ') << std::setw(WIDTH) << "Node" <<
         std::setw(WIDTH) << "Task" <<
         std::setw(WIDTH) << "MyCPU(%)" <<
         std::setw(WIDTH) << "MyRSS" <<
         std::setw(WIDTH) << "MyVirt" <<
         std::setw(WIDTH) << "BusyTime" <<
+        std::setw(WIDTH) << "InBytes" <<
+        std::setw(WIDTH) << "OutBytes" <<
         std::setw(WIDTH) << "HostCPU" <<
-        std::setw(WIDTH) << "HostFree";
+        std::setw(WIDTH) << "HostFree" <<
+        std::setw(WIDTH) << "HostInBw" <<
+        std::setw(WIDTH) << "HostOutBw";
 
     return ss.str();
 }
@@ -228,12 +239,28 @@ string Postoffice::printRunningStatusReport(
             report.my_cpu_usage_user() + report.my_cpu_usage_sys()) <<
         std::setw(WIDTH) << report.my_rss() <<
         std::setw(WIDTH) << report.my_virtual() <<
+        // busy time
         std::setw(WIDTH) << std::to_string(static_cast<uint32>(report.busy_time_micro() / 1e3)) + "(" +
             std::to_string(static_cast<uint32>(100 * (
                 static_cast<float>(report.busy_time_micro()) / report.total_time_micro()))) + ")" <<
+        // net in MB
+        std::setw(WIDTH) << std::to_string(report.in_bytes() >> 20) + "(" +
+            std::to_string(static_cast<uint32>(report.in_bytes() / (report.total_time_micro() / 1e3) / 1e3)) + ")" <<
+        // net out MB
+        std::setw(WIDTH) << std::to_string(report.out_bytes() >> 20) + "(" +
+            std::to_string(static_cast<uint32>(report.out_bytes() / (report.total_time_micro() / 1e3) / 1e3)) + ")" <<
+        // host cpu
         std::setw(WIDTH) << static_cast<uint32>(
             report.host_cpu_usage_user() + report.host_cpu_usage_sys()) <<
-        std::setw(WIDTH) << report.host_free_memory();
+        // host free memory
+        std::setw(WIDTH) << report.host_free_memory() <<
+        // host net in/out bandwidth usage (MB/s)
+        std::setw(WIDTH) << (report.host_net_in_bw_usage() < 1e4 ?
+            std::to_string(report.host_net_in_bw_usage()) :
+            "INIT") <<
+        std::setw(WIDTH) << (report.host_net_out_bw_usage() < 1e4 ?
+            std::to_string(report.host_net_out_bw_usage()) :
+            "INIT");
 
     return ss.str();
 }

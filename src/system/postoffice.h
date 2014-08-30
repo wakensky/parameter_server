@@ -19,7 +19,7 @@ class Postoffice {
   ~Postoffice();
 
   // run the system
-  void run();
+  void run(const string &net_interface);
 
   // queue a message into the sending buffer, which will be sent by the sending
   // thread.
@@ -78,7 +78,37 @@ void reply(const Message& msg, const string& reply_msg = string());
   RunningStatus running_status_;
 
   // records running status for all workers/servers
-  std::map<NodeID, RunningStatusReport> dashboard_;
+  std::map<
+    NodeID, RunningStatusReport,
+    bool (*)(const NodeID &a, const NodeID &b)> dashboard_{
+      [](const NodeID &a, const NodeID &b)->bool {
+        // lambda: split NodeID into primary and secondary
+        auto splitNodeID = [] (const NodeID &in, string &primary, string &secondary) {
+          size_t last_alpha_idx = in.find_last_not_of("0123456789");
+          if (std::string::npos == last_alpha_idx) {
+            primary = in;
+            secondary = "";
+          } else {
+            primary = in.substr(0, last_alpha_idx + 1);
+            secondary = in.substr(last_alpha_idx + 1);
+          }
+          return;
+        };
+
+        // split
+        string a_primary, a_secondary;
+        splitNodeID(a, a_primary, a_secondary);
+        string b_primary, b_secondary;
+        splitNodeID(b, b_primary, b_secondary);
+
+        // compare
+        if (a_primary != b_primary) {
+          return a_primary < b_primary;
+        } else {
+          return std::stoul(a_secondary) < std::stoul(b_secondary);
+        }
+      }
+    };
   std::mutex mu_dashboard_;
 };
 
