@@ -29,6 +29,10 @@ class YellowPages {
   Van& van() { return van_; }
   // Node& node(int uid) { return nodes_[uid]; }
 
+  // get Node via NodeID
+  // NodeID in returned Node is empty if no such node exists
+  Node getNode(const NodeID &node_id);
+
  private:
   DISALLOW_COPY_AND_ASSIGN(YellowPages);
 

@@ -15,7 +15,8 @@ int main(int argc, char *argv[]) {
   ReadFileToProtoOrDie(FLAGS_input, &cf);
 
   auto cf2 = searchFiles(cf);
-  auto data = readMatrices<double>(cf2);
+  InstanceInfo info;
+  auto data = readMatrices<double>(cf2, info, "proto2bin", -1, false);
 
   SArray<Key> key;
   auto X = data[1]->localize(&key);

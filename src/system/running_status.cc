@@ -66,7 +66,7 @@ RunningStatusReport RunningStatus::get() {
         report_.set_netout_time_micro(
             static_cast<uint32>(timers_[static_cast<size_t>(TimerType::NETOUT)].getMicro()));
 
-        // in/out bytes
+        // in/out bytes within the process
         report_.set_in_bytes(in_bytes_);
         report_.set_out_bytes(out_bytes_);
 
@@ -130,6 +130,7 @@ void RunningStatus::increaseOutBytes(const size_t delta) {
 }
 
 void RunningStatus::setInterface(const string &name) {
+    Lock l(mu_);
     net_interface_ = name;
 }
 

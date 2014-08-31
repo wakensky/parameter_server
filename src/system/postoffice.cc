@@ -172,7 +172,7 @@ void Postoffice::recv() {
 }
 
 void Postoffice::heartbeat() {
-    while (true) {
+    while (true && !done_) {
         if (yp_.van().connectivity("H").ok()) {
             // serialize Runningstatusreport
             string report;
@@ -214,15 +214,16 @@ string Postoffice::printDashboardTopRow() {
     ss << std::setfill(' ') << std::setw(WIDTH) << "Node" <<
         std::setw(WIDTH) << "Task" <<
         std::setw(WIDTH) << "MyCPU(%)" <<
-        std::setw(WIDTH) << "MyRSS" <<
-        std::setw(WIDTH) << "MyVirt" <<
+        std::setw(WIDTH) << "MyRSS(M)" <<
+        std::setw(WIDTH) << "MyVirt(M)" <<
         std::setw(WIDTH) << "BusyTime" <<
-        std::setw(WIDTH) << "InBytes" <<
-        std::setw(WIDTH) << "OutBytes" <<
+        std::setw(WIDTH) << "InMB" <<
+        std::setw(WIDTH) << "OutMB" <<
         std::setw(WIDTH) << "HostCPU" <<
         std::setw(WIDTH) << "HostFree" <<
         std::setw(WIDTH) << "HostInBw" <<
-        std::setw(WIDTH) << "HostOutBw";
+        std::setw(WIDTH) << "HostOutBw" <<
+        std::setw(WIDTH * 2) << "HostName";
 
     return ss.str();
 }
@@ -260,7 +261,8 @@ string Postoffice::printRunningStatusReport(
             "INIT") <<
         std::setw(WIDTH) << (report.host_net_out_bw_usage() < 1e4 ?
             std::to_string(report.host_net_out_bw_usage()) :
-            "INIT");
+            "INIT") <<
+        std::setw(WIDTH * 2) << yp_.getNode(node_id).hostname();
 
     return ss.str();
 }

@@ -16,6 +16,18 @@ shared_ptr<Customer> YellowPages::customer(const string& name) {
   return it->second;
 }
 
+Node YellowPages::getNode(const NodeID &node_id) {
+    auto iter = nodes_.find(node_id);
+    if (nodes_.end() != iter) {
+        return iter->second;
+    } else {
+        Node ret;
+        ret.set_id("");
+        ret.set_hostname("");
+        return ret;
+    }
+}
+
 YellowPages::~YellowPages() {
   for (auto& it : customers_) it.second->stop();
 }

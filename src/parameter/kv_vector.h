@@ -115,6 +115,8 @@ void KVVector<K, V>::getReplica(Range<K> range, Message *msg) {
 
 template <typename K, typename V>
 void KVVector<K, V>::setReplica(Message *msg) {
+  return; // wakensky
+#if 0
   auto recved_key = SArray<K>(msg->key);
   auto recved_val = SArray<V>(msg->value[0]);
   auto kr = keyRange(msg->sender);
@@ -142,6 +144,7 @@ void KVVector<K, V>::setReplica(Message *msg) {
   auto arg = getCall(*msg);
   for (int i = 0; i < arg.backup_size(); ++i)
     it->second.addTime(arg.backup(i));
+#endif
 }
 
 template <typename K, typename V>
@@ -281,13 +284,28 @@ void KVVector<K,V>::getValue(Message* msg) {
 
   SArray<K> recv_key(msg->key);
   size_t n = 0;
-  Range<Key> range = recv_key.range().setUnion(key_.range());
-  auto aligned = match(recv_key, key_, val_.data(), range, &n);
-  // LL << "val: " << dbstr(val_.data(), val_.size());
-  CHECK_EQ(aligned.second.size(), recv_key.size())
-      << recv_key << "\n" << key_;
-  CHECK_GE(aligned.second.size(), n);
-  msg->value.push_back(SArray<char>(aligned.second));
+  Range<Key> union_range = recv_key.range().setUnion(key_.range());
+
+  // get range
+  SizeR range;
+  if (!recv_key.empty() && !key_.empty()) {
+    range = recv_key.findRange(union_range);
+  }
+
+  // construct new SArray holding updated values
+  SArray<V> new_value;
+  if (range.size() > 0) {
+    new_value = SArray<V>(range.size());
+  }
+  CHECK_EQ(new_value.size(), recv_key.size()) <<
+    recv_key << "\n" << key_;
+
+  // match
+  match(range, recv_key, new_value, key_, val_, &n, MatchOperation::ASSIGN);
+  CHECK_GE(new_value.size(), n);
+
+  // store in msg
+  msg->value.push_back(SArray<char>(new_value));
 }
 
 template <typename K, typename V>
@@ -313,16 +331,31 @@ void KVVector<K,V>::setValue(Message* msg) {
     SArray<V> recv_data(msg->value[i]);
     CHECK_EQ(recv_data.size(), recv_key.size());
     size_t n = 0;
-    auto aligned = match(key_, recv_key, recv_data.data(), key_range, &n);
-    CHECK_GE(aligned.second.size(), recv_key.size());
-    CHECK_EQ(recv_key.size(), n);
 
     if (first) {
+      // get range
+      SizeR range;
+      if (!key_.empty() && !recv_key.empty()) {
+        range = key_.findRange(key_range);
+      }
+
+      // construct SArray<V>
+      auto aligned = std::make_pair(range, SArray<V>());
+      if (range.size() > 0) {
+        aligned.second = SArray<V>(range.size());
+      }
+      CHECK_GE(aligned.second.size(), recv_key.size());
       recved_val_[t].push_back(aligned);
+
+      // match
+      match(range, key_, aligned.second,
+        recv_key, recv_data, &n, MatchOperation::ASSIGN);
     } else {
-      CHECK_EQ(aligned.first, recved_val_[t][i].first);
-      recved_val_[t][i].second.eigenArray() += aligned.second.eigenArray();
+      match(recved_val_[t][i].first, key_, recved_val_[t][i].second,
+        recv_key, recv_data, &n, MatchOperation::ADD);
     }
+
+    CHECK_EQ(recv_key.size(), n);
   }
 }
 

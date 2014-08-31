@@ -1,6 +1,7 @@
 #pragma once
 
 #include "util/common.h"
+#include "util/threadpool.h"
 #include "base/shared_array.h"
 #include "proto/task.pb.h"
 
@@ -84,8 +85,195 @@ static Message replyTemplate(const Message& msg) {
 template <typename V> using AlignedArray = std::pair<SizeR, SArray<V>>;
 template <typename V> using AlignedArrayList = std::vector<AlignedArray<V>>;
 
+enum class MatchOperation : unsigned char {
+  ASSIGN = 0,
+  ADD,
+  NUM
+};
+
 template <typename K, typename V>
-static AlignedArray<V> match(const SArray<K>& dst_key,
+static void match(
+  const SizeR &dst_key_pos_range,
+  const SArray<K> &dst_key,
+  SArray<V> &dst_val,
+  const SArray<K> &src_key,
+  const SArray<V> &src_val,
+  size_t *matched,
+  const MatchOperation op) {
+  *matched = 0;
+  if (dst_key.empty() || src_key.empty()) {
+    return;
+  }
+
+  std::unique_ptr<size_t[]> matched_array_ptr(new size_t[FLAGS_num_threads]);
+  {
+    // threads
+    ThreadPool pool(FLAGS_num_threads);
+    for (size_t thread_idx = 0; thread_idx < FLAGS_num_threads; ++thread_idx) {
+      pool.add([&, thread_idx]() {
+        // matched ptr
+        size_t *my_matched = &(matched_array_ptr[thread_idx]);
+        *my_matched = 0;
+
+        // partition dst_key_pos_range evenly
+        SizeR my_dst_key_pos_range = dst_key_pos_range.evenDivide(
+          FLAGS_num_threads, thread_idx);
+        // take the remainder if dst_key_range is indivisible by threads number
+        if (FLAGS_num_threads - 1 == thread_idx) {
+          my_dst_key_pos_range.set(
+            my_dst_key_pos_range.begin(), dst_key_pos_range.end());
+        }
+
+        // iterators for dst
+        const K *dst_key_it = dst_key.data() + my_dst_key_pos_range.begin();
+        const K* dst_key_end = dst_key.data() + my_dst_key_pos_range.end();
+        V *dst_val_it = dst_val.data() + (
+          my_dst_key_pos_range.begin() - dst_key_pos_range.begin());
+
+        // iterators for src
+        // const K *src_key_it = src_key.data();
+        // const V *src_val_it = src_val.data();
+        const K *src_key_it = std::lower_bound(src_key.begin(), src_key.end(), *dst_key_it);
+        const K *src_key_end = std::upper_bound(src_key.begin(), src_key.end(), *(dst_key_end - 1));
+        const V *src_val_it = src_val.begin() + (src_key_it - src_key.begin());
+
+        // clear dst_val if necessary
+        if (MatchOperation::ASSIGN == op) {
+          memset(dst_val_it, 0, sizeof(V) * (dst_key_end - dst_key_it));
+        }
+
+        // traverse
+        // TODO src_key.end() could be lowered too
+        while (dst_key_end != dst_key_it && src_key_end != src_key_it) {
+          if (*src_key_it < *dst_key_it) {
+            // forward iterators for src
+            ++src_key_it;
+            ++src_val_it;
+          } else {
+            if (!(*dst_key_it < *src_key_it)) {
+              // equals
+              if (MatchOperation::ASSIGN == op) {
+                *dst_val_it = *src_val_it;
+              } else if (MatchOperation::ADD == op) {
+                *dst_val_it += *src_val_it;
+              } else {
+                LL << "BAD MatchOperation [" << static_cast<int32>(op) << "]";
+                throw std::runtime_error("BAD MatchOperation");
+              }
+
+              // forward iterators for src
+              ++src_key_it;
+              ++src_val_it;
+              ++(*my_matched);
+            }
+
+            // forward iterators for dst
+            ++dst_key_it;
+            ++dst_val_it;
+          }
+        }
+      });
+    }
+    pool.startWorkers();
+  }
+
+  // reduce matched count
+  for (size_t i = 0; i < FLAGS_num_threads; ++i) {
+    *matched += matched_array_ptr[i];
+  }
+
+  return;
+}
+
+template <typename K , typename V>
+static void newerMatch(
+  SizeR &out_range,
+  SArray<V> &dst_val,
+  const SArray<K> &dst_key,
+  const SArray<K> &src_key,
+  const V *src_val,
+  const Range<K> &src_key_range,
+  size_t *matched,
+  const MatchOperation op) {
+  *matched = 0;
+  if (dst_key.empty() || src_key.empty()) {
+    // return empty range
+    // do not modify out_val_array
+    out_range = SizeR();
+    return;
+  }
+
+  // range
+  out_range = dst_key.findRange(src_key_range);
+  if (dst_val.empty()) {
+    return;
+  }
+
+  std::unique_ptr<size_t[]> matched_array_ptr(new size_t[FLAGS_num_threads]);
+  {
+    // multi threads
+    ThreadPool pool(FLAGS_num_threads);
+    size_t shard_size = src_key.size() / FLAGS_num_threads;
+    for (size_t i = 0; i < FLAGS_num_threads; ++i) {
+      // partition src_key evenly
+      const K *my_src_key_beg = src_key.begin() + shard_size * i;
+      const K *my_src_key_end = i < FLAGS_num_threads - 1 ?
+        my_src_key_beg + shard_size :
+        src_key.end();
+      size_t *my_matched = &(matched_array_ptr[i]);
+      pool.add([&dst_key, &src_key,
+                my_src_key_beg, my_src_key_end, src_val,
+                out_range, &dst_val, my_matched, op]() {
+        *my_matched = 0;
+
+        // location
+        const K *dst_key_it = std::lower_bound(
+          dst_key.begin(), dst_key.end(), *my_src_key_beg);
+        V *dst_val_it = dst_val.begin() + (
+          (dst_key_it - dst_key.begin()) - out_range.begin());
+        const K *src_key_it = std::lower_bound(
+          my_src_key_beg, my_src_key_end, *dst_key_it);
+        const V *src_val_it = src_val + (src_key_it - src_key.begin());
+
+        // traverse
+        while (dst_key.end() != dst_key_it && my_src_key_end != src_key_it) {
+          if (*src_key_it < *dst_key_it) {
+            ++src_key_it;
+            ++src_val_it;
+          } else {
+            if (!(*dst_key_it < *src_key_it)) {
+              if (MatchOperation::ASSIGN == op) {
+                *dst_val_it = *src_val_it;
+              } else if (MatchOperation::ADD == op) {
+                *dst_val_it += *src_val_it;
+              } else {
+                LL << "BAD MatchOperation [" << static_cast<uint32>(op) << "]";
+                throw std::runtime_error("BAD MatchOperation");
+              }
+              ++src_key_it;
+              ++src_val_it;
+              ++(*my_matched);
+            }
+            ++dst_key_it;
+            ++dst_val_it;
+          }
+        }
+
+      });
+    }
+    pool.startWorkers();
+  }
+
+  // reduce matched count
+  for (size_t i = 0; i < FLAGS_num_threads; ++i) {
+    *matched += matched_array_ptr[i];
+  }
+
+  return;
+}
+
+template <typename K, typename V>
+static AlignedArray<V> oldMatch(const SArray<K>& dst_key,
                              const SArray<K>& src_key,
                              V* src_val,
                              Range<K> src_key_range,
