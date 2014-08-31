@@ -115,8 +115,6 @@ void KVVector<K, V>::getReplica(Range<K> range, Message *msg) {
 
 template <typename K, typename V>
 void KVVector<K, V>::setReplica(Message *msg) {
-  return; // wakensky
-#if 0
   auto recved_key = SArray<K>(msg->key);
   auto recved_val = SArray<V>(msg->value[0]);
   auto kr = keyRange(msg->sender);
@@ -128,12 +126,19 @@ void KVVector<K, V>::setReplica(Message *msg) {
     replica_[kr].value = recved_val;
     it = replica_.find(kr);
   } else {
+    // range
+    SizeR range;
+    if (!it->second.key.empty() && !recved_key.empty()) {
+      range = it->second.key.findRange(recved_key.range());
+    }
+
+    // match
     size_t n;
-    auto aligned = match(
-        it->second.key, recved_key, recved_val.data(), recved_key.range(), &n);
+    SArray<V> segmented_dst_val = it->second.value.segment(range);
+    match(range, it->second.key, segmented_dst_val,
+      recved_key, recved_val, &n, MatchOperation::ASSIGN);
     CHECK_EQ(n, recved_key.size()) << "my key: " << it->second.key
                                    << "\n received key " << recved_key;
-    it->second.value.segment(aligned.first).eigenVector() = aligned.second.eigenVector();
   }
 
   // LL << myNodeID() << " backup for " << msg->sender << " W: "
@@ -144,7 +149,6 @@ void KVVector<K, V>::setReplica(Message *msg) {
   auto arg = getCall(*msg);
   for (int i = 0; i < arg.backup_size(); ++i)
     it->second.addTime(arg.backup(i));
-#endif
 }
 
 template <typename K, typename V>
