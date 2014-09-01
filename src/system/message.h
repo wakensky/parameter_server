@@ -70,6 +70,13 @@ struct Message {
       ss << x.size() << " ";
     return ss.str();
   }
+
+  // add the key list and the lists of values
+  template <typename K, typename V>
+  void addKV(const SArray<K>& k, const std::initializer_list<SArray<V>>& v) {
+    key = SArray<char>(k);
+    for (const auto& w : v) addValue(w);
+  }
 };
 
 // an reply message, with empty body and task

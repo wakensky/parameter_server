@@ -9,11 +9,15 @@
 
 #include "util/common.h"
 #include "util/threadpool.h"
+#include "util/parallel_sort.h"
 #include "base/matrix.h"
 #include "base/shared_array.h"
 #include "base/range.h"
 
 namespace PS {
+template<typename I, typename V> class SparseMatrix;
+template<typename I, typename V>
+using SparseMatrixPtr = std::shared_ptr<SparseMatrix<I, V>>;
 
 // sparse matrix with Yale format
 template<typename I, typename V>
@@ -46,23 +50,34 @@ class SparseMatrix : public Matrix<V> {
 
   MatrixPtr<V> alterStorage() const;
 
+  // return ordered unique indeces with their number of occrus
+  void countUniqIndex (SArray<I>* uniq_idx, SArray<uint32>* idx_cnt = nullptr) const;
+
+  // return a matrix with index mapped: idx_map[i] -> i. Any index does not exists
+  // in *idx_map* is dropped.
+  MatrixPtr<V> remapIndex(const SArray<I>& idx_map) const;
+
   MatrixPtr<V> localize(SArray<Key>* key_map) const {
-    I max_key = rowMajor() ? info_.col().end() : info_.row().end();
-    return (max_key > (I)kuint32max ?
-            localizeBigKey(key_map) : localizeSmallKey(key_map));
+    // stupied, fix me
+    CHECK_EQ(sizeof(Key), sizeof(I));
+    SArray<I> tmp;
+    countUniqIndex(&tmp);
+    *key_map = tmp;
+    return remapIndex(tmp);
   }
 
-  MatrixPtr<V> localizeBigKey(SArray<Key>* key_map) const;
-  MatrixPtr<V> localizeSmallKey(SArray<Key>* key_map) const;
 
   // debug string
   string debugString() const;
 
   bool writeToBinFile(string name) const {
-    return (WriteProtoToASCIIFile(info_, name+".info") &&
+#if 0
+    return (writeProtoToASCIIFile(info_, name+".info") &&
             offset_.writeToFile(name+".offset") &&
             index_.writeToFile(name+".index") &&
             (binary() || value_.writeToFile(name+".value")));
+#endif
+    return true; // wakensky
   }
 
 
@@ -245,156 +260,116 @@ MatrixPtr<V> SparseMatrix<I,V>::alterStorage() const {
 }
 
 template<typename I, typename V>
-MatrixPtr<V> SparseMatrix<I,V>::localizeSmallKey(SArray<Key>* key_map) const {
-  int num_threads = FLAGS_num_threads;
-  CHECK_GT(num_threads, 0);
+void SparseMatrix<I,V>::countUniqIndex(
+    SArray<I>* uniq_idx, SArray<uint32>* idx_cnt) const {
+  CHECK(!index_.empty());
+  int num_threads = FLAGS_num_threads; CHECK_GT(num_threads, 0);
 
-  I inner_end = rowMajor() ? info_.col().end() : info_.row().end();
-  I bucket = (inner_end-1) / num_threads + 1;
+  SArray<I> sorted_index;
+  sorted_index.copyFrom(index_);
+  // std::sort(sorted_index.begin(), sorted_index.end());
+  parallelSort(&sorted_index, num_threads);
 
-  std::vector<uint32> map(bucket*num_threads); // global to local map
+  uniq_idx->clear();
+  if (idx_cnt) idx_cnt->clear();
 
-  // find unique keys
-  std::vector<I> nnz(num_threads+1);
-  {
-    ThreadPool pool(num_threads);
-    for (int i = 0; i < num_threads; ++i) {
-      pool.add([this, i, bucket, &map, &nnz](){
-          Range<I> range(bucket*i, bucket*(i+1));
-          for (I k : index_) if (range.contains(k)) map[k] = -1;
-          Key z = 0;
-          for (I j = range.begin(); j < range.end(); ++j)
-            if (map[j] == -1) ++ z;
-          nnz[i+1] = z;
-        });
+  I curr = sorted_index[0];
+  uint32 cnt = 0;
+  for (I v : sorted_index) {
+    ++ cnt;
+    if (v != curr) {
+      uniq_idx->pushBack(curr);
+      curr = v;
+      if (idx_cnt) idx_cnt->pushBack(cnt);
+      cnt = 0;
     }
-    pool.startWorkers();
   }
-
-  nnz[0] = 0; for (int i = 0; i < num_threads; ++i) nnz[i+1] += nnz[i];
-
-  key_map->resize(nnz[num_threads]);
-  SArray<uint32> new_index (index_.size());
-  {
-    ThreadPool pool(num_threads);
-    for (int i = 0; i < num_threads; ++i) {
-      pool.add([this, i, bucket, key_map, &nnz, &map, &new_index]() {
-          // construct the key map
-          uint32 local_key = nnz[i];
-          Range<I> range(bucket*i, std::min(bucket*(i+1), (I)map.size()));
-          for (I j = range.begin(); j < range.end(); ++j) {
-            if (map[j] != -1) continue;
-            map[j] = local_key;
-            (*key_map)[local_key++] = static_cast<Key>(j);
-          }
-          // remap index
-          for (size_t j = 0; j < index_.size(); ++j) {
-            I k = index_[j];
-            if (range.contains(k)) new_index[j] = map[k];
-          }
-        });
-    }
-    pool.startWorkers();
+  if (!uniq_idx->empty()) {
+    uniq_idx->pushBack(curr);
+    if (idx_cnt) idx_cnt->pushBack(cnt);
   }
-
-  auto info = info_;
-  info.set_sizeof_index(sizeof(uint32));
-  SizeR local(0, key_map->size());
-  if (rowMajor())
-    local.to(info.mutable_col());
-  else
-    local.to(info.mutable_row());
-
-  return MatrixPtr<V>(new SparseMatrix<uint32, V>(info, offset_, new_index, value_));
+  // index_.writeToFile("index");
+  // uniq_idx->writeToFile("uniq");
+  // idx_cnt->writeToFile("cnt");
 }
 
 template<typename I, typename V>
-MatrixPtr<V> SparseMatrix<I,V>::localizeBigKey(SArray<Key>* key_map) const {
+MatrixPtr<V> SparseMatrix<I,V>::remapIndex(const SArray<I>& idx_map) const {
   int num_threads = FLAGS_num_threads; CHECK_GT(num_threads, 0);
-  // use a large constant, e.g. 6, here. because dense_hash_set/map may have
-  // serious performace issues after inserting too many keys
-  int npart = num_threads * 6;
-  // int npart = 20;
+  CHECK_LT(idx_map.size(), kuint32max);
 
-  auto range = rowMajor() ? Range<I>(info_.col()) : Range<I>(info_.row());
-
-#if GOOGLE_HASH
-  std::vector<google::dense_hash_set<I>> uniq_keys(npart);
-#else
-  std::vector<std::unordered_set<I>> uniq_keys(npart);
-#endif
-
-  // find unique keys
+  // a hashmap solution, often uses 2x times than countUniqIndex
+  // TODO use a countmin-like approach to accelerate this code block.
+  // TODO new_index is too large... not memory efficient
+  SArray<uint32> new_index(index_.size());
+  new_index.setValue(-1);
   {
     ThreadPool pool(num_threads);
+    // use a large constant, e.g. 6, here. because dense_hash_set/map may have
+    // serious performace issues after inserting too many keys
+    int npart = num_threads * 4;
+
     for (int i = 0; i < npart; ++i) {
-      auto thread_range = range.evenDivide(npart, i);
-      pool.add([this, i, thread_range, &uniq_keys](){
-          auto& uk = uniq_keys[i];
-#if GOOGLE_HASH
-          uk.set_empty_key(-1);
-#endif
-          // size_t n = 0;
-          for (I k : index_) if (thread_range.contains(k)) {uk.insert(k);}
-          // LL << n << " " << thread_range;
-        });
-    }
-    pool.startWorkers();
-  }
-
-  std::vector<I> nnz(npart+1);
-  nnz[0] = 0;
-  for (int i = 0; i < npart; ++i) nnz[i+1] += nnz[i] + uniq_keys[i].size();
-
-  key_map->resize(nnz[npart]);
-  SArray<uint32> new_index (index_.size());
-  {
-    ThreadPool pool(num_threads);
-    for (int i = 0; i < npart; ++i) {
-      auto thread_range = range.evenDivide(npart, i);
-      pool.add([this, i, thread_range, key_map, &nnz, &uniq_keys, &new_index]() {
-          // order the unique global keys
-          auto& uk = uniq_keys[i];
-          std::vector<I> ordered_keys(uk.size());
-          size_t j = 0;
-          for (auto it = uk.begin(); it != uk.end(); ++it) ordered_keys[j++] = *it;
-          std::sort(ordered_keys.begin(), ordered_keys.end());
-          uk.clear();
-
-          // construct the key map
-          uint32 local_key = nnz[i];
-#if GOOGLE_HASH
-          google::dense_hash_map<I, uint32> map;
-          map.set_empty_key(-1);
-#else
+      auto thread_range = idx_map.range().evenDivide(npart, i);
+      pool.add([this, thread_range, &idx_map, &new_index]() {
+          // build the hash map, takes 50% time. the speed of unordered_map is
+          // comparable to google::dense_hash_map (tested in gcc4.8).
           std::unordered_map<I, uint32> map;
-#endif
+          auto arr_range = idx_map.findRange(thread_range);
+          auto key_seg = idx_map.segment(arr_range);
+          size_t j = 0;
+          for (I k : key_seg) map[k] = (j++) + arr_range.begin();
 
-          for (uint32 i = 0; i < ordered_keys.size(); ++i) {
-            auto key = ordered_keys[i];
-            map[key] = local_key;
-            (*key_map)[local_key++] = static_cast<Key>(key);
-          }
-
-          // remap index
+          // remap index, takes 50% time
           for (size_t j = 0; j < index_.size(); ++j) {
             I k = index_[j];
-            if (thread_range.contains(k)) new_index[j] = map[k];
+            if (thread_range.contains(k)) {
+              auto it = map.find(k);
+              if (it != map.end()) new_index[j] = it->second;
+            }
           }
         });
     }
     pool.startWorkers();
   }
+
+  // construct the new matrix
+  bool bin = binary();
+  size_t curr_j = 0, curr_o = 0;
+  SArray<size_t> new_offset(offset_.size());
+  SArray<V> new_value(value_.size());
+  new_offset[0] = 0;
+  for (size_t i = 0; i < offset_.size() - 1; ++i) {
+    size_t n = 0;
+    for (size_t j = offset_[i]; j < offset_[i+1]; ++j) {
+      if (new_index[j] == -1) continue;
+      ++ n;
+      if (!bin) new_value[curr_j] = value_[j];
+      new_index[curr_j++] = new_index[j];
+    }
+    if (n) {
+      new_offset[curr_o+1] = new_offset[curr_o] + n;
+      ++ curr_o;
+    }
+  }
+  new_offset.resize(curr_o+1);
+  new_index.resize(curr_j);
+  if (!bin) new_value.resize(curr_j);
 
   auto info = info_;
   info.set_sizeof_index(sizeof(uint32));
-  SizeR local(0, key_map->size());
-  if (rowMajor())
+  info.set_nnz(new_index.size());
+  SizeR local(0, idx_map.size());
+  if (rowMajor()) {
+    SizeR(0, curr_o).to(info.mutable_row());
     local.to(info.mutable_col());
-  else
+  } else {
+    SizeR(0, curr_o).to(info.mutable_col());
     local.to(info.mutable_row());
-
-  return MatrixPtr<V>(new SparseMatrix<uint32, V>(info, offset_, new_index, value_));
+  }
+  // LL << curr_o << " " << local.end() << " " << curr_j;
+  return MatrixPtr<V>(
+      new SparseMatrix<uint32, V>(info, new_offset, new_index, new_value));
 }
 
 // debug
@@ -491,3 +466,128 @@ string SparseMatrix<I,V>::debugString() const {
   //     for (auto& s : ys) v += s.vec();
   //   }
   // }
+
+
+
+//   // I max_key = rowMajor() ? info_.col().end() : info_.row().end();
+//   // return (max_key > (I)kuint32max ?
+//   //         localizeBigKey(key_map) : localizeSmallKey(key_map));
+//   MatrixPtr<V> localizeBigKey(SArray<Key>* key_map) const;
+//   MatrixPtr<V> localizeSmallKey(SArray<Key>* key_map) const;
+// template<typename I, typename V>
+// MatrixPtr<V> SparseMatrix<I,V>::localizeSmallKey(SArray<Key>* key_map) const {
+//   int num_threads = FLAGS_num_threads;
+//   CHECK_GT(num_threads, 0);
+
+//   I inner_end = rowMajor() ? info_.col().end() : info_.row().end();
+//   I bucket = (inner_end-1) / num_threads + 1;
+
+//   std::vector<uint32> map(bucket*num_threads); // global to local map
+
+//   // find unique keys
+//   std::vector<I> nnz(num_threads+1);
+//   {
+//     ThreadPool pool(num_threads);
+//     for (int i = 0; i < num_threads; ++i) {
+//       pool.add([this, i, bucket, &map, &nnz](){
+//           Range<I> range(bucket*i, bucket*(i+1));
+//           for (I k : index_) if (range.contains(k)) map[k] = -1;
+//           Key z = 0;
+//           for (I j = range.begin(); j < range.end(); ++j)
+//             if (map[j] == -1) ++ z;
+//           nnz[i+1] = z;
+//         });
+//     }
+//     pool.startWorkers();
+//   }
+
+//   nnz[0] = 0; for (int i = 0; i < num_threads; ++i) nnz[i+1] += nnz[i];
+
+//   key_map->resize(nnz[num_threads]);
+//   SArray<uint32> new_index (index_.size());
+//   {
+//     ThreadPool pool(num_threads);
+//     for (int i = 0; i < num_threads; ++i) {
+//       pool.add([this, i, bucket, key_map, &nnz, &map, &new_index]() {
+//           // construct the key map
+//           uint32 local_key = nnz[i];
+//           Range<I> range(bucket*i, std::min(bucket*(i+1), (I)map.size()));
+//           for (I j = range.begin(); j < range.end(); ++j) {
+//             if (map[j] != -1) continue;
+//             map[j] = local_key;
+//             (*key_map)[local_key++] = static_cast<Key>(j);
+//           }
+//           // remap index
+//           for (size_t j = 0; j < index_.size(); ++j) {
+//             I k = index_[j];
+//             if (range.contains(k)) new_index[j] = map[k];
+//           }
+//         });
+//     }
+//     pool.startWorkers();
+//   }
+
+//   auto info = info_;
+//   info.set_sizeof_index(sizeof(uint32));
+//   SizeR local(0, key_map->size());
+//   if (rowMajor())
+//     local.to(info.mutable_col());
+//   else
+//     local.to(info.mutable_row());
+
+//   return MatrixPtr<V>(new SparseMatrix<uint32, V>(info, offset_, new_index, value_));
+// }
+
+// template<typename I, typename V>
+// MatrixPtr<V> SparseMatrix<I,V>::localizeBigKey(SArray<Key>* key_map) const {
+//   // int num_threads = FLAGS_num_threads; CHECK_GT(num_threads, 0);
+
+//   SArray<I> tmp(*key_map);
+//   CHECK_EQ(sizeof(Key), sizeof(I));
+//   countUniqIndex(&tmp);
+
+//   LL << tmp.size();
+//   return remapIndex(tmp);
+//   // SArray<uint32> new_index(index_.size());
+//   // {
+//   //   // TODO use a countmin-like approach to accelerate this code block.
+//   //   ThreadPool pool(num_threads);
+//   //   // use a large constant, e.g. 6, here. because dense_hash_set/map may have
+//   //   // serious performace issues after inserting too many keys
+//   //   int npart = num_threads * 4;
+//   //   // int npart = 20;
+
+//   //   for (int i = 0; i < npart; ++i) {
+//   //     auto thread_range = key_map->range().evenDivide(npart, i);
+//   //     pool.add([this, thread_range, key_map, &new_index]() {
+//   //         // build the hash map, takes 40% time. the speed of unordered_map is
+//   //         // comparable to google::dense_hash_map (tested in gcc4.8).
+//   //         std::unordered_map<I, uint32> map;
+//   //         auto seg = key_map->findRange(thread_range);
+//   //         auto key_seg = key_map->segment(seg);
+//   //         size_t j = 0;
+//   //         for (I k : key_seg) map[k] = (j++) + seg.begin();
+
+//   //         // remap index, takes 40% time
+//   //         for (size_t j = 0; j < index_.size(); ++j) {
+//   //           I k = index_[j];
+//   //           if (thread_range.contains(k)) new_index[j] = map[k];
+//   //         }
+//   //       });
+//   //   }
+//   //   pool.startWorkers();
+//   // }
+//   // // LL << t.getAndRestart();
+
+//   // // construct the new matrix
+//   // auto info = info_;
+//   // info.set_sizeof_index(sizeof(uint32));
+//   // SizeR local(0, key_map->size());
+//   // if (rowMajor())
+//   //   local.to(info.mutable_col());
+//   // else
+//   //   local.to(info.mutable_row());
+
+//   // return MatrixPtr<V>(
+//   //     new SparseMatrix<uint32, V>(info, offset_, new_index, value_));
+// }

@@ -2,6 +2,7 @@
 
 #include "Eigen/Dense"
 #include "parameter/shared_parameter.h"
+#include "parameter/frequency_filter.h"
 
 namespace PS {
 
@@ -70,6 +71,7 @@ class KVVector : public SharedParameter<K,V> {
  private:
   SArray<K> key_;
   SArray<V> val_;
+  FreqencyFilter<K> filter_;
 
   std::unordered_map<int, AlignedArrayList<V> > recved_val_;
   std::mutex recved_val_mu_;
@@ -280,13 +282,20 @@ AlignedArrayList<V> KVVector<K, V>::received(int t) {
 
 template <typename K, typename V>
 void KVVector<K,V>::getValue(Message* msg) {
+  SArray<K> recv_key(msg->key);
+  if (getCall(*msg).has_key_freq()) {
+    SArray<K> filtered_key =
+      filter_.filterKeys(recv_key, getCall(*msg).key_freq());
+    msg->value.push_back(SArray<char>(filtered_key));
+    return;
+  }
+
   // if (msg->key.empty()) return;
   CHECK_EQ(key_.size(), val_.size());
   if (msg->task.has_need_push_pull() && !msg->task.need_push_pull()) {
     return;
   }
 
-  SArray<K> recv_key(msg->key);
   size_t n = 0;
   Range<Key> union_range = recv_key.range().setUnion(key_.range());
 
@@ -314,12 +323,40 @@ void KVVector<K,V>::getValue(Message* msg) {
 
 template <typename K, typename V>
 void KVVector<K,V>::setValue(Message* msg) {
+  if (getCall(*msg).has_key_freq()) {
+    if (msg->value.empty()) {
+      return;
+    }
+    CHECK_EQ(msg->value.size(), 1);
+    SArray<Key> filtered_key(msg->value[0]);
+    key_ = key_.setUnion(filtered_key);
+    return;
+  }
+
+  SArray<K> recv_key(msg->key);
+  if (recv_key.empty()) {
+    return;
+  }
+  Range<K> key_range(msg->task.key_range());
+
+  if (getCall(*msg).add_key()) {
+    key_ = key_.setUnion(recv_key);
+    return;
+  }
+
+  if (getCall(*msg).add_key_count()) {
+    CHECK_EQ(msg->value.size(), 1);
+    SArray<uint32> key_cnt(msg->value[0]);
+    CHECK_EQ(key_cnt.size(), recv_key.size());
+    filter_.addKeys(recv_key, key_cnt);
+    return;
+  }
+
+
   Lock l(recved_val_mu_);
   if (msg->task.has_need_push_pull() && !msg->task.need_push_pull()) {
     return;
   }
-  SArray<K> recv_key(msg->key);
-  Range<K> key_range(msg->task.key_range());
 
   if (msg->value.empty() && !msg->key.empty()) {
     key_ = key_.setUnion(recv_key);
@@ -400,8 +437,9 @@ decomposeTemplate(const Message& msg, const std::vector<K>& partition) {
       SizeR lr(pos[i], pos[i+1]);
       part.key = key.segment(lr);
       for (auto& d : msg.value) {
-        SArray<V> data(d);
-        part.value.push_back(SArray<char>(data.segment(lr)));
+        // SArray<V> data(d);
+        // part.value.push_back(SArray<char>(data.segment(lr)));
+        part.value.push_back(d.segment(lr * (d.size() / key.size())));
       }
     }
     ret[i] = part;

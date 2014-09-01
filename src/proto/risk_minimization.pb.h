@@ -215,6 +215,13 @@ class BlockSolverConfig : public ::google::protobuf::Message {
   inline ::google::protobuf::int64 auc_goodness() const;
   inline void set_auc_goodness(::google::protobuf::int64 value);
 
+  // optional int32 tail_feature_count = 15 [default = 4];
+  inline bool has_tail_feature_count() const;
+  inline void clear_tail_feature_count();
+  static const int kTailFeatureCountFieldNumber = 15;
+  inline ::google::protobuf::int32 tail_feature_count() const;
+  inline void set_tail_feature_count(::google::protobuf::int32 value);
+
   // @@protoc_insertion_point(class_scope:PS.BlockSolverConfig)
  private:
   inline void set_has_minibatch_size();
@@ -231,6 +238,8 @@ class BlockSolverConfig : public ::google::protobuf::Message {
   inline void clear_has_epsilon();
   inline void set_has_auc_goodness();
   inline void clear_has_auc_goodness();
+  inline void set_has_tail_feature_count();
+  inline void clear_has_tail_feature_count();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -241,9 +250,10 @@ class BlockSolverConfig : public ::google::protobuf::Message {
   ::google::protobuf::int32 max_block_delay_;
   double epsilon_;
   ::google::protobuf::int64 auc_goodness_;
+  ::google::protobuf::int32 tail_feature_count_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(7 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(8 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2frisk_5fminimization_2eproto();
   friend void protobuf_AssignDesc_proto_2frisk_5fminimization_2eproto();
@@ -1159,6 +1169,28 @@ inline ::google::protobuf::int64 BlockSolverConfig::auc_goodness() const {
 inline void BlockSolverConfig::set_auc_goodness(::google::protobuf::int64 value) {
   set_has_auc_goodness();
   auc_goodness_ = value;
+}
+
+// optional int32 tail_feature_count = 15 [default = 4];
+inline bool BlockSolverConfig::has_tail_feature_count() const {
+  return (_has_bits_[0] & 0x00000080u) != 0;
+}
+inline void BlockSolverConfig::set_has_tail_feature_count() {
+  _has_bits_[0] |= 0x00000080u;
+}
+inline void BlockSolverConfig::clear_has_tail_feature_count() {
+  _has_bits_[0] &= ~0x00000080u;
+}
+inline void BlockSolverConfig::clear_tail_feature_count() {
+  tail_feature_count_ = 4;
+  clear_has_tail_feature_count();
+}
+inline ::google::protobuf::int32 BlockSolverConfig::tail_feature_count() const {
+  return tail_feature_count_;
+}
+inline void BlockSolverConfig::set_tail_feature_count(::google::protobuf::int32 value) {
+  set_has_tail_feature_count();
+  tail_feature_count_ = value;
 }
 
 // -------------------------------------------------------------------

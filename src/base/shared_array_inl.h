@@ -2,32 +2,58 @@
 #include "base/shared_array.h"
 #include "base/dense_matrix.h"
 #include <random>
-// zlib is too slow
-// #include "zlib.h"
 #include "snappy.h"
 
 namespace PS {
 
 template <typename V>
 void SArray<V>::resize(size_t n) {
-  if (size_ >= n) { size_ = n; return; }
+  if (capacity_ >= n) { size_ = n; return; }
   V* data = new V[n+5];
   memcpy(data, data_, size_*sizeof(V));
   reset(data, n);
 }
 
 template <typename V>
+void SArray<V>::reserve(size_t n) {
+  if (capacity_ >= n) { return; }
+  size_t old_size = size_;
+  resize(n);
+  size_ = old_size;
+}
+
+template <typename V>
 template <typename ForwardIt>
 void SArray<V>::copyFrom(const ForwardIt first, const ForwardIt last) {
   size_ = std::distance(first, last);
-  data_ = new V[size_+5];
+  capacity_ = size_ + 5;
+  data_ = new V[capacity_];
   ptr_.reset(reinterpret_cast<char*>(data_), [](char *p) { delete [] p; });
-  for (size_t i = 0; i < size_; ++i)
+  for (size_t i = 0; i < size_; ++i) {
     data_[i] = *(first+i);
+  }
+}
+
+template <typename V>
+void SArray<V>::copyFrom(const SArray<V>& arr) {
+  copyFrom(arr.data(), arr.size());
+}
+
+template <typename V>
+template <typename W>
+SArray<V>::SArray(const std::initializer_list<W>& list) {
+  copyFrom(list.begin(), list.end());
+}
+
+template <typename V>
+template <typename W>
+void SArray<V>::operator=(const std::initializer_list<W>& list) {
+  copyFrom(list.begin(), list.end());
 }
 
 template <typename V>
 void SArray<V>::reset(V* data, size_t size) {
+  capacity_ = size;
   size_ = size;
   data_ = data;
   ptr_.reset(reinterpret_cast<char*>(data_), [](char *p) { delete [] p; });
@@ -43,6 +69,7 @@ template <typename V>
 template <typename W>
 void SArray<V>::operator=(const SArray<W>& arr) {
   size_ = arr.size() * sizeof(W) / sizeof(V);
+  capacity_ = arr.capacity();
   data_ = reinterpret_cast<V*>(arr.data());
   ptr_ = arr.pointer();
 }
@@ -50,17 +77,21 @@ void SArray<V>::operator=(const SArray<W>& arr) {
 template <typename V>
 template <typename W>
 bool SArray<V>::operator==(const SArray<W> &rhs) const {
-  if (rhs.size() * sizeof(W) != size() * sizeof(V))
-    return false;
-  if (size() == 0)
-    return true;
+  if (rhs.size() * sizeof(W) != size() * sizeof(V)) return false;
+  if (size() == 0) return true;
   return (memcmp(data(), rhs.data(), size() * sizeof(V)) == 0);
+}
+
+template <typename V>
+void SArray<V>::pushBack(const V& val) {
+  if (size_ == capacity_) reserve(size_*2+5);
+  data_[size_++] = val;
 }
 
 template <typename V>
 size_t SArray<V>::nnz() const {
   size_t ret = 0;
-  for (size_t i = 0; i < size_; ++i) ret += data_[i] == 0 ? 0 : 1;
+  for (size_t i = 0; i < size(); ++i) ret += data_[i] == 0 ? 0 : 1;
   return ret;
 }
 
@@ -102,6 +133,7 @@ SArray<V> SArray<V>::segment(const Range<size_t>& range) const {
   SArray<V> result = *this;
   result.data_ += range.begin();
   result.size_ = range.size();
+  result.capacity_ = range.size();
   return result;
 }
 
@@ -117,6 +149,7 @@ SArray<V> SArray<V>::setIntersection(const SArray<V>& other) const {
   V* last = std::set_intersection(
       begin(), end(), other.begin(), other.end(), result.begin());
   result.size_ = last - result.begin();
+  result.capacity_ = result.size_;
   return result;
 }
 
@@ -131,6 +164,7 @@ SArray<V> SArray<V>::setUnion(const SArray<V>& other) const {
 
 template <typename V>
 SizeR SArray<V>::findRange (const Range<V>& bound) const {
+  if (empty()) return SizeR(0,0);
   CHECK(bound.valid());
   auto lb = std::lower_bound(begin(), end(), bound.begin());
   auto ub = std::lower_bound(begin(), end(), bound.end());
@@ -148,12 +182,12 @@ void SArray<V>::uncompressFrom(const char* src, size_t src_size) {
 
 template <typename V>
 bool SArray<V>::readFromFile(SizeR range, const string& file_name) {
-  File* file = File::open(file_name, "r");
-  CHECK(!range.empty());
-  resize(range.size());
-  if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
-  size_t length = range.size() * sizeof(V);
-  return (file->Read(ptr_.get(), length) == length);
+    File* file = File::open(file_name, "r");
+    CHECK(!range.empty());
+    resize(range.size());
+    if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
+    size_t length = range.size() * sizeof(V);
+    return (file->Read(ptr_.get(), length) == length);
 }
 
 template <typename V>
@@ -171,13 +205,13 @@ MatrixPtr<V> SArray<V>::matrix(size_t rows, size_t cols) {
 
 template <typename V>
 bool SArray<V>::writeToFile(SizeR range, const string& file_name) const {
-  if (range == SizeR::all()) range = SizeR(0, size_);
-  CHECK(!range.empty());
-  CHECK_LE(range.end(), size_);
+    if (range == SizeR::all()) range = SizeR(0, size_);
+    CHECK(!range.empty());
+    CHECK_LE(range.end(), size_);
 
-  File* file = File::open(file_name, "w");
-  size_t length = range.size() * sizeof(V);
-  return (file->Write(ptr_.get(), length) == length);
+    File* file = File::open(file_name, "w");
+    size_t length = range.size() * sizeof(V);
+    return (file->Write(ptr_.get(), length) == length);
 }
 
 template <typename V>
@@ -188,6 +222,15 @@ SArray<char> SArray<V>::compressTo() const {
       reinterpret_cast<const char*>(data_), size_, dest.data(), &dsize);
   dest.resize(dsize);
   return dest;
+}
+
+template <typename V>
+void SArray<V>::append(const SArray<V>& arr) {
+  if (arr.empty()) return;
+  LL << size_ << " " << arr.size();
+  auto orig_size = size_;
+  resize(size_ + arr.size());
+  memcpy(data_+orig_size, arr.data(), arr.size()*sizeof(V));
 }
 
 } // namespace PS
@@ -202,9 +245,3 @@ SArray<char> SArray<V>::compressTo() const {
   // CHECK_EQ(ret, Z_OK) << "Compress error occured! Error code: " << ret;
   // dest.resize(dsize);
   // return dest;
-
-  // void append(const SArray<V>& arr) {
-  //   auto orig_size = size_;
-  //   resize(size_ + arr.size());
-  //   memcpy(data_+orig_size, arr.data(), arr.size()*sizeof(V));
-  // }

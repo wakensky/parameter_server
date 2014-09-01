@@ -25,6 +25,9 @@ message BlockSolverConfig {
 
   // precision of auc, the larger the better
   optional int64 auc_goodness = 12 [default = 100000];
+
+  // features which occurs <= *tail_feature_count* will be filtered before training
+  optional int32 tail_feature_count  = 15 [default = 4];
 }
 
 

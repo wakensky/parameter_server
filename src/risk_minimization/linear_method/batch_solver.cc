@@ -93,7 +93,7 @@ void BatchSolver::run() {
   block_order_.clear();
   for (int i = 0; i < fea_blocks_.size(); ++i) block_order_.push_back(i);
 
-  // workers fetch initialized w_ from servers
+  // feature filter; workers fetch initialized w_ from servers
   Task prepare;
   prepare.set_type(Task::CALL_CUSTOMER);
   prepare.mutable_risk()->set_cmd(RiskMinCall::PREPARE_DATA);
@@ -234,25 +234,10 @@ InstanceInfo BatchSolver::loadData(const Message &msg) {
         FLAGS_verbose);
     CHECK_EQ(training_data.size(), 2);
 
-    if (FLAGS_verbose) {
-        LI << "[" << myNodePrintable() << "] localizing...";
-    }
     y_ = training_data[0];
-    X_ = training_data[1]->localize(&(w_->key()));
+    X_ = training_data[1]; // defer localize & toColMajor to prepareData
+    // X_ = training_data[1]->localize(&(w_->key()));
     CHECK_EQ(y_->rows(), X_->rows());
-    if (FLAGS_verbose) {
-        LI << "[" << myNodePrintable() << "] localization finished.";
-    }
-
-    if (app_cf_.block_solver().feature_block_ratio() > 0) {
-        if (FLAGS_verbose) {
-            LI << "[" << myNodePrintable() << "] toColMajor...";
-        }
-        X_ = X_->toColMajor();
-        if (FLAGS_verbose) {
-            LI << "[" << myNodePrintable() << "] toColMajor finished.";
-        }
-    }
 
     return instance_info;
 }
@@ -260,44 +245,54 @@ InstanceInfo BatchSolver::loadData(const Message &msg) {
 void BatchSolver::prepareData(const Message& msg) {
   int time = msg.task.time() * 10;
   if (exec_.isWorker()) {
-    /*
-    // assign training data
-    assignDataToWorker(app_cf_.mutable_training_data());
+    // key frequency statistic
+    SArray<Key> uniq_key;
+    SArray<uint32> key_cnt;
+    SparseMatrixPtr<Key, double> X =
+      std::static_pointer_cast<SparseMatrix<Key, double>>(X_);
+    if (FLAGS_verbose) {
+      LI << "[" << myNodePrintable() << "] counting unique index ...";
+    }
+    X->countUniqIndex(&uniq_key, &key_cnt);
+    if (FLAGS_verbose) {
+      LI << "[" << myNodePrintable() << "] finished counting unique index";
+    }
 
-    auto training_data = readMatrices<double>(
-        app_cf_.training_data(),
-        myNodePrintable(),
-        FLAGS_worker_load_limit,
-        FLAGS_verbose);
-    CHECK_EQ(training_data.size(), 2);
+
+    // Time 0: send all unique keys with their count to servers
+    Message push_fea_frequency;
+    push_fea_frequency.recver = kServerGroup;
+    push_fea_frequency.task.set_time(time);
+    push_fea_frequency.task.set_wait_time(-1);
+    push_fea_frequency.addKV(uniq_key, {key_cnt});
+    w_->setCall(&push_fea_frequency)->set_add_key_count(true);
+    CHECK_EQ(time, w_->sync(CallSharedPara::PUSH, kServerGroup,
+      uniq_key.range(), push_fea_frequency, time, -1));
+
+    // time 2: filter tail features
+    Message pull_filtered_fea;
+    pull_filtered_fea.recver = kServerGroup;
+    pull_filtered_fea.task.set_time(time + 2);
+    pull_filtered_fea.task.set_wait_time(time + 1);
+    pull_filtered_fea.key = uniq_key;
+    w_->setCall(&pull_filtered_fea)->set_key_freq(
+      app_cf_.block_solver().tail_feature_count());
+    CHECK_EQ(time + 2, w_->sync(CallSharedPara::PULL, kServerGroup,
+      uniq_key.range(), pull_filtered_fea, time + 2, time + 1,
+      std::function<void()>(), std::function<void()>(), false));
 
     if (FLAGS_verbose) {
-        LI << "[" << myNodePrintable() << "] localizing...";
+      LI << "[" << myNodePrintable() << "] localizing and transforming to colMajor ...";
     }
-    y_ = training_data[0];
-    X_ = training_data[1]->localize(&(w_->key()));
-    CHECK_EQ(y_->rows(), X_->rows());
+    X_ = X->remapIndex(w_->key())->toColMajor();
     if (FLAGS_verbose) {
-        LI << "[" << myNodePrintable() << "] localization finished.";
+      LI << "[" << myNodePrintable() << "] finished localizing and colMajor";
     }
-
-    if (app_cf_.block_solver().feature_block_ratio() > 0) {
-      if (FLAGS_verbose) {
-        LI << "[" << myNodePrintable() << "] toColMajor...";
-      }
-
-      X_ = X_->toColMajor();
-
-      if (FLAGS_verbose) {
-          LI << "[" << myNodePrintable() << "] toColMajor finished.";
-      }
-    }
-    */
 
     // sync keys and fetch initial value of w_
     SArrayList<double> empty;
     std::promise<void> promise;
-    w_->roundTripForWorker(time, w_->key().range(), empty, [this, &promise](int t) {
+    w_->roundTripForWorker(time + 3, w_->key().range(), empty, [this, &promise](int t) {
         auto data = w_->received(t);
         CHECK_EQ(data.size(), 1);
         CHECK_EQ(w_->key().size(), data[0].first.size());
@@ -309,7 +304,14 @@ void BatchSolver::prepareData(const Message& msg) {
     dual_.resize(X_->rows());
     dual_.eigenVector() = *X_ * w_->value().eigenVector();
   } else {
-    w_->roundTripForServer(time, Range<Key>::all(), [this](int t){
+
+    // Time 0: aggregate unfiltered keys from all workers
+    w_->taskpool(kWorkerGroup)->waitIncomingTask(time);
+
+    // Time 1: release subsequent tasks
+    w_->taskpool(kWorkerGroup)->finishIncomingTask(time + 1);
+
+    w_->roundTripForServer(time + 3, Range<Key>::all(), [this](int t){
         // LL << myNodeID() << " received keys";
         // init w by 0
         w_->value().resize(w_->key().size());
@@ -325,6 +327,8 @@ void BatchSolver::prepareData(const Message& msg) {
         }
       });
   }
+
+  return;
 }
 
 
