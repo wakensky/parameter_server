@@ -88,21 +88,38 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
   int t = msg->task.time();
   for (int i = 0; i < msg->value.size(); ++i) {
     SArray<V> recv_data(msg->value[i]);
-    CHECK_EQ(recv_data.size(), recv_key.size());
-    size_t n = 0;
     Range<K> key_range(msg->task.key_range());
-    auto aligned = match(key_[chl], recv_key, recv_data.data(), key_range, &n);
-    CHECK_GE(aligned.second.size(), recv_key.size()) << recv_key;
-    CHECK_EQ(recv_key.size(), n);
+    CHECK_EQ(recv_data.size(), recv_key.size());
+
     {
       Lock l(recved_val_mu_);
+      size_t n = 0;
+
       if (recved_val_[t].size() <= i) {
-        recved_val_[t].push_back(aligned);
+        // get range
+        SizeR range;
+        if (!key_[chl].empty() && !recv_key.empty()) {
+          range = key_[chl].findRange(key_range);
+        }
+
+        // construct SArray<V>
+        auto aligned = std::make_pair(range, SArray<V>());
+        if (!range.empty()) {
+          aligned.second = SArray<V>(range.size());
+        }
+        CHECK_GE(aligned.second.size(), recv_key.size()) << recv_key;
+
+        // match
+        match(range, key_[chl], aligned.second, recv_key, recv_data, &n,
+          MatchOperation::ASSIGN);
       } else {
-        // LL << t << " "<< i << " "  << aligned.first;
         CHECK_EQ(aligned.first, recved_val_[t][i].first);
-        recved_val_[t][i].second.eigenArray() += aligned.second.eigenArray();
+        // match
+        match(recved_val_[t][i].first, key_[chl], recved_val_[t][i].second,
+          recv_key, recv_data, &n, MatchOperation::ADD);
       }
+
+      CHECK_EQ(recv_key.size(), n);
     }
   }
 }
@@ -113,11 +130,29 @@ void KVVector<K,V>::getValue(const MessagePtr& msg) {
   if (recv_key.empty()) return;
   int ch = msg->task.key_channel();
   CHECK_EQ(key_[ch].size(), val_[ch].size());
+
   size_t n = 0;
-  Range<Key> range = recv_key.range().setUnion(key_[ch].range());
-  auto aligned = match(recv_key, key_[ch], val_[ch].data(), range, &n);
-  CHECK_EQ(aligned.second.size(), recv_key.size()) << recv_key << "\n" << key_[ch];
+  Range<Key> union_range = recv_key.range().setUnion(key_[ch].range());
+
+  // get range
+  SizeR range;
+  if (!recv_key.empty() && !key_[ch].empty()) {
+    range = recv_key.findRange(union_range);
+  }
+
+  // construct new SArray holding updated values
+  SArray<V> new_value;
+  if (!range.empty()) {
+    new_value = SArray<V>(range.size());
+  }
+  CHECK_EQ(new_value.size(), recv_key.size()) << recv_key << "\n" << key_[ch];
+
+  // match
+  match(range, recv_key, new_value, key_[ch], val_[ch],
+    &n, MatchOperation::ASSIGN);
   CHECK_GE(aligned.second.size(), n);
+
+  // store in msg
   msg->addValue(aligned.second);
 }
 

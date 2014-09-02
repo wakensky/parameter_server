@@ -14,6 +14,10 @@ DEFINE_int32(num_unused, 0, "number of unused nodes");
 DEFINE_int32(num_threads, 2, "number of computational threads");
 DEFINE_string(app, "../config/rcv1_l1lr.config", "the configuration file of app");
 DEFINE_string(node_file, "./nodes", "node information");
+DEFINE_int32(report_interval, 5,
+  "Servers/Workers report running status to scheduler "
+  "in every report_interval seconds. "
+  "default: 5; if set to 0, heartbeat is disabled");
 
 Postoffice::~Postoffice() {
   recving_->join();
@@ -28,6 +32,20 @@ void Postoffice::run() {
   yellow_pages_.init();
   recving_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::recv, this));
   sending_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::send, this));
+
+  // threads on statistic
+  if (FLAGS_report_interval > 0) {
+    if (Node::SCHEDULER == myNode().role()) {
+      monitoring_ = std::unique_ptr<std::thread>(
+        new std::thread(&Postoffice::monitor, this));
+      monitoring_.detach();
+    } else {
+      heartbeating_ = std::unique_ptr<std::thread>(
+        new std::thread(&Postoffice::heartbeat, this));
+      heartbeating_->detach();
+    }
+  }
+
   switch(myNode().role()) {
     case Node::SCHEDULER: {
       // get all node information
@@ -106,11 +124,29 @@ void Postoffice::recv() {
     } else if (tk.request() && tk.type() == Task::MANAGE) {
       if (tk.has_mng_app()) manageApp(tk);
       if (tk.has_mng_node()) manageNode(tk);
+    } else if (Task::HEARTBEATING == tk.type()) {
+      // newly arrived heartbeat pack
+      CHECK(tk.has_msg());
+      HeartbeatReport report;
+      report.ParseFromString(tk.msg());
+      {
+        Lock l(dashboard_mu_);
+        report.set_task_id(dashboard_[msg.sender].task_id());
+        dashboard_[msg.sender] = report;
+      }
     } else {
       if (tk.customer() == "default") continue;
       auto pt = yellow_pages_.customer(tk.customer());
       CHECK(pt) << "customer [" << tk.customer() << "] doesn't exist";
       pt->exec().accept(msg);
+
+      // if I am the scheduler,
+      //   I also record the latest task id for W/S without extra trouble
+      if (Node::SCHEDULER == myNode().role() && FLAGS_report_interval > 0) {
+        Lock l(dashboard_mu_);
+        dashboard_[msg.sender].set_task_id(msg.task.time());
+      }
+
       continue;
     }
     auto ptr = yellow_pages_.customer(tk.customer());
@@ -176,6 +212,83 @@ void Postoffice::addMyNode(const string& name, const Node& recver) {
   MessagePtr msg(new Message(task));
   msg->recver = recver.id();
   queue(msg);
+}
+
+void Postoffice::heartbeat() {
+  while (!done_) {
+    // heartbeat won't work until I have connected to the scheduler
+    if (yp_.van().connectivity("H").ok()) {
+      // serialize heartbeat report
+      string report;
+      heartbeat_info_.get().SerializeToString(&report);
+
+      // pack msg
+      MessagePtr msg("H", 0);
+      msg->sender = myNode().id();
+      msg->valid = true;
+      msg->task.set_type(Task::HEARTBEATING);
+      msg->task.set_request(false);
+      msg->task.set_msg(report);
+
+      // push into sending queue
+      queue(msg);
+
+      // take a rest
+      std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
+    }
+  }
+}
+
+void Postoffice::monitor() {
+  while (!done_) {
+    {
+      Lock l(dashboard_mu_);
+      if (!dashboard_.empty()) {
+        // prepare formatted dashboard
+        std::stringstream ss;
+        ss << printDashboardTitle() << "\n";
+        for (const auto& report : dashboard_) {
+          ss << printHeartbeatReport(report) << "\n";
+        }
+
+        // output
+        std::cerr << "\n\n" << ss.str();
+      }
+    }
+
+    std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
+  }
+}
+
+string Postoffice::printDashboardTitle() {
+  const size_t WIDTH = 10;
+
+  // time_t
+  std::time_t now_time = std::chrono::system_clock::to_time_t(
+    std::chrono::system_clock::now());
+  string time_str = ctime(&now_time);
+  time_str.resize(time_str.size() - 1);
+
+  std::stringstream ss;
+  ss << std::setiosflags(std::ios::left) <<
+    std::setw(WIDTH * 2) << std::setfill('=') << "" << " Dashboard " <<
+    time_str + " " << std::setw(WIDTH * 2) << std::setfill('=') << "" << "\n";
+
+  ss << std::setfill(' ') <<
+    std::setw(WIDTH) << "Node" <<
+    std::setw(WIDTH) << "MyCPU(%)" <<
+    std::setw(WIDTH) << "MyRSS(M)" <<
+    std::setw(WIDTH) << "MyVir(M)" <<
+    std::setw(WIDTH) << "BusyTime" <<
+    std::setw(WIDTH) << "InMB" <<
+    std::setw(WIDTH) << "OutMB" <<
+    std::setw(WIDTH) << "HostCPU" <<
+    std::setw(WIDTH) << "HostFree" <<
+    std::setw(WIDTH) << "HostInBW" <<
+    std::setw(WIDTH) << "HostOutBW" <<
+    std::setw(WIDTH * 2) << "HostName";
+
+  return ss.str();
 }
 
 } // namespace PS

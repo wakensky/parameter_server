@@ -237,7 +237,7 @@ std::string hadoopFS(const HDFSConfig& conf) {
   // return (conf.home() + "/bin/hadoop dfs -D fs.default.name=" + conf.namenode()
   //        + " -D hadoop.job.ugi=" + conf.ugi());
   // simple use in ByteDance
-  return (conf.home() + "/bin/hadoop fs ");
+  return ("HADOOP_USER_NAME=tiger " + conf.home() + "/bin/hadoop fs ");
 }
 
 

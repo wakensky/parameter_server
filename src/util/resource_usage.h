@@ -22,6 +22,13 @@ static double toc(system_clock::time_point start) {
   return (double) ct / 1e3;
 }
 
+// return the time since tic, in milliseconds
+static double milliToc(system_clock::time_point start) {
+  size_t ct = std::chrono::duration_cast<std::chrono::milliseconds>(
+    system_clock::now() - start).count();
+  return static_cast<double>(ct);
+}
+
 class ScopedTimer {
  public:
   explicit ScopedTimer(double* aggregate_time) :
@@ -35,6 +42,7 @@ class ScopedTimer {
   system_clock::time_point timer_;
 };
 
+// in senconds
 class Timer {
  public:
   void start() { tp_ = tic(); }
@@ -48,6 +56,21 @@ class Timer {
   double time_ = 0;
 };
 
+// in milliseconds
+class MilliTimer {
+  public:
+    void start() { tp_ = tic(); }
+    void restart() { reset(); start(); }
+    void reset() { time_ = 0; }
+    double stop() { time_ += milliToc(tp_); return time_; }
+    double get() { return time_; }
+    double getAndRestart() { double t = get(); reset(); start(); return t; }
+
+  private:
+    system_clock::time_point tp_ = tic();
+    double time_ = 0;
+};
+
 // http://stackoverflow.com/questions/63166/how-to-determine-cpu-and-memory-consumption-from-inside-a-process
 // print memeory usage of the current process in Mb
 // TODO CPU usage
@@ -59,6 +82,10 @@ class ResUsage {
   }
   static double myPhyMem() {
     return getLine("VmRSS:") / 1e3;
+  }
+  // in Mb
+  static double hostFreePhyMem() {
+    return getLine("/proc/meminfo", "MemFree:") / 1e3;
   }
  private:
   static double getLine(const char *name) {

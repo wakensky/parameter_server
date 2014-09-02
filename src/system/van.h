@@ -57,6 +57,8 @@ class Van {
   size_t data_received_ = 0;
   std::ofstream debug_out_;
   // std::ostream& debug_out_;
+
+  Node assembleMyNode();
 };
 
 } // namespace PS

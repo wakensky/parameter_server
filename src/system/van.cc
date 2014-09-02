@@ -12,8 +12,14 @@ DEFINE_bool(compress_message, true, "");
 DEFINE_bool(print_van, false, "");
 
 void Van::init() {
-  my_node_ = parseNode(FLAGS_my_node);
   scheduler_ = parseNode(FLAGS_scheduler);
+
+  // assemble my_node_
+  if (0 == FLAGS_my_rank) {
+    my_node_ = scheduler_;
+  } else {
+    my_node_ = assembleMyNode();
+  }
 
   context_ = zmq_ctx_new();
   // TODO the following does not work...
@@ -208,6 +214,46 @@ void Van::statistic() {
 
   LI << my_node_.id() << " sent " << gb(data_sent_)
      << " Gbyte, received " << gb(data_received_) << " Gbyte";
+}
+
+Node Van::assembleMyNode() {
+  if (0 == FLAGS_my_rank) {
+    return scheduler_;
+  }
+
+  Node ret_node;
+  // role and id
+  if (FLAGS_my_rank <= FLAGS_num_workers) {
+    ret_node.set_role(Node::WORKER);
+    ret_node.set_id("W" + std::to_string(FLAGS_my_rank - 1));
+  } else if (FLAGS_my_rank <= FLAGS_num_workers + FLAGS_num_servers) {
+    ret_node.set_role(Node::SERVER);
+    ret_node.set_id("S" + std::to_string(FLAGS_my_rank - FLAGS_num_workers - 1));
+  } else {
+    ret_node.set_role(Node::UNUSED);
+    ret_node.set_id("U" + std::to_string(
+      FLAGS_my_rank - FLAGS_num_workers - FLAGS_num_servers - 1));
+  }
+
+  // IP, port and interface
+  string ip;
+  unsigned short port;
+  if (FLAGS_interface.empty()) {
+    LocalMachine::pickupAvailableInterfaceAndIP(FLAGS_interface, ip);
+  } else {
+    LocalMachine::IP(FLAGS_interface);
+  }
+  if (ip.empty() || FLAGS_interface.empty()) {
+    throw std::runtime_error("got interface/ip failed");
+  }
+  port = pickupAvailablePort();
+  if (0 == port) {
+    throw std::runtime_error("got port failed");
+  }
+  ret_node.set_host(ip);
+  ret_node.set_port(static_cast<int32>(port));
+
+  return ret_node;
 }
 
 } // namespace PS
