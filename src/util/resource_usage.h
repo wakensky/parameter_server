@@ -15,11 +15,11 @@ static system_clock::time_point tic() {
   return system_clock::now();
 }
 
-// return the time since tic, in microsecnods
+// return the time since tic, in second
 static double toc(system_clock::time_point start) {
-  size_t ct = std::chrono::duration_cast<std::chrono::microseconds>(
+  size_t ct = std::chrono::duration_cast<std::chrono::milliseconds>(
       system_clock::now() - start).count();
-  return (double) ct;
+  return (double) ct / 1e3;
 }
 
 class ScopedTimer {
@@ -28,9 +28,7 @@ class ScopedTimer {
       aggregate_time_(aggregate_time) {
     timer_ = tic();
   }
-  ~ScopedTimer() {
-    *aggregate_time_ += toc(timer_) / 1e6;
-  }
+  ~ScopedTimer() { *aggregate_time_ += toc(timer_); }
 
  private:
   double* aggregate_time_;
@@ -40,28 +38,13 @@ class ScopedTimer {
 class Timer {
  public:
   void start() { tp_ = tic(); }
-  void stop() { time_ += toc(tp_); }
-  void reset() { time_ = 0; tp_ = tic(); }
-  // get time interval in seconds
-  double get() {
-    return time_ / 1e6;
-  }
-  // get time interval in microsecnods
-  double getMicro() {
-    return time_;
-  }
-  // get time interval from construction to now in seconds
-  double getToNow() {
-    return toc(construction_tp_) / 1e6;
-  }
-  // get time interval from construction to now in microsecnods
-  double getToNowMicro() {
-    return toc(construction_tp_);
-  }
+  void restart() { reset(); start(); }
+  void reset() { time_ = 0; }
+  double stop() { time_ += toc(tp_); return time_; }
+  double get() { return time_; }
+  double getAndRestart() { double t = get(); reset(); start(); return t; }
  private:
   system_clock::time_point tp_ = tic();
-  const system_clock::time_point construction_tp_ = tic();
-  // in microsecnods
   double time_ = 0;
 };
 
@@ -72,18 +55,14 @@ class ResUsage {
  public:
   // in Mb
   static double myVirMem() {
-    return getLine("/proc/self/status", "VmSize:") / 1e3;
+    return getLine("VmSize:") / 1e3;
   }
   static double myPhyMem() {
-    return getLine("/proc/self/status", "VmRSS:") / 1e3;
-  }
-  // in Mb
-  static double hostFreePhyMem() {
-    return getLine("/proc/meminfo", "MemFree:") / 1e3;
+    return getLine("VmRSS:") / 1e3;
   }
  private:
-  static double getLine(const char *target, const char *name) {
-    FILE* file = fopen(target, "r");
+  static double getLine(const char *name) {
+    FILE* file = fopen("/proc/self/status", "r");
     char line[128];
     int result = -1;
     while (fgets(line, 128, file) != NULL){

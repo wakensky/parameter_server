@@ -5,20 +5,19 @@
 namespace PS {
 
 DEFINE_bool(key_cache, true, "enable caching keys during communication");
+int RNode::submit(const MessagePtr& msg) {
+  CHECK(msg);
+  CHECK(msg->task.has_type());
+  auto& task = msg->task;
+  task.set_request(true);
+  task.set_customer(exec_.obj().name());
 
-int RNode::submit(Message msg, Callback received, Callback finished, bool no_wait) {
-  auto& tk = msg.task;
-  CHECK(tk.has_type());
-  tk.set_request(true);
-  tk.set_customer(exec_.obj().name());
-
-  msg.original_recver = id();
+  // set the message timestamp, store the finished_callback
+  msg->original_recver = id();
   {
-    // set the message timestamp
     Lock l(mu_);
-    if (tk.has_time()) {
-      // if the timestamp has been set, just trust it.
-      time_ = std::max(tk.time(), time_);
+    if (task.has_time()) {
+      time_ = std::max(task.time(), time_);
     } else {
       // choose a timestamp
       if (role() == Node::GROUP) {
@@ -27,131 +26,121 @@ int RNode::submit(Message msg, Callback received, Callback finished, bool no_wai
           time_ = std::max(w->time_, time_);
         }
       }
-      tk.set_time(++time_);
+      task.set_time(++time_);
     }
-    if (finished) msg_finish_handle_[tk.time()] = finished;
+    if (msg->fin_handle) msg_finish_handle_[task.time()] = msg->fin_handle;
   }
 
-  int t = tk.time();
+  int t = task.time();
   outgoing_task_.start(t);
 
   // partition the message according the receiver node's key range
-  auto key_partition = exec_.partition(id());
-  auto msgs = exec_.obj().decompose(msg, key_partition);
+  const auto& key_partition = exec_.partition(id());
+  auto msgs = exec_.obj().slice(msg, key_partition);
   CHECK_EQ(msgs.size(), key_partition.size()-1);
 
   // sent partitioned messages one-by-one
   int i = 0;
   for (auto w : exec_.group(id())) {
-    msgs[i].sender = exec_.myNode().id();
+    msgs[i]->sender = exec_.myNode().id();
     {
       Lock l(w->mu_);
-      msgs[i].recver = w->id();
+      msgs[i]->recver = w->id();
       w->time_ = std::max(t, w->time_);
-      // do not pending it, it will not be replied
-      if (tk.type() != Task::TERMINATE_CONFIRM)
-        w->pending_msgs_[t] = msgs[i];
-      if (received) w->msg_receive_handle_[t] = received;
+      // a terminate confirm message will not get replied
+      // if (task.type() != Task::TERMINATE_CONFIRM)
+      w->pending_msgs_[t] = msgs[i];
+      if (msg->recv_handle) w->msg_receive_handle_[t] = msg->recv_handle;
     }
-    sys_.queue(w->cacheKeySender(msgs[i]));
-  // if (tk.shared_para().cmd() == CallSharedPara::PUSH_REPLICA ) {
-  //   LL << msgs[i];
-  // }
+    w->cacheKeySender(msgs[i]);
+    sys_.queue(msgs[i]);
     ++ i;
   }
   CHECK_EQ(i, msgs.size());
 
-  if (!no_wait) waitOutgoingTask(t);
-
+  if (msg->wait) waitOutgoingTask(t);
   return t;
 }
 
 void RNode::waitOutgoingTask(int time) {
-  for (auto& w : exec_.group(id()))
-    w->outgoing_task_.wait(time);
+  for (auto& w : exec_.group(id())) w->outgoing_task_.wait(time);
 }
 
 bool RNode::tryWaitOutgoingTask(int time) {
   for (auto& w : exec_.group(id()))
-    if (!w->outgoing_task_.tryWait(time))
-      return false;
+    if (!w->outgoing_task_.tryWait(time)) return false;
   return true;
 }
 
 void RNode::finishOutgoingTask(int time) {
-  for (auto& w : exec_.group(id()))
-    w->outgoing_task_.finish(time);
+  for (auto& w : exec_.group(id())) w->outgoing_task_.finish(time);
 }
 
 void RNode::waitIncomingTask(int time) {
-  for (auto& w : exec_.group(id()))
-    w->incoming_task_.wait(time);
+  for (auto& w : exec_.group(id())) w->incoming_task_.wait(time);
 }
 bool RNode::tryWaitIncomingTask(int time) {
   for (auto& w : exec_.group(id()))
-    if (!w->incoming_task_.tryWait(time))
-      return false;
+    if (!w->incoming_task_.tryWait(time)) return false;
   return true;
 }
 
 void RNode::finishIncomingTask(int time) {
-  for (auto& w : exec_.group(id()))
-    w->incoming_task_.finish(time);
+  for (auto& w : exec_.group(id())) w->incoming_task_.finish(time);
   exec_.notify();
 }
 
-// Message RNode::cache(const Message& msg) {
-//  if (!FLAGS_key_cache || msg.key.size() == 0) return msg;
 
-//   // CHECK(msg.task.has_
-//   return msg;
-// }
+void RNode::cacheKeySender(const MessagePtr& msg) {
+  if (!FLAGS_key_cache || !msg->task.has_key_range()) return;
+  auto cache_k = std::make_pair(
+      msg->task.key_channel(), Range<Key>(msg->task.key_range()));
 
-Message RNode::cacheKeySender(const Message& msg) {
-  if (!FLAGS_key_cache || !msg.task.has_key_range() || msg.key.size() == 0) {
-    return msg;
+  if (msg->key.empty()) {
+    msg->task.clear_key_signature();
+    Lock l(key_cache_mu_);
+    key_cache_.erase(cache_k);
+    return;
   }
 
-  Message ret = msg;
-  Range<Key> range(ret.task.key_range());
-  auto sig = crc32c::Value(ret.key.data(), ret.key.size());
-
-  // Lock l(key_cache_mu_);
-  auto& cache = key_cache_[range];
-
-  bool hit_cache = cache.first == sig && cache.second.size() == ret.key.size();
+  auto sig = crc32c::Value(msg->key.data(), msg->key.size());
+  msg->task.set_key_signature(sig);
+  Lock l(key_cache_mu_);
+  auto& cache = key_cache_[cache_k];
+  bool hit_cache = cache.first == sig && cache.second.size() == msg->key.size();
   if (hit_cache) {
-    ret.key.reset(nullptr, 0);
-    ret.task.set_has_key(false);
+    msg->key.clear();
+    msg->task.set_has_key(false);
   } else {
     cache.first = sig;
-    cache.second = ret.key;
-    ret.task.set_has_key(true);
+    cache.second = msg->key;
+    msg->task.set_has_key(true);
   }
-
-  ret.task.set_key_signature(sig);
-  return ret;
 }
 
-Message RNode::cacheKeyRecver(const Message& msg) {
-  if (!FLAGS_key_cache || !msg.task.has_key_range()) return msg;
-
-  Message ret = msg;
-  Range<Key> range(ret.task.key_range());
-  auto sig = ret.task.key_signature();
-
-  // Lock l(key_cache_mu_);
-  auto& cache = key_cache_[range];
-
-  if (ret.task.has_key()) {
-    CHECK_EQ(crc32c::Value(ret.key.data(), ret.key.size()), sig);
-    cache.first = sig;
-    cache.second = ret.key;
-  } else {
-    CHECK_EQ(sig, cache.first);
-    ret.key = cache.second;
+void RNode::cacheKeyRecver(const MessagePtr& msg) {
+  if (!FLAGS_key_cache || !msg->task.has_key_range()) return;
+  auto cache_k = std::make_pair(
+      msg->task.key_channel(), Range<Key>(msg->task.key_range()));
+  if (!msg->task.has_key_signature()) {
+    Lock l(key_cache_mu_);
+    key_cache_.erase(cache_k);
+    return;
   }
-  return ret;
+  auto sig = msg->task.key_signature();
+
+  Lock l(key_cache_mu_);
+  auto& cache = key_cache_[cache_k];
+  if (msg->task.has_key()) {
+    // double check
+    CHECK_EQ(crc32c::Value(msg->key.data(), msg->key.size()), sig);
+    cache.first = sig;
+    cache.second = msg->key;
+  } else {
+    // the cache is invalid... may ask the sender to resend this task
+    CHECK_EQ(sig, cache.first) << msg->debugString();
+    msg->key = cache.second;
+  }
 }
 
 } // namespace PS

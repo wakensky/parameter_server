@@ -26,6 +26,7 @@ template<typename V> class SArray {
   // Create an array with length n. Values are not initialized. To initialize
   // them, call setValue(v) or setZero()
   explicit SArray(size_t n) { resize(n); }
+  explicit SArray(size_t n, V val) { resize(n); setValue(val); }
 
   // Zero-copy constructor, namely just copy the pointer
   template <typename W> explicit SArray(const SArray<W>& arr);
@@ -123,9 +124,7 @@ template<typename V> class SArray {
 
   // read the segment [range.begin(), range.end()) from the binary file
   bool readFromFile(SizeR range, const string& file_name);
-  bool readFromFile(const string& file_name, size_t size) {
-    return readFromFile(SizeR(0, size), file_name);
-  }
+  bool readFromFile(SizeR range, const DataConfig& file);
 
   // write all values into a binary file
   bool writeToFile(const string& file_name) const {

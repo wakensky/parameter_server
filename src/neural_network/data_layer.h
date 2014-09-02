@@ -1,6 +1,6 @@
 #pragma once
 #include "neural_network/layer.h"
-#include "base/matrix_io.h"
+#include "base/matrix_io_inl.h"
 
 namespace PS {
 namespace NN {
@@ -9,8 +9,7 @@ template<typename V>
 class DataLayer : public Layer<V>  {
  public:
   void init() {
-    InstanceInfo info;
-    data_ = readMatrices<V>(cf_.data(), info, "", -1, false);
+    data_ = readMatricesOrDie<V>(cf_.data());
     CHECK_EQ(data_.size(), cf_.out_size());
     // TODO normalization
 

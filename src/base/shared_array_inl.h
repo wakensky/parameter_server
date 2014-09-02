@@ -69,7 +69,7 @@ template <typename V>
 template <typename W>
 void SArray<V>::operator=(const SArray<W>& arr) {
   size_ = arr.size() * sizeof(W) / sizeof(V);
-  capacity_ = arr.capacity();
+  capacity_ = arr.capacity() * sizeof(W) / sizeof(V);
   data_ = reinterpret_cast<V*>(arr.data());
   ptr_ = arr.pointer();
 }
@@ -109,15 +109,13 @@ void SArray<V>::setValue(const ParameterInitConfig& cf) {
   typedef ParameterInitConfig Type;
   if (cf.type() == Type::ZERO) {
     setZero();
-  } else if (cf.type() == Type::RANDOM) {
-    if (cf.std() == 0) {
-      setValue((V)cf.mean());
-    } else {
-      for (size_t i = 0; i < size_; ++i) {
-        std::default_random_engine generator;
-        std::normal_distribution<V> distribution((V)cf.mean(), (V)cf.std());
-        data_[i] = distribution(generator);
-      }
+  } else if (cf.type() == Type::CONSTANT) {
+    setValue((V)cf.constant());
+  } else if (cf.type() == Type::GAUSSIAN) {
+    for (size_t i = 0; i < size_; ++i) {
+      std::default_random_engine generator;
+      std::normal_distribution<V> distribution((V)cf.mean(), (V)cf.std());
+      data_[i] = distribution(generator);
     }
   } else if (cf.type() == Type::FILE) {
     CHECK(false);
@@ -182,12 +180,21 @@ void SArray<V>::uncompressFrom(const char* src, size_t src_size) {
 
 template <typename V>
 bool SArray<V>::readFromFile(SizeR range, const string& file_name) {
-    File* file = File::open(file_name, "r");
-    CHECK(!range.empty());
-    resize(range.size());
-    if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
-    size_t length = range.size() * sizeof(V);
-    return (file->Read(ptr_.get(), length) == length);
+  DataConfig data;
+  data.set_format(DataConfig::BIN);
+  data.add_file(file_name);
+  return readFromFile(range, data);
+}
+
+template <typename V>
+bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
+  CHECK(!range.empty());
+  File* file = File::open(data, "r");
+  if (file == NULL || !file->open()) return false;
+  resize(range.size());
+  if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
+  size_t length = range.size() * sizeof(V);
+  return (file->read(ptr_.get(), length) == length);
 }
 
 template <typename V>
@@ -205,13 +212,14 @@ MatrixPtr<V> SArray<V>::matrix(size_t rows, size_t cols) {
 
 template <typename V>
 bool SArray<V>::writeToFile(SizeR range, const string& file_name) const {
-    if (range == SizeR::all()) range = SizeR(0, size_);
-    CHECK(!range.empty());
-    CHECK_LE(range.end(), size_);
+  if (range == SizeR::all()) range = SizeR(0, size_);
+  CHECK(!range.empty());
+  CHECK_LE(range.end(), size_);
 
-    File* file = File::open(file_name, "w");
-    size_t length = range.size() * sizeof(V);
-    return (file->Write(ptr_.get(), length) == length);
+  File* file = File::open(file_name, "w");
+  size_t length = range.size() * sizeof(V);
+  return (file->write(ptr_.get(), length) == length
+          && file->flush() && file->close());
 }
 
 template <typename V>

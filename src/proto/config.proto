@@ -8,22 +8,38 @@ message DataConfig {
     TEXT = 3;
   }
   required DataFormat format = 1;
-  repeated string file = 2;
+
+  enum TextFormat {
+    PS_SPARSE_BINARY = 3;
+    PS_SPARSE = 2;
+    PS_DENSE = 1;
+    ADFEA = 4;
+    LIBSVM = 5;
+  }
+  optional TextFormat text = 2;
+
+  repeated string file = 3;
+  optional HDFSConfig hdfs = 5;
   // only valid for the binary format
-  optional PbRange range = 3;
+  optional PbRange range = 4;
+  // ignore the feature group information
+  optional bool ignore_fea_grp = 6;
 }
 
 message ParameterInitConfig {
   enum Type {
     ZERO = 1;
-    RANDOM = 2;
-    FILE = 3;
-    CLONE = 4;
+    CONSTANT = 2;
+    GAUSSIAN = 3;
+    FILE = 4;
+    CLONE = 5;
   }
   optional Type type = 1 [default = ZERO];
-  optional double mean = 2 [default = 0];
-  optional double std = 3 [default = 1];
-  optional string file_name = 4;
+  optional double constant = 2 [default = 1];
+  // gaussian random
+  optional double mean = 3 [default = 0];
+  optional double std = 4 [default = 1];
+  optional string file_name = 5;
 }
 
 message LearningRateConfig {
@@ -44,4 +60,10 @@ message PenaltyConfig {
   }
   required Type type = 1;
   repeated double lambda = 2;
+}
+
+message HDFSConfig {
+  optional string home = 1;  // HADOOP_HOME
+  optional string ugi = 2;   // hadoop.job.ugi, format: user,passwd
+  optional string namenode = 4;  // fs.default.name
 }

@@ -13,32 +13,22 @@ class Van {
  public:
   Van() : context_(nullptr), receiver_(nullptr) {}
   ~Van() { }
-  // void Init(const Node& my_node);
   void init();
   void destroy();
 
-  // connect to a node
   Status connect(Node const& node);
 
-  // check whether I could connect to a specified node
-  Status connectivity(const string &node_id);
-
-  Status send(
-    const Message& msg,
-    size_t &send_bytes);
-
-  Status recv(
-    Message* msg,
-    size_t &recv_bytes);
+  // Status send(const MessagePtr& msg);
+  Status send(const MessageCPtr& msg);
+  Status recv(const MessagePtr& msg);
 
   Node& myNode() { return my_node_; }
+  Node& scheduler() { return scheduler_; };
 
   // utility functions for node
   static Node parseNode(const string& config) {
-    Node node;
-    CHECK(TextFormat::ParseFromString(config, &node));
-    if (!node.has_id())
-      node.set_id(id(address(node)));
+    Node node; CHECK(TextFormat::ParseFromString(config, &node));
+    if (!node.has_id()) node.set_id(id(address(node)));
     return node;
   }
 
@@ -47,12 +37,7 @@ class Van {
   }
   static const NodeID id(const std::string& name) {
     return name;
-    // std::hash<std::string> fn;
-    // return fn(name);
   }
-  // static NodeID id(const Node& node) {
-  //   return id(address(node));
-  // }
 
   // print statistic info
   void statistic();
@@ -64,18 +49,14 @@ class Van {
   void *context_;
   void *receiver_;
   Node my_node_;
+  Node scheduler_;
   std::mutex mu_;
   std::map<NodeID, void *> senders_;
 
-  size_t send_head_ = 0;
-  size_t send_uncompressed_ = 0;
-  size_t send_compressed_ = 0;
-
-  size_t recv_head_ = 0;
-  size_t recv_uncompressed_ = 0;
-  size_t recv_compressed_ = 0;
-
+  size_t data_sent_ = 0;
+  size_t data_received_ = 0;
   std::ofstream debug_out_;
+  // std::ostream& debug_out_;
 };
 
 } // namespace PS

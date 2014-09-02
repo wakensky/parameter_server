@@ -28,7 +28,7 @@ class DenseMatrix : public Matrix<V> {
   virtual MatrixPtr<V> trans() const {CHECK(false);  return MatrixPtr<V>(); }
 
   // convert global index into local index (0,1,2,3...) and return the key map
-  virtual MatrixPtr<V> localize(SArray<Key>* key_map) const {CHECK(false);  return MatrixPtr<V>(); }
+  // virtual MatrixPtr<V> localize(SArray<Key>* key_map) const {CHECK(false);  return MatrixPtr<V>(); }
 
   virtual MatrixPtr<V> alterStorage() const;
 
@@ -50,7 +50,8 @@ class DenseMatrix : public Matrix<V> {
   }
 
   virtual bool writeToBinFile(string name) const {
-    return (WriteProtoToASCIIFile(info_, name+".info") && value_.writeToFile(name+".value"));
+    return (writeProtoToASCIIFile(info_, name+".info")
+            && value_.writeToFile(name+".value"));
   }
 
   virtual string debugString() const {
@@ -73,8 +74,8 @@ void DenseMatrix<V>::resize(
   // CHECK_EQ(nnz, rows*cols);
   info_.set_nnz(nnz);
   info_.set_sizeof_value(sizeof(V));
-  info_.set_nnz_per_row(cols);
-  info_.set_nnz_per_col(rows);
+  // info_.set_nnz_per_row(cols);
+  // info_.set_nnz_per_col(rows);
   // data
   value_.resize(nnz);
   value_.setZero();

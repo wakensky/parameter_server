@@ -10,7 +10,6 @@ typedef Range<size_t> SizeR;
 template<class T>
 class Range {
  public:
-  static Range all() { return Range(0,-1); }
   Range() : begin_(0), end_(0) { }
 
   template<typename V>
@@ -72,6 +71,11 @@ class Range {
   std::string toString() const {
     return ("["+std::to_string(begin_)+","+std::to_string(end_)+")");
   }
+
+  static Range all() {
+    CHECK_GT((T)-1, 0) << "it is a not unsigned integer";
+    return Range(0, (T)-1);
+  }
  private:
   T begin_;
   T end_;
@@ -81,6 +85,7 @@ class Range {
 template<class T>
 Range<T> Range<T>::evenDivide(size_t n, size_t i) const {
   CHECK(valid());
+  CHECK_GT(n, 0);
   CHECK_LT(i, n);
   auto itv = static_cast<long double>(end_ - begin_) /
              static_cast<long double>(n);
@@ -100,7 +105,15 @@ struct hash<PS::Range<T> > {
   std::size_t operator()(PS::Range<T> const& s) const {
     // return std::hash<std::pair<T,T> >()(std::make_pair(s.begin(), s.end()));
     // return (std::hash<T>(s.begin()) ^ (std::hash<T>(s.end()) << 1));
-    return (size_t)(s.begin() ^ s.end() << 1);
+    return (size_t)(s.begin() ^ s.end() << 1);  // TODO why << 1?
   }
 };
+
+template<typename T>
+struct hash<std::pair<int, PS::Range<T>>> {
+  std::size_t operator()(std::pair<int, PS::Range<T>> const& s) const {
+    return (s.first ^ s.second.begin() ^ s.second.end());
+  }
+};
+
 } // namespace std

@@ -39,6 +39,7 @@ class DataConfig;
 class ParameterInitConfig;
 class LearningRateConfig;
 class PenaltyConfig;
+class HDFSConfig;
 
 enum DataConfig_DataFormat {
   DataConfig_DataFormat_BIN = 1,
@@ -60,11 +61,34 @@ inline bool DataConfig_DataFormat_Parse(
   return ::google::protobuf::internal::ParseNamedEnum<DataConfig_DataFormat>(
     DataConfig_DataFormat_descriptor(), name, value);
 }
+enum DataConfig_TextFormat {
+  DataConfig_TextFormat_PS_SPARSE_BINARY = 3,
+  DataConfig_TextFormat_PS_SPARSE = 2,
+  DataConfig_TextFormat_PS_DENSE = 1,
+  DataConfig_TextFormat_ADFEA = 4,
+  DataConfig_TextFormat_LIBSVM = 5
+};
+bool DataConfig_TextFormat_IsValid(int value);
+const DataConfig_TextFormat DataConfig_TextFormat_TextFormat_MIN = DataConfig_TextFormat_PS_DENSE;
+const DataConfig_TextFormat DataConfig_TextFormat_TextFormat_MAX = DataConfig_TextFormat_LIBSVM;
+const int DataConfig_TextFormat_TextFormat_ARRAYSIZE = DataConfig_TextFormat_TextFormat_MAX + 1;
+
+const ::google::protobuf::EnumDescriptor* DataConfig_TextFormat_descriptor();
+inline const ::std::string& DataConfig_TextFormat_Name(DataConfig_TextFormat value) {
+  return ::google::protobuf::internal::NameOfEnum(
+    DataConfig_TextFormat_descriptor(), value);
+}
+inline bool DataConfig_TextFormat_Parse(
+    const ::std::string& name, DataConfig_TextFormat* value) {
+  return ::google::protobuf::internal::ParseNamedEnum<DataConfig_TextFormat>(
+    DataConfig_TextFormat_descriptor(), name, value);
+}
 enum ParameterInitConfig_Type {
   ParameterInitConfig_Type_ZERO = 1,
-  ParameterInitConfig_Type_RANDOM = 2,
-  ParameterInitConfig_Type_FILE = 3,
-  ParameterInitConfig_Type_CLONE = 4
+  ParameterInitConfig_Type_CONSTANT = 2,
+  ParameterInitConfig_Type_GAUSSIAN = 3,
+  ParameterInitConfig_Type_FILE = 4,
+  ParameterInitConfig_Type_CLONE = 5
 };
 bool ParameterInitConfig_Type_IsValid(int value);
 const ParameterInitConfig_Type ParameterInitConfig_Type_Type_MIN = ParameterInitConfig_Type_ZERO;
@@ -197,6 +221,33 @@ class DataConfig : public ::google::protobuf::Message {
     return DataConfig_DataFormat_Parse(name, value);
   }
 
+  typedef DataConfig_TextFormat TextFormat;
+  static const TextFormat PS_SPARSE_BINARY = DataConfig_TextFormat_PS_SPARSE_BINARY;
+  static const TextFormat PS_SPARSE = DataConfig_TextFormat_PS_SPARSE;
+  static const TextFormat PS_DENSE = DataConfig_TextFormat_PS_DENSE;
+  static const TextFormat ADFEA = DataConfig_TextFormat_ADFEA;
+  static const TextFormat LIBSVM = DataConfig_TextFormat_LIBSVM;
+  static inline bool TextFormat_IsValid(int value) {
+    return DataConfig_TextFormat_IsValid(value);
+  }
+  static const TextFormat TextFormat_MIN =
+    DataConfig_TextFormat_TextFormat_MIN;
+  static const TextFormat TextFormat_MAX =
+    DataConfig_TextFormat_TextFormat_MAX;
+  static const int TextFormat_ARRAYSIZE =
+    DataConfig_TextFormat_TextFormat_ARRAYSIZE;
+  static inline const ::google::protobuf::EnumDescriptor*
+  TextFormat_descriptor() {
+    return DataConfig_TextFormat_descriptor();
+  }
+  static inline const ::std::string& TextFormat_Name(TextFormat value) {
+    return DataConfig_TextFormat_Name(value);
+  }
+  static inline bool TextFormat_Parse(const ::std::string& name,
+      TextFormat* value) {
+    return DataConfig_TextFormat_Parse(name, value);
+  }
+
   // accessors -------------------------------------------------------
 
   // required .PS.DataConfig.DataFormat format = 1;
@@ -206,10 +257,17 @@ class DataConfig : public ::google::protobuf::Message {
   inline ::PS::DataConfig_DataFormat format() const;
   inline void set_format(::PS::DataConfig_DataFormat value);
 
-  // repeated string file = 2;
+  // optional .PS.DataConfig.TextFormat text = 2;
+  inline bool has_text() const;
+  inline void clear_text();
+  static const int kTextFieldNumber = 2;
+  inline ::PS::DataConfig_TextFormat text() const;
+  inline void set_text(::PS::DataConfig_TextFormat value);
+
+  // repeated string file = 3;
   inline int file_size() const;
   inline void clear_file();
-  static const int kFileFieldNumber = 2;
+  static const int kFileFieldNumber = 3;
   inline const ::std::string& file(int index) const;
   inline ::std::string* mutable_file(int index);
   inline void set_file(int index, const ::std::string& value);
@@ -222,30 +280,55 @@ class DataConfig : public ::google::protobuf::Message {
   inline const ::google::protobuf::RepeatedPtrField< ::std::string>& file() const;
   inline ::google::protobuf::RepeatedPtrField< ::std::string>* mutable_file();
 
-  // optional .PS.PbRange range = 3;
+  // optional .PS.HDFSConfig hdfs = 5;
+  inline bool has_hdfs() const;
+  inline void clear_hdfs();
+  static const int kHdfsFieldNumber = 5;
+  inline const ::PS::HDFSConfig& hdfs() const;
+  inline ::PS::HDFSConfig* mutable_hdfs();
+  inline ::PS::HDFSConfig* release_hdfs();
+  inline void set_allocated_hdfs(::PS::HDFSConfig* hdfs);
+
+  // optional .PS.PbRange range = 4;
   inline bool has_range() const;
   inline void clear_range();
-  static const int kRangeFieldNumber = 3;
+  static const int kRangeFieldNumber = 4;
   inline const ::PS::PbRange& range() const;
   inline ::PS::PbRange* mutable_range();
   inline ::PS::PbRange* release_range();
   inline void set_allocated_range(::PS::PbRange* range);
 
+  // optional bool ignore_fea_grp = 6;
+  inline bool has_ignore_fea_grp() const;
+  inline void clear_ignore_fea_grp();
+  static const int kIgnoreFeaGrpFieldNumber = 6;
+  inline bool ignore_fea_grp() const;
+  inline void set_ignore_fea_grp(bool value);
+
   // @@protoc_insertion_point(class_scope:PS.DataConfig)
  private:
   inline void set_has_format();
   inline void clear_has_format();
+  inline void set_has_text();
+  inline void clear_has_text();
+  inline void set_has_hdfs();
+  inline void clear_has_hdfs();
   inline void set_has_range();
   inline void clear_has_range();
+  inline void set_has_ignore_fea_grp();
+  inline void clear_has_ignore_fea_grp();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
-  ::google::protobuf::RepeatedPtrField< ::std::string> file_;
-  ::PS::PbRange* range_;
   int format_;
+  int text_;
+  ::google::protobuf::RepeatedPtrField< ::std::string> file_;
+  ::PS::HDFSConfig* hdfs_;
+  ::PS::PbRange* range_;
+  bool ignore_fea_grp_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(3 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(6 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2fconfig_2eproto();
   friend void protobuf_AssignDesc_proto_2fconfig_2eproto();
@@ -310,7 +393,8 @@ class ParameterInitConfig : public ::google::protobuf::Message {
 
   typedef ParameterInitConfig_Type Type;
   static const Type ZERO = ParameterInitConfig_Type_ZERO;
-  static const Type RANDOM = ParameterInitConfig_Type_RANDOM;
+  static const Type CONSTANT = ParameterInitConfig_Type_CONSTANT;
+  static const Type GAUSSIAN = ParameterInitConfig_Type_GAUSSIAN;
   static const Type FILE = ParameterInitConfig_Type_FILE;
   static const Type CLONE = ParameterInitConfig_Type_CLONE;
   static inline bool Type_IsValid(int value) {
@@ -343,24 +427,31 @@ class ParameterInitConfig : public ::google::protobuf::Message {
   inline ::PS::ParameterInitConfig_Type type() const;
   inline void set_type(::PS::ParameterInitConfig_Type value);
 
-  // optional double mean = 2 [default = 0];
+  // optional double constant = 2 [default = 1];
+  inline bool has_constant() const;
+  inline void clear_constant();
+  static const int kConstantFieldNumber = 2;
+  inline double constant() const;
+  inline void set_constant(double value);
+
+  // optional double mean = 3 [default = 0];
   inline bool has_mean() const;
   inline void clear_mean();
-  static const int kMeanFieldNumber = 2;
+  static const int kMeanFieldNumber = 3;
   inline double mean() const;
   inline void set_mean(double value);
 
-  // optional double std = 3 [default = 1];
+  // optional double std = 4 [default = 1];
   inline bool has_std() const;
   inline void clear_std();
-  static const int kStdFieldNumber = 3;
+  static const int kStdFieldNumber = 4;
   inline double std() const;
   inline void set_std(double value);
 
-  // optional string file_name = 4;
+  // optional string file_name = 5;
   inline bool has_file_name() const;
   inline void clear_file_name();
-  static const int kFileNameFieldNumber = 4;
+  static const int kFileNameFieldNumber = 5;
   inline const ::std::string& file_name() const;
   inline void set_file_name(const ::std::string& value);
   inline void set_file_name(const char* value);
@@ -373,6 +464,8 @@ class ParameterInitConfig : public ::google::protobuf::Message {
  private:
   inline void set_has_type();
   inline void clear_has_type();
+  inline void set_has_constant();
+  inline void clear_has_constant();
   inline void set_has_mean();
   inline void clear_has_mean();
   inline void set_has_std();
@@ -382,13 +475,14 @@ class ParameterInitConfig : public ::google::protobuf::Message {
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
+  double constant_;
   double mean_;
   double std_;
   ::std::string* file_name_;
   int type_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(4 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(5 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2fconfig_2eproto();
   friend void protobuf_AssignDesc_proto_2fconfig_2eproto();
@@ -651,6 +745,123 @@ class PenaltyConfig : public ::google::protobuf::Message {
   void InitAsDefaultInstance();
   static PenaltyConfig* default_instance_;
 };
+// -------------------------------------------------------------------
+
+class HDFSConfig : public ::google::protobuf::Message {
+ public:
+  HDFSConfig();
+  virtual ~HDFSConfig();
+
+  HDFSConfig(const HDFSConfig& from);
+
+  inline HDFSConfig& operator=(const HDFSConfig& from) {
+    CopyFrom(from);
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const {
+    return _unknown_fields_;
+  }
+
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields() {
+    return &_unknown_fields_;
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const HDFSConfig& default_instance();
+
+  void Swap(HDFSConfig* other);
+
+  // implements Message ----------------------------------------------
+
+  HDFSConfig* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const HDFSConfig& from);
+  void MergeFrom(const HDFSConfig& from);
+  void Clear();
+  bool IsInitialized() const;
+
+  int ByteSize() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // optional string home = 1;
+  inline bool has_home() const;
+  inline void clear_home();
+  static const int kHomeFieldNumber = 1;
+  inline const ::std::string& home() const;
+  inline void set_home(const ::std::string& value);
+  inline void set_home(const char* value);
+  inline void set_home(const char* value, size_t size);
+  inline ::std::string* mutable_home();
+  inline ::std::string* release_home();
+  inline void set_allocated_home(::std::string* home);
+
+  // optional string ugi = 2;
+  inline bool has_ugi() const;
+  inline void clear_ugi();
+  static const int kUgiFieldNumber = 2;
+  inline const ::std::string& ugi() const;
+  inline void set_ugi(const ::std::string& value);
+  inline void set_ugi(const char* value);
+  inline void set_ugi(const char* value, size_t size);
+  inline ::std::string* mutable_ugi();
+  inline ::std::string* release_ugi();
+  inline void set_allocated_ugi(::std::string* ugi);
+
+  // optional string namenode = 4;
+  inline bool has_namenode() const;
+  inline void clear_namenode();
+  static const int kNamenodeFieldNumber = 4;
+  inline const ::std::string& namenode() const;
+  inline void set_namenode(const ::std::string& value);
+  inline void set_namenode(const char* value);
+  inline void set_namenode(const char* value, size_t size);
+  inline ::std::string* mutable_namenode();
+  inline ::std::string* release_namenode();
+  inline void set_allocated_namenode(::std::string* namenode);
+
+  // @@protoc_insertion_point(class_scope:PS.HDFSConfig)
+ private:
+  inline void set_has_home();
+  inline void clear_has_home();
+  inline void set_has_ugi();
+  inline void clear_has_ugi();
+  inline void set_has_namenode();
+  inline void clear_has_namenode();
+
+  ::google::protobuf::UnknownFieldSet _unknown_fields_;
+
+  ::std::string* home_;
+  ::std::string* ugi_;
+  ::std::string* namenode_;
+
+  mutable int _cached_size_;
+  ::google::protobuf::uint32 _has_bits_[(3 + 31) / 32];
+
+  friend void  protobuf_AddDesc_proto_2fconfig_2eproto();
+  friend void protobuf_AssignDesc_proto_2fconfig_2eproto();
+  friend void protobuf_ShutdownFile_proto_2fconfig_2eproto();
+
+  void InitAsDefaultInstance();
+  static HDFSConfig* default_instance_;
+};
 // ===================================================================
 
 
@@ -681,7 +892,30 @@ inline void DataConfig::set_format(::PS::DataConfig_DataFormat value) {
   format_ = value;
 }
 
-// repeated string file = 2;
+// optional .PS.DataConfig.TextFormat text = 2;
+inline bool DataConfig::has_text() const {
+  return (_has_bits_[0] & 0x00000002u) != 0;
+}
+inline void DataConfig::set_has_text() {
+  _has_bits_[0] |= 0x00000002u;
+}
+inline void DataConfig::clear_has_text() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+inline void DataConfig::clear_text() {
+  text_ = 3;
+  clear_has_text();
+}
+inline ::PS::DataConfig_TextFormat DataConfig::text() const {
+  return static_cast< ::PS::DataConfig_TextFormat >(text_);
+}
+inline void DataConfig::set_text(::PS::DataConfig_TextFormat value) {
+  assert(::PS::DataConfig_TextFormat_IsValid(value));
+  set_has_text();
+  text_ = value;
+}
+
+// repeated string file = 3;
 inline int DataConfig::file_size() const {
   return file_.size();
 }
@@ -725,15 +959,53 @@ DataConfig::mutable_file() {
   return &file_;
 }
 
-// optional .PS.PbRange range = 3;
+// optional .PS.HDFSConfig hdfs = 5;
+inline bool DataConfig::has_hdfs() const {
+  return (_has_bits_[0] & 0x00000008u) != 0;
+}
+inline void DataConfig::set_has_hdfs() {
+  _has_bits_[0] |= 0x00000008u;
+}
+inline void DataConfig::clear_has_hdfs() {
+  _has_bits_[0] &= ~0x00000008u;
+}
+inline void DataConfig::clear_hdfs() {
+  if (hdfs_ != NULL) hdfs_->::PS::HDFSConfig::Clear();
+  clear_has_hdfs();
+}
+inline const ::PS::HDFSConfig& DataConfig::hdfs() const {
+  return hdfs_ != NULL ? *hdfs_ : *default_instance_->hdfs_;
+}
+inline ::PS::HDFSConfig* DataConfig::mutable_hdfs() {
+  set_has_hdfs();
+  if (hdfs_ == NULL) hdfs_ = new ::PS::HDFSConfig;
+  return hdfs_;
+}
+inline ::PS::HDFSConfig* DataConfig::release_hdfs() {
+  clear_has_hdfs();
+  ::PS::HDFSConfig* temp = hdfs_;
+  hdfs_ = NULL;
+  return temp;
+}
+inline void DataConfig::set_allocated_hdfs(::PS::HDFSConfig* hdfs) {
+  delete hdfs_;
+  hdfs_ = hdfs;
+  if (hdfs) {
+    set_has_hdfs();
+  } else {
+    clear_has_hdfs();
+  }
+}
+
+// optional .PS.PbRange range = 4;
 inline bool DataConfig::has_range() const {
-  return (_has_bits_[0] & 0x00000004u) != 0;
+  return (_has_bits_[0] & 0x00000010u) != 0;
 }
 inline void DataConfig::set_has_range() {
-  _has_bits_[0] |= 0x00000004u;
+  _has_bits_[0] |= 0x00000010u;
 }
 inline void DataConfig::clear_has_range() {
-  _has_bits_[0] &= ~0x00000004u;
+  _has_bits_[0] &= ~0x00000010u;
 }
 inline void DataConfig::clear_range() {
   if (range_ != NULL) range_->::PS::PbRange::Clear();
@@ -763,6 +1035,28 @@ inline void DataConfig::set_allocated_range(::PS::PbRange* range) {
   }
 }
 
+// optional bool ignore_fea_grp = 6;
+inline bool DataConfig::has_ignore_fea_grp() const {
+  return (_has_bits_[0] & 0x00000020u) != 0;
+}
+inline void DataConfig::set_has_ignore_fea_grp() {
+  _has_bits_[0] |= 0x00000020u;
+}
+inline void DataConfig::clear_has_ignore_fea_grp() {
+  _has_bits_[0] &= ~0x00000020u;
+}
+inline void DataConfig::clear_ignore_fea_grp() {
+  ignore_fea_grp_ = false;
+  clear_has_ignore_fea_grp();
+}
+inline bool DataConfig::ignore_fea_grp() const {
+  return ignore_fea_grp_;
+}
+inline void DataConfig::set_ignore_fea_grp(bool value) {
+  set_has_ignore_fea_grp();
+  ignore_fea_grp_ = value;
+}
+
 // -------------------------------------------------------------------
 
 // ParameterInitConfig
@@ -790,15 +1084,37 @@ inline void ParameterInitConfig::set_type(::PS::ParameterInitConfig_Type value) 
   type_ = value;
 }
 
-// optional double mean = 2 [default = 0];
-inline bool ParameterInitConfig::has_mean() const {
+// optional double constant = 2 [default = 1];
+inline bool ParameterInitConfig::has_constant() const {
   return (_has_bits_[0] & 0x00000002u) != 0;
 }
-inline void ParameterInitConfig::set_has_mean() {
+inline void ParameterInitConfig::set_has_constant() {
   _has_bits_[0] |= 0x00000002u;
 }
-inline void ParameterInitConfig::clear_has_mean() {
+inline void ParameterInitConfig::clear_has_constant() {
   _has_bits_[0] &= ~0x00000002u;
+}
+inline void ParameterInitConfig::clear_constant() {
+  constant_ = 1;
+  clear_has_constant();
+}
+inline double ParameterInitConfig::constant() const {
+  return constant_;
+}
+inline void ParameterInitConfig::set_constant(double value) {
+  set_has_constant();
+  constant_ = value;
+}
+
+// optional double mean = 3 [default = 0];
+inline bool ParameterInitConfig::has_mean() const {
+  return (_has_bits_[0] & 0x00000004u) != 0;
+}
+inline void ParameterInitConfig::set_has_mean() {
+  _has_bits_[0] |= 0x00000004u;
+}
+inline void ParameterInitConfig::clear_has_mean() {
+  _has_bits_[0] &= ~0x00000004u;
 }
 inline void ParameterInitConfig::clear_mean() {
   mean_ = 0;
@@ -812,15 +1128,15 @@ inline void ParameterInitConfig::set_mean(double value) {
   mean_ = value;
 }
 
-// optional double std = 3 [default = 1];
+// optional double std = 4 [default = 1];
 inline bool ParameterInitConfig::has_std() const {
-  return (_has_bits_[0] & 0x00000004u) != 0;
+  return (_has_bits_[0] & 0x00000008u) != 0;
 }
 inline void ParameterInitConfig::set_has_std() {
-  _has_bits_[0] |= 0x00000004u;
+  _has_bits_[0] |= 0x00000008u;
 }
 inline void ParameterInitConfig::clear_has_std() {
-  _has_bits_[0] &= ~0x00000004u;
+  _has_bits_[0] &= ~0x00000008u;
 }
 inline void ParameterInitConfig::clear_std() {
   std_ = 1;
@@ -834,15 +1150,15 @@ inline void ParameterInitConfig::set_std(double value) {
   std_ = value;
 }
 
-// optional string file_name = 4;
+// optional string file_name = 5;
 inline bool ParameterInitConfig::has_file_name() const {
-  return (_has_bits_[0] & 0x00000008u) != 0;
+  return (_has_bits_[0] & 0x00000010u) != 0;
 }
 inline void ParameterInitConfig::set_has_file_name() {
-  _has_bits_[0] |= 0x00000008u;
+  _has_bits_[0] |= 0x00000010u;
 }
 inline void ParameterInitConfig::clear_has_file_name() {
-  _has_bits_[0] &= ~0x00000008u;
+  _has_bits_[0] &= ~0x00000010u;
 }
 inline void ParameterInitConfig::clear_file_name() {
   if (file_name_ != &::google::protobuf::internal::kEmptyString) {
@@ -1049,6 +1365,220 @@ PenaltyConfig::mutable_lambda() {
   return &lambda_;
 }
 
+// -------------------------------------------------------------------
+
+// HDFSConfig
+
+// optional string home = 1;
+inline bool HDFSConfig::has_home() const {
+  return (_has_bits_[0] & 0x00000001u) != 0;
+}
+inline void HDFSConfig::set_has_home() {
+  _has_bits_[0] |= 0x00000001u;
+}
+inline void HDFSConfig::clear_has_home() {
+  _has_bits_[0] &= ~0x00000001u;
+}
+inline void HDFSConfig::clear_home() {
+  if (home_ != &::google::protobuf::internal::kEmptyString) {
+    home_->clear();
+  }
+  clear_has_home();
+}
+inline const ::std::string& HDFSConfig::home() const {
+  return *home_;
+}
+inline void HDFSConfig::set_home(const ::std::string& value) {
+  set_has_home();
+  if (home_ == &::google::protobuf::internal::kEmptyString) {
+    home_ = new ::std::string;
+  }
+  home_->assign(value);
+}
+inline void HDFSConfig::set_home(const char* value) {
+  set_has_home();
+  if (home_ == &::google::protobuf::internal::kEmptyString) {
+    home_ = new ::std::string;
+  }
+  home_->assign(value);
+}
+inline void HDFSConfig::set_home(const char* value, size_t size) {
+  set_has_home();
+  if (home_ == &::google::protobuf::internal::kEmptyString) {
+    home_ = new ::std::string;
+  }
+  home_->assign(reinterpret_cast<const char*>(value), size);
+}
+inline ::std::string* HDFSConfig::mutable_home() {
+  set_has_home();
+  if (home_ == &::google::protobuf::internal::kEmptyString) {
+    home_ = new ::std::string;
+  }
+  return home_;
+}
+inline ::std::string* HDFSConfig::release_home() {
+  clear_has_home();
+  if (home_ == &::google::protobuf::internal::kEmptyString) {
+    return NULL;
+  } else {
+    ::std::string* temp = home_;
+    home_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+    return temp;
+  }
+}
+inline void HDFSConfig::set_allocated_home(::std::string* home) {
+  if (home_ != &::google::protobuf::internal::kEmptyString) {
+    delete home_;
+  }
+  if (home) {
+    set_has_home();
+    home_ = home;
+  } else {
+    clear_has_home();
+    home_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+  }
+}
+
+// optional string ugi = 2;
+inline bool HDFSConfig::has_ugi() const {
+  return (_has_bits_[0] & 0x00000002u) != 0;
+}
+inline void HDFSConfig::set_has_ugi() {
+  _has_bits_[0] |= 0x00000002u;
+}
+inline void HDFSConfig::clear_has_ugi() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+inline void HDFSConfig::clear_ugi() {
+  if (ugi_ != &::google::protobuf::internal::kEmptyString) {
+    ugi_->clear();
+  }
+  clear_has_ugi();
+}
+inline const ::std::string& HDFSConfig::ugi() const {
+  return *ugi_;
+}
+inline void HDFSConfig::set_ugi(const ::std::string& value) {
+  set_has_ugi();
+  if (ugi_ == &::google::protobuf::internal::kEmptyString) {
+    ugi_ = new ::std::string;
+  }
+  ugi_->assign(value);
+}
+inline void HDFSConfig::set_ugi(const char* value) {
+  set_has_ugi();
+  if (ugi_ == &::google::protobuf::internal::kEmptyString) {
+    ugi_ = new ::std::string;
+  }
+  ugi_->assign(value);
+}
+inline void HDFSConfig::set_ugi(const char* value, size_t size) {
+  set_has_ugi();
+  if (ugi_ == &::google::protobuf::internal::kEmptyString) {
+    ugi_ = new ::std::string;
+  }
+  ugi_->assign(reinterpret_cast<const char*>(value), size);
+}
+inline ::std::string* HDFSConfig::mutable_ugi() {
+  set_has_ugi();
+  if (ugi_ == &::google::protobuf::internal::kEmptyString) {
+    ugi_ = new ::std::string;
+  }
+  return ugi_;
+}
+inline ::std::string* HDFSConfig::release_ugi() {
+  clear_has_ugi();
+  if (ugi_ == &::google::protobuf::internal::kEmptyString) {
+    return NULL;
+  } else {
+    ::std::string* temp = ugi_;
+    ugi_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+    return temp;
+  }
+}
+inline void HDFSConfig::set_allocated_ugi(::std::string* ugi) {
+  if (ugi_ != &::google::protobuf::internal::kEmptyString) {
+    delete ugi_;
+  }
+  if (ugi) {
+    set_has_ugi();
+    ugi_ = ugi;
+  } else {
+    clear_has_ugi();
+    ugi_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+  }
+}
+
+// optional string namenode = 4;
+inline bool HDFSConfig::has_namenode() const {
+  return (_has_bits_[0] & 0x00000004u) != 0;
+}
+inline void HDFSConfig::set_has_namenode() {
+  _has_bits_[0] |= 0x00000004u;
+}
+inline void HDFSConfig::clear_has_namenode() {
+  _has_bits_[0] &= ~0x00000004u;
+}
+inline void HDFSConfig::clear_namenode() {
+  if (namenode_ != &::google::protobuf::internal::kEmptyString) {
+    namenode_->clear();
+  }
+  clear_has_namenode();
+}
+inline const ::std::string& HDFSConfig::namenode() const {
+  return *namenode_;
+}
+inline void HDFSConfig::set_namenode(const ::std::string& value) {
+  set_has_namenode();
+  if (namenode_ == &::google::protobuf::internal::kEmptyString) {
+    namenode_ = new ::std::string;
+  }
+  namenode_->assign(value);
+}
+inline void HDFSConfig::set_namenode(const char* value) {
+  set_has_namenode();
+  if (namenode_ == &::google::protobuf::internal::kEmptyString) {
+    namenode_ = new ::std::string;
+  }
+  namenode_->assign(value);
+}
+inline void HDFSConfig::set_namenode(const char* value, size_t size) {
+  set_has_namenode();
+  if (namenode_ == &::google::protobuf::internal::kEmptyString) {
+    namenode_ = new ::std::string;
+  }
+  namenode_->assign(reinterpret_cast<const char*>(value), size);
+}
+inline ::std::string* HDFSConfig::mutable_namenode() {
+  set_has_namenode();
+  if (namenode_ == &::google::protobuf::internal::kEmptyString) {
+    namenode_ = new ::std::string;
+  }
+  return namenode_;
+}
+inline ::std::string* HDFSConfig::release_namenode() {
+  clear_has_namenode();
+  if (namenode_ == &::google::protobuf::internal::kEmptyString) {
+    return NULL;
+  } else {
+    ::std::string* temp = namenode_;
+    namenode_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+    return temp;
+  }
+}
+inline void HDFSConfig::set_allocated_namenode(::std::string* namenode) {
+  if (namenode_ != &::google::protobuf::internal::kEmptyString) {
+    delete namenode_;
+  }
+  if (namenode) {
+    set_has_namenode();
+    namenode_ = namenode;
+  } else {
+    clear_has_namenode();
+    namenode_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+  }
+}
+
 
 // @@protoc_insertion_point(namespace_scope)
 
@@ -1061,6 +1591,10 @@ namespace protobuf {
 template <>
 inline const EnumDescriptor* GetEnumDescriptor< ::PS::DataConfig_DataFormat>() {
   return ::PS::DataConfig_DataFormat_descriptor();
+}
+template <>
+inline const EnumDescriptor* GetEnumDescriptor< ::PS::DataConfig_TextFormat>() {
+  return ::PS::DataConfig_TextFormat_descriptor();
 }
 template <>
 inline const EnumDescriptor* GetEnumDescriptor< ::PS::ParameterInitConfig_Type>() {

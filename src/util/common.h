@@ -52,13 +52,15 @@ namespace PS {
 // uint128, we need to change proto/range.proto to string type, because uint64
 // is the largest integer type supported by protobuf
 typedef uint64 Key;
-typedef std::vector<Key> Keys;
+typedef std::vector<Key> KeyList;
 
 // profobuf. if we want to larger ones, such as uint128, we need to typedef uint64 Key;
 
 typedef std::lock_guard<std::mutex> Lock;
 
 using std::string;
+typedef std::vector<std::string> StringList;
+
 using std::shared_ptr;
 using std::unique_ptr;
 using std::pair;
@@ -72,7 +74,8 @@ using std::initializer_list;
 using google::protobuf::TextFormat;
 
 #define LL LOG(ERROR)
-#define LI LOG(INFO)
+#define LI LOG(ERROR)
+#define DD DLOG(ERROR)
 
 DECLARE_int32(num_threads);
 
@@ -96,13 +99,6 @@ static string dbstr(const V* data, int n, int m = 5) {
   }
   return ss.str();
 }
-
-enum class TimerType : unsigned char {
-    BUSY = 0,
-    NETIN,
-    NETOUT,
-    NUM,
-};
 
 
 } // namespace PS

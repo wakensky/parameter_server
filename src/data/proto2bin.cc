@@ -12,11 +12,10 @@ int main(int argc, char *argv[]) {
   using namespace PS;
 
   DataConfig cf;
-  ReadFileToProtoOrDie(FLAGS_input, &cf);
+  readFileToProtoOrDie(FLAGS_input, &cf);
 
   auto cf2 = searchFiles(cf);
-  InstanceInfo info;
-  auto data = readMatrices<double>(cf2, info, "proto2bin", -1, false);
+  auto data = readMatrices<double>(cf2);
 
   SArray<Key> key;
   auto X = data[1]->localize(&key);
