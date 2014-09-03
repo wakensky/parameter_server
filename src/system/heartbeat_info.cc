@@ -3,8 +3,8 @@
 
 namespace PS {
 HeartbeatInfo::HeartbeatInfo() :
-  timers_(HeartbeatInfo::TimerType::NUM),
-  in_bytes(0),
+  timers_(static_cast<size_t>(HeartbeatInfo::TimerType::NUM)),
+  in_bytes_(0),
   out_bytes_(0) {
   // get cpu core number
   char buffer[1024];
@@ -34,7 +34,7 @@ void HeartbeatInfo::stopTimer(const HeartbeatInfo::TimerType type) {
   timers_.at(static_cast<size_t>(type)).stop();
 }
 
-HeartbeatInfo::Snapshot dump() {
+HeartbeatInfo::Snapshot HeartbeatInfo::dump() {
   HeartbeatInfo::Snapshot ret;
 
   // process cpu
@@ -76,7 +76,7 @@ HeartbeatInfo::Snapshot dump() {
         break;
       }
     }
-    CHECK(interface_found) << "I cannot find interface[" << net_interface_ <<
+    CHECK(interface_found) << "I cannot find interface[" << interface_ <<
       "] in /proc/net/dev";
 
     // read counters
@@ -101,18 +101,18 @@ HeartbeatReport HeartbeatInfo::get() {
 
   // interval between invocations of get()
   double total_milli = total_timer_.stop();
-  total_timer_.reset();
-  total_timer_.start();
   if (total_milli < 1.0) {
     total_milli = 1.0;
   }
+
+  report.set_hostname(hostname_);
 
   report.set_seconds_since_epoch(std::chrono::duration_cast<std::chrono::seconds>(
     std::chrono::system_clock::now().time_since_epoch()).count());
 
   report.set_total_time_milli(total_milli);
   report.set_busy_time_milli(
-    timers_.at(static_cast<size_t>(HeartbeatInfo::TimerType::BUSY).get()));
+    timers_.at(static_cast<size_t>(HeartbeatInfo::TimerType::BUSY)).get());
 
   report.set_net_in_mb(in_bytes_ / 1024);
   in_bytes_ = 0;
@@ -140,7 +140,20 @@ HeartbeatReport HeartbeatInfo::get() {
   report.set_host_net_out_bw((snapshot_now.host_out_bytes - last_.host_out_bytes) /
     total_milli / 1000);
 
+  // reset all timers
+  for (auto& timer : timers_) {
+    timer.reset();
+    timer.start();
+  }
+  total_timer_.reset();
+  total_timer_.start();
+
   last_ = snapshot_now;
   return report;
+}
+
+void HeartbeatInfo::init(const string& interface, const string& hostname) {
+  interface_ = interface;
+  hostname_ = hostname;
 }
 }; // namespace PS

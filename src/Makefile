@@ -1,7 +1,7 @@
 CC = g++
 
-OPT = -O3 -ggdb
-# OPT = -O0 -ggdb
+# OPT = -O3 -ggdb -g -gdwarf-2
+OPT = -O0 -ggdb -g -gdwarf-2
 
 BIN = ../bin
 LIB = ../lib
@@ -17,7 +17,7 @@ THIRD_LIB=$(THIRD)/lib
 WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare
 INCPATH = -I. -I${THIRD_INC}
 
-# STATIC=1
+STATIC := 1
 ifeq (${STATIC}, 1)
 # TODO a lot of warning on mac with llvm
     CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
@@ -41,6 +41,7 @@ SRCS = $(PROTOS_CC) \
 	system/van.cc \
 	system/message.cc \
 	system/postoffice.cc \
+	system/heartbeat_info.cc \
 	system/yellow_pages.cc \
 	system/remote_node.cc \
 	system/executor.cc \

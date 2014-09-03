@@ -2,6 +2,7 @@
 #include <string.h>
 #include <zmq.h>
 #include "base/shared_array_inl.h"
+#include "util/local_machine.h"
 
 namespace PS {
 
@@ -10,16 +11,26 @@ DEFINE_string(scheduler, "", "the scheduler node");
 DEFINE_string(server_master, "", "the master of servers");
 DEFINE_bool(compress_message, true, "");
 DEFINE_bool(print_van, false, "");
+DEFINE_int32(my_rank, -1, "my rank among MPI peers");
+DEFINE_string(interface, "", "network interface");
+
+DECLARE_int32(num_workers);
+DECLARE_int32(num_servers);
 
 void Van::init() {
   scheduler_ = parseNode(FLAGS_scheduler);
 
   // assemble my_node_
-  if (0 == FLAGS_my_rank) {
+  if (FLAGS_my_rank < 0) {
+    LL << "You must pass me -my_rank with a valid value (GE 0)";
+    throw std::runtime_error("invalid my_rank");
+  }
+  else if (0 == FLAGS_my_rank) {
     my_node_ = scheduler_;
   } else {
     my_node_ = assembleMyNode();
   }
+  LI << "I am [" << my_node_.ShortDebugString() << "]; pid:" << getpid();
 
   context_ = zmq_ctx_new();
   // TODO the following does not work...
@@ -246,14 +257,24 @@ Node Van::assembleMyNode() {
   if (ip.empty() || FLAGS_interface.empty()) {
     throw std::runtime_error("got interface/ip failed");
   }
-  port = pickupAvailablePort();
+  port = LocalMachine::pickupAvailablePort();
   if (0 == port) {
     throw std::runtime_error("got port failed");
   }
-  ret_node.set_host(ip);
+  ret_node.set_hostname(ip);
   ret_node.set_port(static_cast<int32>(port));
 
   return ret_node;
+}
+
+Status Van::connectivity(const string &node_id) {
+  auto it = senders_.find(node_id);
+  if (senders_.end() != it) {
+    return Status::OK();
+  }
+  else {
+    return Status::NotFound("there is no socket to node " + node_id);
+  }
 }
 
 } // namespace PS

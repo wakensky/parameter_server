@@ -1,6 +1,7 @@
 #pragma once
 
 #include "util/common.h"
+#include "util/threadpool.h"
 #include "base/shared_array.h"
 #include "proto/task.pb.h"
 

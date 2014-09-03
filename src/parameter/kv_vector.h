@@ -84,11 +84,18 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
     val_[chl].clear();
     return;
   }
+
+  // get range
+  Range<K> key_range(msg->task.key_range());
+  SizeR range;
+  if (!key_[chl].empty() && !recv_key.empty()) {
+    range = key_[chl].findRange(key_range);
+  }
+
   // merge values, and store them in recved_val
   int t = msg->task.time();
   for (int i = 0; i < msg->value.size(); ++i) {
     SArray<V> recv_data(msg->value[i]);
-    Range<K> key_range(msg->task.key_range());
     CHECK_EQ(recv_data.size(), recv_key.size());
 
     {
@@ -96,11 +103,6 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
       size_t n = 0;
 
       if (recved_val_[t].size() <= i) {
-        // get range
-        SizeR range;
-        if (!key_[chl].empty() && !recv_key.empty()) {
-          range = key_[chl].findRange(key_range);
-        }
 
         // construct SArray<V>
         auto aligned = std::make_pair(range, SArray<V>());
@@ -113,7 +115,7 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
         match(range, key_[chl], aligned.second, recv_key, recv_data, &n,
           MatchOperation::ASSIGN);
       } else {
-        CHECK_EQ(aligned.first, recved_val_[t][i].first);
+        CHECK_EQ(range, recved_val_[t][i].first);
         // match
         match(recved_val_[t][i].first, key_[chl], recved_val_[t][i].second,
           recv_key, recv_data, &n, MatchOperation::ADD);
@@ -150,10 +152,10 @@ void KVVector<K,V>::getValue(const MessagePtr& msg) {
   // match
   match(range, recv_key, new_value, key_[ch], val_[ch],
     &n, MatchOperation::ASSIGN);
-  CHECK_GE(aligned.second.size(), n);
+  CHECK_GE(new_value.size(), n);
 
   // store in msg
-  msg->addValue(aligned.second);
+  msg->addValue(new_value);
 }
 
 

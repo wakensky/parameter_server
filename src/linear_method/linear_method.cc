@@ -6,6 +6,11 @@
 #include "base/io.h"
 
 namespace PS {
+
+DEFINE_int32(load_limit, 0,
+  "the maximum training/validation file number "
+  "that scheduler could assign for each worker. ");
+
 namespace LM {
 
 void LinearMethod::init() {
@@ -116,7 +121,7 @@ void LinearMethod::startSystem() {
   tr_parts = divideFiles(tr_cf, FLAGS_num_workers);
   if (conf_.has_validation_data()) {
     auto va_cf = searchFiles(conf_.validation_data());
-    va_parts = divideFiles(va_cf, FLAGS_num_workers);
+    va_parts = divideFiles(va_cf, FLAGS_num_workers, FLAGS_load_limit);
   }
 
   // create the app on all other machines

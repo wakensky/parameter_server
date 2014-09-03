@@ -121,6 +121,7 @@ message SketchResponse {
 
 message HeartbeatReport {
   optional int32 task_id = 1 [default = 0];
+  optional string hostname = 14;
 
   // time stamp
   // latest heartbeat report the scheduler has ever received 
@@ -135,8 +136,8 @@ message HeartbeatReport {
   optional uint32 net_out_mb = 5;
 
   // user+sys (percentage)
-  optional float process_cpu_usage = 6;
-  optional float host_cpu_usage = 7;
+  optional uint32 process_cpu_usage = 6;
+  optional uint32 host_cpu_usage = 7;
 
   optional uint32 process_rss_mb = 8;
   optional uint32 process_virt_mb = 9;

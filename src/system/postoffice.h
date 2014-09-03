@@ -38,6 +38,8 @@ class Postoffice {
   YellowPages& yp() { return yellow_pages_; }
   Node& myNode() { return yellow_pages_.van().myNode(); }
 
+  HeartbeatInfo& hb() { return heartbeat_info_; };
+
  private:
   DISALLOW_COPY_AND_ASSIGN(Postoffice);
   Postoffice() { }
@@ -52,7 +54,7 @@ class Postoffice {
   void addMyNode(const string& name, const Node& recver);
 
   string printDashboardTitle();
-  string printHeartbeatReport(const HeartbeatReport& report);
+  string printHeartbeatReport(const string& node_id, const HeartbeatReport& report);
 
   std::mutex mutex_;
   bool done_ = false;
@@ -71,13 +73,13 @@ class Postoffice {
   HeartbeatInfo heartbeat_info_;
 
   // record all heartbeat info by scheduler
-  std::map<NodeID, HeartbeatInfo,
+  std::map<NodeID, HeartbeatReport,
     bool (*)(const NodeID& a, const NodeID& b)> dashboard_{
     [](const NodeID& a, const NodeID& b) -> bool {
       // lambda: split NodeID into primary segment and secondary segment
       auto splitNodeID = [] (const NodeID& in, string& primary, string& secondary) {
         size_t tailing_alpha_idx = in.find_last_not_of("0123456789");
-        if (std::string::npos == last_alpha_idx) {
+        if (std::string::npos == tailing_alpha_idx) {
           primary = in;
           secondary = "";
         } else {

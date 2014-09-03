@@ -5,6 +5,9 @@
 #include "base/sparse_matrix.h"
 
 namespace PS {
+
+DECLARE_bool(verbose);
+
 namespace LM {
 
 void BatchSolver::init() {
@@ -184,9 +187,23 @@ bool BatchSolver::dataCache(const string& name, bool load) {
 
 int BatchSolver::loadData(const MessageCPtr& msg, InstanceInfo* info) {
   if (!IamWorker()) return 0;
+
+  if (FLAGS_verbose) {
+    LI << "loading cache ...";
+  }
+
   bool hit_cache = loadCache("train");
+
+  if (FLAGS_verbose) {
+    if (hit_cache) {
+      LI << "loaded cache successfully";
+    } else {
+      LI << "loaded cache failed";
+    }
+  }
+
   if (!hit_cache) {
-    auto train = readMatricesOrDie<double>(conf_.training_data());
+    auto train = readMatricesOrDie<double>(conf_.training_data(), FLAGS_verbose);
     CHECK_GE(train.size(), 2);
     y_ = train[0];
     for (int i = 1; i < train.size(); ++i) {
@@ -212,8 +229,20 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       int grp = fea_grp_[i];
       SArray<Key> uniq_key;
       SArray<uint32> key_cnt;
+
+      if (FLAGS_verbose) {
+        LI << "counting unique key [" << i + 1 << "/" << grp_size << "]";
+      }
+
+      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
       Localizer<Key, double> localizer(X_[grp]);
       localizer.countUniqIndex(&uniq_key, &key_cnt);
+      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
+      if (FLAGS_verbose) {
+        LI << "counted unique key [" << i + 1 << "/" << grp_size << "]";
+      }
+
       // if (uniq_key.empty()) {
       //   LL << myNodeID() << " " << grp;
       //   if (X_[grp]) LL << X_[grp]->debugString();
@@ -232,12 +261,36 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       filter->key = uniq_key;
       filter->task.set_key_channel(grp);
       w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
-      filter->fin_handle = [this, localizer, grp]() {
+      filter->fin_handle = [this, localizer, grp, i, grp_size]() {
         // localize the training matrix
         if (!X_[grp]) return;
+
+        if (FLAGS_verbose) {
+          LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
+        }
+
+        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
         auto X = localizer.remapIndex(w_->key(grp));
+        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
+        if (FLAGS_verbose) {
+          LI << "finished remapIndex [" << i + 1 << "/" << grp_size << "]";
+        }
+
         if (!X) { X_.erase(grp); return; }
+
+        if (FLAGS_verbose) {
+          LI << "started toColMajor [" << i + 1 << "/" << grp_size << "]";
+        }
+
+        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
         if (conf_.solver().has_feature_block_ratio()) X = X->toColMajor();
+        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
+        if (FLAGS_verbose) {
+          LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
+        }
+
         { Lock l(mu_); X_[grp] = X; }
       };
       CHECK_EQ(time+2, w_->pull(filter));

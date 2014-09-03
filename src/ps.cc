@@ -6,13 +6,7 @@ DEFINE_bool(log_instant, false, "disable buffer of glog");
 int main(int argc, char *argv[]) {
   google::InitGoogleLogging(argv[0]);
   google::ParseCommandLineFlags(&argc, &argv, true);
-
-  if (FLAGS_log_to_file) {
-    google::SetLogDestination(google::INFO, ("./log_" + id + "_").c_str());
-    FLAGS_logtostderr = 0;
-  } else {
-    FLAGS_logtostderr = 1;
-  }
+  FLAGS_logtostderr = 1;
 
   if (FLAGS_log_instant) {
     FLAGS_logbuflevel = -1;

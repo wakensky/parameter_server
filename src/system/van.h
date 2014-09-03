@@ -18,6 +18,9 @@ class Van {
 
   Status connect(Node const& node);
 
+  // check whether I could connect to a specified node
+  Status connectivity(const string &node_id);
+
   // Status send(const MessagePtr& msg);
   Status send(const MessageCPtr& msg);
   Status recv(const MessagePtr& msg);

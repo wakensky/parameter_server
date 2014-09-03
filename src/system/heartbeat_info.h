@@ -22,7 +22,8 @@ public:
 
   // set network interface which is under use
   //   such as "eth0"
-  void setInterface(const string& name) { Lock l(mu_); interface_ = name; }
+  // set hostname
+  void init(const string& interface, const string& hostname);
 
   void startTimer(const HeartbeatInfo::TimerType type);
   void stopTimer(const HeartbeatInfo::TimerType type);
@@ -38,6 +39,7 @@ private:
   size_t out_bytes_;
 
   string interface_;
+  string hostname_;
 
   // snapshot of performance counters
   struct Snapshot {

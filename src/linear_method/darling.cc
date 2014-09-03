@@ -3,6 +3,9 @@
 #include "base/sparse_matrix.h"
 
 namespace PS {
+
+DECLARE_bool(verbose);
+
 namespace LM {
 
 void Darling::init() {
@@ -105,6 +108,10 @@ void Darling::preprocessData(const MessageCPtr& msg) {
 }
 
 void Darling::updateModel(const MessagePtr& msg) {
+  if (FLAGS_verbose) {
+    LI << "updateModel; msg [" << msg->shortDebugString() << "]";
+  }
+
   CHECK_GT(FLAGS_num_threads, 0);
   auto time = msg->task.time() * kPace;
   auto call = get(msg);
@@ -123,9 +130,13 @@ void Darling::updateModel(const MessagePtr& msg) {
   if (IamWorker()) {
     // compute local gradients
     mu_.lock();
+
+    this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
     busy_timer_.start();
     auto local_gradients = computeGradients(grp, seg_pos);
     busy_timer_.stop();
+    this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
     mu_.unlock();
 
     // time 0: push local gradients
@@ -149,9 +160,13 @@ void Darling::updateModel(const MessagePtr& msg) {
         auto data = w_->received(time+2);
         CHECK_EQ(data.size(), 1); CHECK_EQ(seg_pos, data[0].first);
         mu_.lock();
+
+        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
         busy_timer_.start();
         updateDual(grp, seg_pos, data[0].second);
         busy_timer_.stop();
+        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
         mu_.unlock();
       }
       // now finished, reply the scheduler
@@ -172,7 +187,10 @@ void Darling::updateModel(const MessagePtr& msg) {
       CHECK_EQ(data.size(), 2);
       CHECK_EQ(seg_pos, data[0].first);
       CHECK_EQ(seg_pos, data[1].first);
+
+      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
       updateWeight(grp, seg_pos, data[0].second, data[1].second);
+      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
     }
     w_->finish(kWorkerGroup, time+1);
 
@@ -389,6 +407,35 @@ Progress Darling::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.stop());
     busy_timer_.restart();
+
+    // label statistics
+    if (FLAGS_verbose) {
+      size_t positive_label_count = 0;
+      size_t negative_label_count = 0;
+      size_t bad_label_count = 0;
+
+      for (size_t i = 0; i < y_->value().size(); ++i) {
+        int label = y_->value()[i];
+
+        if (1 == label) {
+          positive_label_count++;
+        } else if (-1 == label) {
+          negative_label_count++;
+        } else {
+          bad_label_count++;
+        }
+      }
+
+      LI << "dual_sum[" << dual_.eigenArray().sum() << "] " <<
+        "dual_.rows[" << dual_.eigenArray().rows() << "] " <<
+        "dual_.avg[" << dual_.eigenArray().sum() / static_cast<double>(
+          dual_.eigenArray().rows()) << "] " <<
+        "y_.positive[" << positive_label_count << "] " <<
+        "y_.negative[" << negative_label_count << "] " <<
+        "y_.bad[" << bad_label_count << "] " <<
+        "y_.positive_ratio[" << positive_label_count / static_cast<double>(
+          positive_label_count + negative_label_count + bad_label_count) << "] ";
+    }
   } else {
     size_t nnz_w = 0;
     size_t nnz_as = 0;

@@ -78,18 +78,18 @@ class ResUsage {
  public:
   // in Mb
   static double myVirMem() {
-    return getLine("VmSize:") / 1e3;
+    return getLine("/proc/self/status", "VmSize:") / 1e3;
   }
   static double myPhyMem() {
-    return getLine("VmRSS:") / 1e3;
+    return getLine("/proc/self/status", "VmRSS:") / 1e3;
   }
   // in Mb
   static double hostFreePhyMem() {
     return getLine("/proc/meminfo", "MemFree:") / 1e3;
   }
  private:
-  static double getLine(const char *name) {
-    FILE* file = fopen("/proc/self/status", "r");
+  static double getLine(const char *filename, const char *name) {
+    FILE* file = fopen(filename, "r");
     char line[128];
     int result = -1;
     while (fgets(line, 128, file) != NULL){

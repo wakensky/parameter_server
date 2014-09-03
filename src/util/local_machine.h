@@ -5,6 +5,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+#include <net/if.h>
 
 #include <string>
 
@@ -97,7 +98,7 @@ class LocalMachine {
     }
 
     socklen_t addr_len = sizeof(struct sockaddr_in);
-    if (0 != getsockname(sock, (struct sockaddr*)&addr, addr_len)) {
+    if (0 != getsockname(sock, (struct sockaddr*)&addr, &addr_len)) {
       perror("getsockname():");
       return 0;
     }

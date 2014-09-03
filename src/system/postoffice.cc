@@ -1,3 +1,4 @@
+#include <iomanip>
 #include "system/postoffice.h"
 // #include <omp.h>
 #include "system/customer.h"
@@ -18,6 +19,10 @@ DEFINE_int32(report_interval, 5,
   "Servers/Workers report running status to scheduler "
   "in every report_interval seconds. "
   "default: 5; if set to 0, heartbeat is disabled");
+DEFINE_bool(verbose, false, "print extra debug info");
+DEFINE_bool(log_to_file, false, "redirect INFO log to file; eg. log_w1_datetime");
+
+DECLARE_string(interface);
 
 Postoffice::~Postoffice() {
   recving_->join();
@@ -30,6 +35,13 @@ void Postoffice::run() {
   // omp_set_dynamic(0);
   // omp_set_num_threads(FLAGS_num_threads);
   yellow_pages_.init();
+  heartbeat_info_.init(FLAGS_interface, myNode().hostname());
+
+  if (FLAGS_log_to_file) {
+    google::SetLogDestination(google::INFO, ("./log_" + myNode().id() + "_").c_str());
+    FLAGS_logtostderr = 0;
+  }
+
   recving_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::recv, this));
   sending_ = std::unique_ptr<std::thread>(new std::thread(&Postoffice::send, this));
 
@@ -38,7 +50,7 @@ void Postoffice::run() {
     if (Node::SCHEDULER == myNode().role()) {
       monitoring_ = std::unique_ptr<std::thread>(
         new std::thread(&Postoffice::monitor, this));
-      monitoring_.detach();
+      monitoring_->detach();
     } else {
       heartbeating_ = std::unique_ptr<std::thread>(
         new std::thread(&Postoffice::heartbeat, this));
@@ -131,8 +143,8 @@ void Postoffice::recv() {
       report.ParseFromString(tk.msg());
       {
         Lock l(dashboard_mu_);
-        report.set_task_id(dashboard_[msg.sender].task_id());
-        dashboard_[msg.sender] = report;
+        report.set_task_id(dashboard_[msg->sender].task_id());
+        dashboard_[msg->sender] = report;
       }
     } else {
       if (tk.customer() == "default") continue;
@@ -144,7 +156,7 @@ void Postoffice::recv() {
       //   I also record the latest task id for W/S without extra trouble
       if (Node::SCHEDULER == myNode().role() && FLAGS_report_interval > 0) {
         Lock l(dashboard_mu_);
-        dashboard_[msg.sender].set_task_id(msg.task.time());
+        dashboard_[msg->sender].set_task_id(msg->task.time());
       }
 
       continue;
@@ -217,13 +229,13 @@ void Postoffice::addMyNode(const string& name, const Node& recver) {
 void Postoffice::heartbeat() {
   while (!done_) {
     // heartbeat won't work until I have connected to the scheduler
-    if (yp_.van().connectivity("H").ok()) {
+    if (yellow_pages_.van().connectivity("H").ok()) {
       // serialize heartbeat report
       string report;
       heartbeat_info_.get().SerializeToString(&report);
 
       // pack msg
-      MessagePtr msg("H", 0);
+      MessagePtr msg(new Message("H", 0));
       msg->sender = myNode().id();
       msg->valid = true;
       msg->task.set_type(Task::HEARTBEATING);
@@ -248,7 +260,7 @@ void Postoffice::monitor() {
         std::stringstream ss;
         ss << printDashboardTitle() << "\n";
         for (const auto& report : dashboard_) {
-          ss << printHeartbeatReport(report) << "\n";
+          ss << printHeartbeatReport(report.first, report.second) << "\n";
         }
 
         // output
@@ -287,6 +299,46 @@ string Postoffice::printDashboardTitle() {
     std::setw(WIDTH) << "HostInBW" <<
     std::setw(WIDTH) << "HostOutBW" <<
     std::setw(WIDTH * 2) << "HostName";
+
+  return ss.str();
+}
+
+string Postoffice::printHeartbeatReport(
+  const string& node_id,
+  const HeartbeatReport& report) {
+  std::stringstream ss;
+  const size_t WIDTH = 10;
+
+  std::stringstream busy_time_with_ratio;
+  busy_time_with_ratio << report.busy_time_milli() <<
+    "(" << static_cast<uint32>(
+    100 * (static_cast<float>(report.busy_time_milli()) / report.total_time_milli())) <<
+    "%)";
+
+  std::stringstream net_in_mb_with_speed;
+  net_in_mb_with_speed << report.net_in_mb() <<
+    "(" << report.net_in_mb() / (report.total_time_milli() / 1000) <<
+    ")";
+
+  std::stringstream net_out_mb_with_speed;
+  net_out_mb_with_speed << report.net_out_mb() <<
+    "(" << report.net_out_mb() / (report.total_time_milli() / 1000) <<
+    ")";
+
+  ss << std::setiosflags(std::ios::left) <<
+    std::setw(WIDTH) << node_id <<
+    std::setw(WIDTH) << report.task_id() <<
+    std::setw(WIDTH) << report.process_cpu_usage() <<
+    std::setw(WIDTH) << report.process_rss_mb() <<
+    std::setw(WIDTH) << report.process_virt_mb() <<
+    std::setw(WIDTH) << busy_time_with_ratio.str() <<
+    std::setw(WIDTH) << net_in_mb_with_speed.str() <<
+    std::setw(WIDTH) << net_out_mb_with_speed.str() <<
+    std::setw(WIDTH) << report.host_cpu_usage() <<
+    std::setw(WIDTH) << report.host_free_mb() <<
+    std::setw(WIDTH) << report.host_net_in_bw() <<
+    std::setw(WIDTH) << report.host_net_out_bw() <<
+    std::setw(WIDTH * 2) << report.hostname();
 
   return ss.str();
 }
