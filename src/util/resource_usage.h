@@ -84,8 +84,14 @@ class ResUsage {
     return getLine("/proc/self/status", "VmRSS:") / 1e3;
   }
   // in Mb
-  static double hostFreePhyMem() {
-    return getLine("/proc/meminfo", "MemFree:") / 1e3;
+  static double hostInUseMem() {
+    return (getLine("/proc/meminfo", "MemTotal:") -
+      getLine("/proc/meminfo", "MemFree:") -
+      getLine("/proc/meminfo", "Buffers:") -
+      getLine("/proc/meminfo", "Cached:")) / 1024;
+  }
+  static double hostTotalMem() {
+    return getLine("/proc/meminfo", "MemTotal:") / 1024;
   }
  private:
   static double getLine(const char *filename, const char *name) {

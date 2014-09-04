@@ -340,7 +340,19 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
     for (int i = 0; i < grp_size; ++i) {
       w_->waitOutMsg(kServerGroup, pull_time[i]);
     }
-    saveCache("train");
+
+    if (FLAGS_verbose) {
+      LI << "saving cache ...";
+    }
+    if (saveCache("train")) {
+      if (FLAGS_verbose) {
+        LI << "cache saved successfully";
+      }
+    } else {
+      if (FLAGS_verbose) {
+        LI << "cache save failed";
+      }
+    }
   } else {
     for (int i = 0; i < grp_size; ++i, time += kPace) {
       if (hit_cache) continue;

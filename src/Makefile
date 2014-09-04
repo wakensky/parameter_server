@@ -1,7 +1,7 @@
 CC = g++
 
-# OPT = -O3 -ggdb -g -gdwarf-2
-OPT = -O0 -ggdb -g -gdwarf-2
+OPT = -O3 -ggdb -g -gdwarf-2
+# OPT = -O0 -ggdb -g -gdwarf-2
 
 BIN = ../bin
 LIB = ../lib
@@ -75,7 +75,7 @@ TESTS = \
         sparse_matrix_multi_thread_perf \
 	fault_tolerance_press \
 
-all: dir $(addprefix $(BIN)/, ps) # text2proto
+all: dir $(addprefix $(BIN)/, ps_cdn) # text2proto
 data: $(addprefix $(BIN)/, showins proto2bin)
 test: $(addprefix $(BIN)/, $(TESTS))
 
@@ -106,7 +106,7 @@ $(BIN)/%: test/%.cc $(LIB)/libps.a
 $(LIB)/libps.a: $(OBJS) #gtest
 	ar crv $@ $(OBJS)
 
-$(BIN)/ps: ps.cc $(LIB)/libps.a
+$(BIN)/ps_cdn: ps.cc $(LIB)/libps.a
 	$(CC) $(CFLAGS) ps.cc $(LDFLAGS) -o $@
 
 # =====================

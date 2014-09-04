@@ -14,6 +14,8 @@
 // TODO read and write gz files, see zlib.h. evaluate the performace gain
 namespace PS {
 
+DECLARE_bool(verbose);
+
 File* File::open(const std::string& name, const char* const flag) {
   File* f;
   if (name == "stdin") {
@@ -51,6 +53,12 @@ File* File::open(const DataConfig& name,  const char* const flag) {
   auto filename = name.file(0);
   if (name.has_hdfs()) {
     string cmd = hadoopFS(name.hdfs()) + " -cat " + filename;
+
+    // .gz
+    if (filename.size() > 3 && ".gz" == std::string(filename.end() - 3, filename.end())) {
+      cmd += " | gunzip";
+    }
+
     FILE* des = popen(cmd.c_str(), "r");
     if (des == NULL) {
       // LOG(ERROR) << "cannot open " << name.DebugString();
@@ -261,13 +269,25 @@ std::vector<std::string> readFilenamesInDirectory(const DataConfig& directory) {
   // read hdfs directory
   std::vector<std::string> files;
   string cmd = hadoopFS(directory.hdfs()) + " -ls " + dirname;
+
+  if (FLAGS_verbose) {
+    LI << "readFilenamesInDirectory hdfs ls [" << cmd << "]";
+  }
+
   FILE* des = popen(cmd.c_str(), "r"); CHECK(des);
   char line[10000];
   while (fgets(line, 10000, des)) {
     auto ents = split(std::string(line), ' ', true);
     if (ents.size() != 8) continue;
     if (ents[0][0] == 'd') continue;
-    files.push_back(ents.back());
+
+    // remove tailing line break
+    string this_is_file = ents.back();
+    if ('\n' == this_is_file.back()) {
+      this_is_file.resize(this_is_file.size() - 1);
+    }
+
+    files.push_back(this_is_file);
   }
   pclose(des);
   return files;
@@ -310,10 +330,29 @@ DataConfig searchFiles(const DataConfig& config) {
     dir.add_file(path(config.file(i)));
     // match regex
     auto files = readFilenamesInDirectory(dir);
+
+    // list all files found in dir
+    if (FLAGS_verbose) {
+      size_t file_idx = 1;
+      for (const auto& file : files) {
+        LI << "All files found in [" << dir.file(0) << "]; [" <<
+          file_idx++ << "/" << files.size() << "] [" << file << "]";
+      }
+    }
+
     for (auto& f : files) {
-      if (std::regex_match(f, pattern)) {
+      if (std::regex_match(filename(f), pattern)) {
         auto l = config.format() == DataConfig::TEXT ? f : removeExtension(f);
-        matched_files.push_back(dir.file(0) + "/" + l);
+        matched_files.push_back(dir.file(0) + "/" + filename(l));
+      }
+    }
+
+    // list all matched files
+    if (FLAGS_verbose) {
+      size_t file_idx = 1;
+      for (const auto& file : matched_files) {
+        LI << "All matched files [" << file_idx++ << "/" << matched_files.size() <<
+          "] [" << file << "]";
       }
     }
   }

@@ -141,7 +141,8 @@ message HeartbeatReport {
 
   optional uint32 process_rss_mb = 8;
   optional uint32 process_virt_mb = 9;
-  optional uint32 host_free_mb = 10;
+  optional uint32 host_in_use_gb = 10;
+  optional uint32 host_in_use_percentage = 15;
 
   // host's network in/out bandwidth usage (MB/s)
   optional uint32 host_net_in_bw = 11;

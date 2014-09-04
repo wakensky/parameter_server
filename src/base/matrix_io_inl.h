@@ -254,7 +254,7 @@ template<typename V>
 bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose) {
   if (verbose) {
     for (size_t i = 0; i < data.file_size(); ++i) {
-      LI << "I will load text data [" << i + 1 << "/" << "] " <<
+      LI << "I will load text data [" << i + 1 << "/" << data.file_size() << "] " <<
         "[" << data.file(i) << "]";
     }
   }
@@ -295,10 +295,16 @@ bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat, bool ve
   for (int i = 0; i < data.file_size(); ++i) {
     if (verbose) {
       LI << "loading text data [" << i + 1 << "/" << data.file_size() << "] " <<
-        "[" << data.file(i) << "]";
+        "[" << data.file(i) << "] ...";
     }
 
-    FileLineReader reader(data.file(i));
+    // construct a DataConfig containing only one file
+    DataConfig current_data_conf = data;
+    current_data_conf.clear_file();
+    current_data_conf.add_file(data.file(i));
+
+    // parse file
+    FileLineReader reader(current_data_conf);
     reader.set_line_callback(handle);
     reader.Reload();
   }

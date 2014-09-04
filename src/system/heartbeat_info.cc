@@ -114,31 +114,33 @@ HeartbeatReport HeartbeatInfo::get() {
   report.set_busy_time_milli(
     timers_.at(static_cast<size_t>(HeartbeatInfo::TimerType::BUSY)).get());
 
-  report.set_net_in_mb(in_bytes_ / 1024);
+  report.set_net_in_mb(in_bytes_ / 1024 / 1024);
   in_bytes_ = 0;
-  report.set_net_out_mb(out_bytes_ / 1024);
+  report.set_net_out_mb(out_bytes_ / 1024 / 1024);
   out_bytes_ = 0;
 
   uint32 process_now = snapshot_now.process_user + snapshot_now.process_sys;
   uint32 process_last = last_.process_user + last_.process_sys;
-  report.set_process_cpu_usage(100 * cpu_core_number_ * static_cast<uint32>(
-    static_cast<float>(process_now - process_last) /
-    (snapshot_now.host_cpu - last_.host_cpu)));
+  report.set_process_cpu_usage(cpu_core_number_ *
+    100 * static_cast<float>(process_now - process_last) /
+    (snapshot_now.host_cpu - last_.host_cpu));
 
   uint32 host_now = snapshot_now.host_user + snapshot_now.host_sys;
   uint32 host_last = last_.host_user + last_.host_sys;
-  report.set_host_cpu_usage(100 * cpu_core_number_ * static_cast<uint32>(
-    static_cast<float>(host_now - host_last) /
-    (snapshot_now.host_cpu - last_.host_cpu)));
+  report.set_host_cpu_usage(cpu_core_number_ *
+    100 * static_cast<float>(host_now - host_last) /
+    (snapshot_now.host_cpu - last_.host_cpu));
 
-  report.set_process_rss_mb(ResUsage::myVirMem());
-  report.set_process_virt_mb(ResUsage::myPhyMem());
-  report.set_host_free_mb(ResUsage::hostFreePhyMem());
+  report.set_process_rss_mb(ResUsage::myPhyMem());
+  report.set_process_virt_mb(ResUsage::myVirMem());
+  report.set_host_in_use_gb(ResUsage::hostInUseMem() / 1024);
+  report.set_host_in_use_percentage(
+    100 * ResUsage::hostInUseMem() / ResUsage::hostTotalMem());
 
-  report.set_host_net_in_bw((snapshot_now.host_in_bytes - last_.host_in_bytes) /
-    total_milli / 1000);
-  report.set_host_net_out_bw((snapshot_now.host_out_bytes - last_.host_out_bytes) /
-    total_milli / 1000);
+  report.set_host_net_in_bw(static_cast<uint32>(
+    (snapshot_now.host_in_bytes - last_.host_in_bytes) / (total_milli / 1e3) / 1024 / 1024));
+  report.set_host_net_out_bw(static_cast<uint32>(
+    (snapshot_now.host_out_bytes - last_.host_out_bytes) / (total_milli / 1e3) / 1024 / 1024));
 
   // reset all timers
   for (auto& timer : timers_) {

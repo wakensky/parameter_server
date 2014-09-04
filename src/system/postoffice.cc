@@ -116,18 +116,23 @@ void Postoffice::send() {
   while (true) {
     sending_queue_.wait_and_pop(msg);
     if (msg->terminate) break;
-    Status stat = yellow_pages_.van().send(msg);
+    size_t send_bytes = 0;
+    Status stat = yellow_pages_.van().send(msg, send_bytes);
     if (!stat.ok()) {
       LL << "sending " << msg->debugString() << " failed. error: " << stat.ToString();
     }
+    heartbeat_info_.increaseOutBytes(send_bytes);
   }
 }
 
 void Postoffice::recv() {
   while (true) {
     MessagePtr msg(new Message());
-    auto stat = yellow_pages_.van().recv(msg);
+    size_t recv_bytes = 0;
+    auto stat = yellow_pages_.van().recv(msg, recv_bytes);
     CHECK(stat.ok()) << stat.ToString();
+    heartbeat_info_.increaseInBytes(recv_bytes);
+
     auto& tk = msg->task;
     if (tk.request() && tk.type() == Task::TERMINATE) {
       yellow_pages_.van().statistic();
@@ -240,6 +245,7 @@ void Postoffice::heartbeat() {
       msg->valid = true;
       msg->task.set_type(Task::HEARTBEATING);
       msg->task.set_request(false);
+      msg->task.set_customer("HB");
       msg->task.set_msg(report);
 
       // push into sending queue
@@ -288,6 +294,7 @@ string Postoffice::printDashboardTitle() {
 
   ss << std::setfill(' ') <<
     std::setw(WIDTH) << "Node" <<
+    std::setw(WIDTH) << "Task" <<
     std::setw(WIDTH) << "MyCPU(%)" <<
     std::setw(WIDTH) << "MyRSS(M)" <<
     std::setw(WIDTH) << "MyVir(M)" <<
@@ -295,7 +302,7 @@ string Postoffice::printDashboardTitle() {
     std::setw(WIDTH) << "InMB" <<
     std::setw(WIDTH) << "OutMB" <<
     std::setw(WIDTH) << "HostCPU" <<
-    std::setw(WIDTH) << "HostFree" <<
+    std::setw(WIDTH) << "HostUseGB" <<
     std::setw(WIDTH) << "HostInBW" <<
     std::setw(WIDTH) << "HostOutBW" <<
     std::setw(WIDTH * 2) << "HostName";
@@ -317,13 +324,17 @@ string Postoffice::printHeartbeatReport(
 
   std::stringstream net_in_mb_with_speed;
   net_in_mb_with_speed << report.net_in_mb() <<
-    "(" << report.net_in_mb() / (report.total_time_milli() / 1000) <<
+    "(" << static_cast<uint32>(report.net_in_mb() / (report.total_time_milli() / 1e3)) <<
     ")";
 
   std::stringstream net_out_mb_with_speed;
   net_out_mb_with_speed << report.net_out_mb() <<
-    "(" << report.net_out_mb() / (report.total_time_milli() / 1000) <<
+    "(" << static_cast<uint32>(report.net_out_mb() / (report.total_time_milli() / 1e3)) <<
     ")";
+
+  std::stringstream host_memory_usage;
+  host_memory_usage << report.host_in_use_gb() << "(" <<
+    report.host_in_use_percentage() << "%)";
 
   ss << std::setiosflags(std::ios::left) <<
     std::setw(WIDTH) << node_id <<
@@ -335,9 +346,11 @@ string Postoffice::printHeartbeatReport(
     std::setw(WIDTH) << net_in_mb_with_speed.str() <<
     std::setw(WIDTH) << net_out_mb_with_speed.str() <<
     std::setw(WIDTH) << report.host_cpu_usage() <<
-    std::setw(WIDTH) << report.host_free_mb() <<
-    std::setw(WIDTH) << report.host_net_in_bw() <<
-    std::setw(WIDTH) << report.host_net_out_bw() <<
+    std::setw(WIDTH) << host_memory_usage.str() <<
+    std::setw(WIDTH) << (
+      report.host_net_in_bw() < 1024 ? std::to_string(report.host_net_in_bw()) : "INIT") <<
+    std::setw(WIDTH) << (
+      report.host_net_out_bw() < 1024 ? std::to_string(report.host_net_out_bw()) : "INIT") <<
     std::setw(WIDTH * 2) << report.hostname();
 
   return ss.str();

@@ -4,6 +4,8 @@
 #include "base/shared_array_inl.h"
 namespace PS {
 
+DECLARE_bool(verbose);
+
 DEFINE_bool(key_cache, true, "enable caching keys during communication");
 int RNode::submit(const MessagePtr& msg) {
   CHECK(msg);
@@ -111,10 +113,20 @@ void RNode::cacheKeySender(const MessagePtr& msg) {
   if (hit_cache) {
     msg->key.clear();
     msg->task.set_has_key(false);
+
+    if (FLAGS_verbose) {
+      LI << "cacheKeySender clears msg's key; msg [" <<
+        msg->shortDebugString() << "]";
+    }
   } else {
     cache.first = sig;
     cache.second = msg->key;
     msg->task.set_has_key(true);
+
+    if (FLAGS_verbose) {
+      LI << "cacheKeySender stores key for msg [" <<
+        msg->shortDebugString() << "]";
+    }
   }
 }
 
@@ -125,6 +137,13 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
   if (!msg->task.has_key_signature()) {
     Lock l(key_cache_mu_);
     key_cache_.erase(cache_k);
+
+    if (FLAGS_verbose) {
+      LI << "cacheKeyRecver erases key_cache_ item [" <<
+        cache_k.first << "{" << cache_k.second.begin() << "," <<
+        cache_k.second.end() << "}] " <<
+        "msg [" << msg->shortDebugString() << "]";
+    }
     return;
   }
   auto sig = msg->task.key_signature();
@@ -136,10 +155,18 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
     CHECK_EQ(crc32c::Value(msg->key.data(), msg->key.size()), sig);
     cache.first = sig;
     cache.second = msg->key;
+
+    if (FLAGS_verbose) {
+      LI << "cacheKeyRecver stores key for msg [" << msg->shortDebugString() << "]";
+    }
   } else {
     // the cache is invalid... may ask the sender to resend this task
     CHECK_EQ(sig, cache.first) << msg->debugString();
     msg->key = cache.second;
+
+    if (FLAGS_verbose) {
+      LI << "cacheKeyRecver restores key for msg [" << msg->shortDebugString() << "]";
+    }
   }
 }
 

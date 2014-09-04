@@ -103,7 +103,8 @@ Status Van::connect(Node const& node) {
 
 // TODO use zmq_msg_t to allow zero_copy send
 // btw, it is not thread safe
-Status Van::send(const MessageCPtr& msg) {
+Status Van::send(const MessageCPtr& msg, size_t& send_bytes) {
+  send_bytes = 0;
 
   // find the socket
   NodeID id = msg->recver;
@@ -142,6 +143,7 @@ Status Van::send(const MessageCPtr& msg) {
       << "failed to serialize " << task.ShortDebugString();
   int tag = ZMQ_SNDMORE;
   if (data.size() == 0) tag = 0; // ZMQ_DONTWAIT;
+  send_bytes += str.size();
   if (zmq_send(socket, str.c_str(), str.size(), tag) != str.size())
     return Status::NetError(
         "failed to send mailer to node " + (id) + zmq_strerror(errno));
@@ -151,6 +153,7 @@ Status Van::send(const MessageCPtr& msg) {
   for (int i = 0; i < data.size(); ++i) {
     const auto& raw = data[i];
     if (i == data.size() - 1) tag = 0; // ZMQ_DONTWAIT;
+    send_bytes += raw.size();
     if (zmq_send(socket, raw.data(), raw.size(), tag) != raw.size()) {
       return Status::NetError(
           "failed to send mailer to node " + (id) + zmq_strerror(errno));
@@ -165,7 +168,8 @@ Status Van::send(const MessageCPtr& msg) {
 }
 
 // TODO Zero copy
-Status Van::recv(const MessagePtr& msg) {
+Status Van::recv(const MessagePtr& msg, size_t& recv_bytes) {
+  recv_bytes = 0;
   msg->key = SArray<char>();
   msg->value.clear();
   NodeID sender;
@@ -180,6 +184,7 @@ Status Van::recv(const MessagePtr& msg) {
     CHECK(buf != NULL);
     size_t size = zmq_msg_size(&zmsg);
     data_received_ += size;
+    recv_bytes += size;
     if (i == 0) {
       // identify
       sender = id(std::string(buf, size));

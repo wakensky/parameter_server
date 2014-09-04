@@ -1,6 +1,5 @@
 #include "system/postoffice.h"
 
-DEFINE_bool(log_to_file, false, "redirect INFO log to file; eg. log_w1_datetime");
 DEFINE_bool(log_instant, false, "disable buffer of glog");
 
 int main(int argc, char *argv[]) {

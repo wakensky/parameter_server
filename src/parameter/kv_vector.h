@@ -110,6 +110,7 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
           aligned.second = SArray<V>(range.size());
         }
         CHECK_GE(aligned.second.size(), recv_key.size()) << recv_key;
+        recved_val_[t].push_back(aligned);
 
         // match
         match(range, key_[chl], aligned.second, recv_key, recv_data, &n,

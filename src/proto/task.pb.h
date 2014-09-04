@@ -1327,12 +1327,19 @@ class HeartbeatReport : public ::google::protobuf::Message {
   inline ::google::protobuf::uint32 process_virt_mb() const;
   inline void set_process_virt_mb(::google::protobuf::uint32 value);
 
-  // optional uint32 host_free_mb = 10;
-  inline bool has_host_free_mb() const;
-  inline void clear_host_free_mb();
-  static const int kHostFreeMbFieldNumber = 10;
-  inline ::google::protobuf::uint32 host_free_mb() const;
-  inline void set_host_free_mb(::google::protobuf::uint32 value);
+  // optional uint32 host_in_use_gb = 10;
+  inline bool has_host_in_use_gb() const;
+  inline void clear_host_in_use_gb();
+  static const int kHostInUseGbFieldNumber = 10;
+  inline ::google::protobuf::uint32 host_in_use_gb() const;
+  inline void set_host_in_use_gb(::google::protobuf::uint32 value);
+
+  // optional uint32 host_in_use_percentage = 15;
+  inline bool has_host_in_use_percentage() const;
+  inline void clear_host_in_use_percentage();
+  static const int kHostInUsePercentageFieldNumber = 15;
+  inline ::google::protobuf::uint32 host_in_use_percentage() const;
+  inline void set_host_in_use_percentage(::google::protobuf::uint32 value);
 
   // optional uint32 host_net_in_bw = 11;
   inline bool has_host_net_in_bw() const;
@@ -1372,8 +1379,10 @@ class HeartbeatReport : public ::google::protobuf::Message {
   inline void clear_has_process_rss_mb();
   inline void set_has_process_virt_mb();
   inline void clear_has_process_virt_mb();
-  inline void set_has_host_free_mb();
-  inline void clear_has_host_free_mb();
+  inline void set_has_host_in_use_gb();
+  inline void clear_has_host_in_use_gb();
+  inline void set_has_host_in_use_percentage();
+  inline void clear_has_host_in_use_percentage();
   inline void set_has_host_net_in_bw();
   inline void clear_has_host_net_in_bw();
   inline void set_has_host_net_out_bw();
@@ -1392,12 +1401,13 @@ class HeartbeatReport : public ::google::protobuf::Message {
   ::google::protobuf::uint32 host_cpu_usage_;
   ::google::protobuf::uint32 process_rss_mb_;
   ::google::protobuf::uint32 process_virt_mb_;
-  ::google::protobuf::uint32 host_free_mb_;
+  ::google::protobuf::uint32 host_in_use_gb_;
+  ::google::protobuf::uint32 host_in_use_percentage_;
   ::google::protobuf::uint32 host_net_in_bw_;
   ::google::protobuf::uint32 host_net_out_bw_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(14 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(15 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -2857,37 +2867,59 @@ inline void HeartbeatReport::set_process_virt_mb(::google::protobuf::uint32 valu
   process_virt_mb_ = value;
 }
 
-// optional uint32 host_free_mb = 10;
-inline bool HeartbeatReport::has_host_free_mb() const {
+// optional uint32 host_in_use_gb = 10;
+inline bool HeartbeatReport::has_host_in_use_gb() const {
   return (_has_bits_[0] & 0x00000800u) != 0;
 }
-inline void HeartbeatReport::set_has_host_free_mb() {
+inline void HeartbeatReport::set_has_host_in_use_gb() {
   _has_bits_[0] |= 0x00000800u;
 }
-inline void HeartbeatReport::clear_has_host_free_mb() {
+inline void HeartbeatReport::clear_has_host_in_use_gb() {
   _has_bits_[0] &= ~0x00000800u;
 }
-inline void HeartbeatReport::clear_host_free_mb() {
-  host_free_mb_ = 0u;
-  clear_has_host_free_mb();
+inline void HeartbeatReport::clear_host_in_use_gb() {
+  host_in_use_gb_ = 0u;
+  clear_has_host_in_use_gb();
 }
-inline ::google::protobuf::uint32 HeartbeatReport::host_free_mb() const {
-  return host_free_mb_;
+inline ::google::protobuf::uint32 HeartbeatReport::host_in_use_gb() const {
+  return host_in_use_gb_;
 }
-inline void HeartbeatReport::set_host_free_mb(::google::protobuf::uint32 value) {
-  set_has_host_free_mb();
-  host_free_mb_ = value;
+inline void HeartbeatReport::set_host_in_use_gb(::google::protobuf::uint32 value) {
+  set_has_host_in_use_gb();
+  host_in_use_gb_ = value;
+}
+
+// optional uint32 host_in_use_percentage = 15;
+inline bool HeartbeatReport::has_host_in_use_percentage() const {
+  return (_has_bits_[0] & 0x00001000u) != 0;
+}
+inline void HeartbeatReport::set_has_host_in_use_percentage() {
+  _has_bits_[0] |= 0x00001000u;
+}
+inline void HeartbeatReport::clear_has_host_in_use_percentage() {
+  _has_bits_[0] &= ~0x00001000u;
+}
+inline void HeartbeatReport::clear_host_in_use_percentage() {
+  host_in_use_percentage_ = 0u;
+  clear_has_host_in_use_percentage();
+}
+inline ::google::protobuf::uint32 HeartbeatReport::host_in_use_percentage() const {
+  return host_in_use_percentage_;
+}
+inline void HeartbeatReport::set_host_in_use_percentage(::google::protobuf::uint32 value) {
+  set_has_host_in_use_percentage();
+  host_in_use_percentage_ = value;
 }
 
 // optional uint32 host_net_in_bw = 11;
 inline bool HeartbeatReport::has_host_net_in_bw() const {
-  return (_has_bits_[0] & 0x00001000u) != 0;
+  return (_has_bits_[0] & 0x00002000u) != 0;
 }
 inline void HeartbeatReport::set_has_host_net_in_bw() {
-  _has_bits_[0] |= 0x00001000u;
+  _has_bits_[0] |= 0x00002000u;
 }
 inline void HeartbeatReport::clear_has_host_net_in_bw() {
-  _has_bits_[0] &= ~0x00001000u;
+  _has_bits_[0] &= ~0x00002000u;
 }
 inline void HeartbeatReport::clear_host_net_in_bw() {
   host_net_in_bw_ = 0u;
@@ -2903,13 +2935,13 @@ inline void HeartbeatReport::set_host_net_in_bw(::google::protobuf::uint32 value
 
 // optional uint32 host_net_out_bw = 12;
 inline bool HeartbeatReport::has_host_net_out_bw() const {
-  return (_has_bits_[0] & 0x00002000u) != 0;
+  return (_has_bits_[0] & 0x00004000u) != 0;
 }
 inline void HeartbeatReport::set_has_host_net_out_bw() {
-  _has_bits_[0] |= 0x00002000u;
+  _has_bits_[0] |= 0x00004000u;
 }
 inline void HeartbeatReport::clear_has_host_net_out_bw() {
-  _has_bits_[0] &= ~0x00002000u;
+  _has_bits_[0] &= ~0x00004000u;
 }
 inline void HeartbeatReport::clear_host_net_out_bw() {
   host_net_out_bw_ = 0u;

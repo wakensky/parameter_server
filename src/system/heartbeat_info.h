@@ -62,6 +62,21 @@ private:
       host_out_bytes(0) {
         // do nothing
     }
+
+    string shortDebugString() {
+      std::stringstream ss;
+      ss << "{";
+      ss << "process_user: " << process_user << ", ";
+      ss << "process_sys: " << process_sys << ", ";
+      ss << "host_user: " << host_user << ", ";
+      ss << "host_sys: " << host_sys << ", ";
+      ss << "host_cpu: " << host_cpu << ", ";
+      ss << "host_in_bytes: " << host_in_bytes << ", ";
+      ss << "host_out_bytes: " << host_out_bytes;
+      ss << "}";
+
+      return ss.str();
+    }
   }; // struct Snapshot
 
   HeartbeatInfo::Snapshot last_;
