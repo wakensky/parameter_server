@@ -168,6 +168,7 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
       LI << "cacheKeyRecver restores key for msg [" << msg->shortDebugString() << "]";
     }
   }
+  if (msg->task.erase_key_cache()) key_cache_.erase(cache_k);
 }
 
 } // namespace PS

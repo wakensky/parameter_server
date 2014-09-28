@@ -1,5 +1,5 @@
 #pragma once
-
+#include <atomic>
 #include "util/common.h"
 #include "util/file.h"
 #include "base/range.h"
@@ -12,6 +12,10 @@ template<typename V> class Matrix;
 template<typename V> class SArray;
 template<typename V> using SArrayList = std::vector<SArray<V>>;
 
+// static std::atomic<int64> g_mem_usage_sarray = ATOMIC_VAR_INIT(0);
+// extern int64 g_mem_usage_sarray;
+// extern std::mutex g_mu_sa_;
+
 // Memory efficient array. Most operations are zero-copy, such as assign, slice
 // a segment, convert to Eigen3 vector/array. It shares the same semantic as a C
 // array pointer. For example,
@@ -23,6 +27,7 @@ template<typename V> using SArrayList = std::vector<SArray<V>>;
 template<typename V> class SArray {
  public:
   SArray() { }
+  ~SArray() { }
   // Create an array with length n. Values are not initialized. To initialize
   // them, call setValue(v) or setZero()
   explicit SArray(size_t n) { resize(n); }
@@ -60,6 +65,10 @@ template<typename V> class SArray {
   // Capacity
   size_t size() const { return size_; }
   size_t capacity() const { return capacity_; }
+  size_t memSize() const { return capacity_*sizeof(V); }
+
+  // static int64 gMemSize() { return g_mem_usage_sarray.load(); }
+
   bool empty() const { return size() == 0; }
   // Replace the current data pointer with data. the memory associated with the
   // replaced pointer will be released if no other SArray points to it.
@@ -121,14 +130,18 @@ template<typename V> class SArray {
   // Uncompress the values from src with size src_size. Before calling this
   // function, you should allocate enough memory first (e.g. call resize(xx))
   void uncompressFrom(const char* src, size_t src_size);
+  void uncompressFrom(const SArray<char>& src) { uncompressFrom(src.data(), src.size()); }
 
   // read the segment [range.begin(), range.end()) from the binary file
   bool readFromFile(SizeR range, const string& file_name);
+  bool readFromFile(const string& file_name) {
+    return readFromFile(SizeR::all(), file_name);
+  }
   bool readFromFile(SizeR range, const DataConfig& file);
 
   // write all values into a binary file
   bool writeToFile(const string& file_name) const {
-    return writeToFile(SizeR::all(), file_name);
+    return writeToFile(SizeR(0, size_), file_name);
   }
   // write the segment [range.begin(), range.end()) into a binary file
   bool writeToFile(SizeR range, const string& file_name) const;

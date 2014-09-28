@@ -5,6 +5,7 @@
 #include <string>
 #include "zlib.h"
 #include "util/integral_types.h"
+#include "util/common.h"
 #include "glog/logging.h"
 #include "proto/config.pb.h"
 
@@ -32,6 +33,9 @@ class File {
   static bool remove(const char* const name) { return remove(name) == 0; }
   // Tests if a file exists.
   static bool exists(const char* const name) { return access(name, F_OK) == 0; }
+  static bool gzfile(const std::string& name) {
+    return (name.size() > 3 && std::string(name.end()-3, name.end()) == ".gz");
+  }
 
   // Reads "size" bytes to buff from file, buff should be pre-allocated.
   size_t read(void* const buff, size_t size);
@@ -111,13 +115,8 @@ std::string hadoopFS(const HDFSConfig& conf);
 std::vector<std::string> readFilenamesInDirectory(const std::string& directory);
 std::vector<std::string> readFilenamesInDirectory(const DataConfig& directory);
 
-// // locate the i-th file in *config*
-// DataConfig ithFile(const DataConfig& config);
-
-// return files matches the regex in *config*
-DataConfig searchFiles(const DataConfig& config);
-// evenly parttion the files into *num* parts
-std::vector<DataConfig> divideFiles(
-  const DataConfig& data, int num, const int load_limit = 0);
+string removeExtension(const string& file);
+string getPath(const string& full);
+string getFilename(const string& full);
 
 } // namespace PS

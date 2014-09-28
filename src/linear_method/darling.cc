@@ -78,7 +78,7 @@ void Darling::runIteration() {
     // update the kkt filter strategy
     double vio = g_progress_[iter].violation();
     double ratio = conf_.darling().kkt_filter_threshold_ratio();
-    KKT_filter_threshold_ = vio / (double)g_train_ins_info_.num_ins() * ratio;
+    KKT_filter_threshold_ = vio / (double)g_train_info_.num_ex() * ratio;
 
     // check if finished
     double rel = g_progress_[iter].relative_objv();
@@ -110,6 +110,16 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     delta_[grp].resize(n);
     delta_[grp].setValue(conf_.darling().delta_init_value());
   }
+
+  // size_t mem = 0;
+  // for (const auto& it : X_) mem += it.second->memSize();
+  // for (const auto& it : active_set_) mem += it.second.memSize();
+  // for (const auto& it : delta_) mem += it.second.memSize();
+  // mem += dual_.memSize();
+  // mem += w_->memSize();
+  // LL << ResUsage::myPhyMem() << " " << mem / 1e6 ;
+
+
 }
 
 void Darling::updateModel(const MessagePtr& msg) {

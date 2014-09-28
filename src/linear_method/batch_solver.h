@@ -1,5 +1,6 @@
 #pragma once
 #include "linear_method/linear_method.h"
+#include "data/slot_reader.h"
 
 namespace PS {
 namespace LM {
@@ -12,7 +13,7 @@ class BatchSolver : public LinearMethod {
  protected:
   static const int kPace = 10;
 
-  virtual int loadData(const MessageCPtr& msg, InstanceInfo* info);
+  virtual int loadData(const MessageCPtr& msg, ExampleInfo* info);
   virtual void preprocessData(const MessageCPtr& msg);
   virtual void updateModel(const MessagePtr& msg);
   virtual void runIteration();
@@ -38,11 +39,12 @@ class BatchSolver : public LinearMethod {
   std::vector<int> fea_grp_;
 
   // global data information, only available at the scheduler
-  InstanceInfo g_train_ins_info_;
+  ExampleInfo g_train_info_;
 
   // training data, available at the workers
   std::map<int, MatrixPtr<double>> X_;
   MatrixPtr<double> y_;
+  SlotReader slot_reader_;
   // dual_ = X * w
   SArray<double> dual_;
 

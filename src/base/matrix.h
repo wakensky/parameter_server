@@ -82,6 +82,9 @@ class Matrix {
   // I/O see matrix_io.h for more
   virtual bool writeToBinFile(string name) const = 0;
 
+  // return the memory size, in Mbyte
+  virtual size_t memSize() const { return value_.size()*sizeof(V); }
+
   // accessors and mutators
   MatrixInfo info() const { return info_; }
   uint64 rows() const { return info_.row().end() - info_.row().begin(); }

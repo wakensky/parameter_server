@@ -25,10 +25,9 @@ void SArray<V>::reserve(size_t n) {
 template <typename V>
 template <typename ForwardIt>
 void SArray<V>::copyFrom(const ForwardIt first, const ForwardIt last) {
-  size_ = std::distance(first, last);
-  capacity_ = size_ + 5;
-  data_ = new V[capacity_];
-  ptr_.reset(reinterpret_cast<char*>(data_), [](char *p) { delete [] p; });
+  size_t size = std::distance(first, last);
+  V* data = new V[size + 5];
+  reset(data, size);
   for (size_t i = 0; i < size_; ++i) {
     data_[i] = *(first+i);
   }
@@ -56,7 +55,9 @@ void SArray<V>::reset(V* data, size_t size) {
   capacity_ = size;
   size_ = size;
   data_ = data;
-  ptr_.reset(reinterpret_cast<char*>(data_), [](char *p) { delete [] p; });
+  ptr_.reset(reinterpret_cast<char*>(data_), [](char *p) {
+      delete [] p;
+    });
 }
 
 template <typename V>
@@ -170,31 +171,11 @@ SizeR SArray<V>::findRange (const Range<V>& bound) const {
 }
 
 template <typename V>
-void SArray<V>::uncompressFrom(const char* src, size_t src_size) {
-  size_t dsize = 0;
-  CHECK(snappy::GetUncompressedLength(src, src_size, &dsize));
-  resize(dsize);
-  // CHECK_LE(dsize, size_);
-  CHECK(snappy::RawUncompress(src, src_size, reinterpret_cast<char*>(data_)));
-}
-
-template <typename V>
 bool SArray<V>::readFromFile(SizeR range, const string& file_name) {
   DataConfig data;
   data.set_format(DataConfig::BIN);
   data.add_file(file_name);
   return readFromFile(range, data);
-}
-
-template <typename V>
-bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
-  CHECK(!range.empty());
-  File* file = File::open(data, "r");
-  if (file == NULL || !file->open()) return false;
-  resize(range.size());
-  if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
-  size_t length = range.size() * sizeof(V);
-  return (file->read(ptr_.get(), length) == length);
 }
 
 template <typename V>
@@ -211,9 +192,22 @@ MatrixPtr<V> SArray<V>::matrix(size_t rows, size_t cols) {
 }
 
 template <typename V>
+bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
+  if (range == SizeR::all()) range = SizeR(0, File::size(data.file(0)));
+  if (range.empty()) { clear(); return true; }
+
+  File* file = File::open(data, "r");
+  if (file == NULL || !file->open()) return false;
+  resize(range.size());
+  if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
+  size_t length = range.size() * sizeof(V);
+  return (file->read(ptr_.get(), length) == length && file->close());
+}
+
+template <typename V>
 bool SArray<V>::writeToFile(SizeR range, const string& file_name) const {
-  if (range == SizeR::all()) range = SizeR(0, size_);
-  CHECK(!range.empty());
+  if (range.empty()) return true;
+  CHECK(range.valid());
   CHECK_LE(range.end(), size_);
 
   File* file = File::open(file_name, "w");
@@ -223,11 +217,26 @@ bool SArray<V>::writeToFile(SizeR range, const string& file_name) const {
 }
 
 template <typename V>
+void SArray<V>::uncompressFrom(const char* src, size_t src_size) {
+  if (src_size == 0) { clear(); return; }
+  size_t dsize = 0;
+  CHECK(snappy::GetUncompressedLength(src, src_size, &dsize));
+  CHECK_EQ(dsize/sizeof(V)*sizeof(V), dsize);
+  resize(dsize/sizeof(V));
+  // CHECK_LE(dsize, size_);
+  CHECK(snappy::RawUncompress(src, src_size, reinterpret_cast<char*>(data_)));
+}
+
+
+template <typename V>
 SArray<char> SArray<V>::compressTo() const {
-  size_t dsize = snappy::MaxCompressedLength(size_);
+  // otherwise, snappy will add a 0 here...
+  if (empty()) return SArray<char>();
+  size_t ssize = size_ * sizeof(V);
+  size_t dsize = snappy::MaxCompressedLength(ssize);
   SArray<char> dest(dsize);
   snappy::RawCompress(
-      reinterpret_cast<const char*>(data_), size_, dest.data(), &dsize);
+      reinterpret_cast<const char*>(data_), ssize, dest.data(), &dsize);
   dest.resize(dsize);
   return dest;
 }
@@ -235,7 +244,6 @@ SArray<char> SArray<V>::compressTo() const {
 template <typename V>
 void SArray<V>::append(const SArray<V>& arr) {
   if (arr.empty()) return;
-  LL << size_ << " " << arr.size();
   auto orig_size = size_;
   resize(size_ + arr.size());
   memcpy(data_+orig_size, arr.data(), arr.size()*sizeof(V));

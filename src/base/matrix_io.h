@@ -7,15 +7,13 @@
 #include "util/recordio.h"
 #include "proto/app.pb.h"
 #include "proto/instance.pb.h"
-#include "util/file.h"
 
 namespace PS {
 
 // return A \union B
-InstanceInfo mergeInstanceInfo(
-    const InstanceInfo& A, const InstanceInfo& B);
+// InstanceInfo mergeInstanceInfo(const InstanceInfo& A, const InstanceInfo& B);
 
-// convert the i-th feature group info into matrix info
+// convert the feature group *grp_id* info into matrix info
 template<typename V>
 MatrixInfo readMatrixInfo(const InstanceInfo& info, int i);
 

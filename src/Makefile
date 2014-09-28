@@ -46,21 +46,26 @@ SRCS = $(PROTOS_CC) \
 	system/remote_node.cc \
 	system/executor.cc \
 	system/app.cc \
+	data/common.cc \
 	data/text_parser.cc \
+	data/example_parser.cc \
+	data/slot_reader.cc \
 	linear_method/linear_method.cc \
 	linear_method/batch_solver.cc \
 	linear_method/darling.cc
 
 
 TESTS = \
+	slot_reader_test \
 	matrix_io_test \
 	localizer_test \
 	countmin_test \
+	snappy_test \
+	shared_array_test \
 	# sparse_matrix_perf \
-	# auc_test \
+	auc_test \
 	io_test \
 	bitmap_test \
-	shared_array_test \
 	eigen3_test \
 	sparse_matrix_test \
 	auc_layer_test \
@@ -78,6 +83,9 @@ TESTS = \
 all: dir $(addprefix $(BIN)/, ps_cdn) # text2proto
 data: $(addprefix $(BIN)/, showins proto2bin)
 test: $(addprefix $(BIN)/, $(TESTS))
+
+# t: ../bin/slot_reader_test
+t: ../bin/localizer_test
 
 dir:
 	mkdir -p $(LIB)
