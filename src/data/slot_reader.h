@@ -36,6 +36,7 @@ class SlotReader {
   ExampleInfo info_;
   std::unordered_map<int, SlotInfo> slot_info_;
   std::mutex mu_;
+  size_t loaded_file_count_;
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) const {
