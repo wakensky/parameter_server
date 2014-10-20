@@ -171,4 +171,15 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
   if (msg->task.erase_key_cache()) key_cache_.erase(cache_k);
 }
 
+size_t RNode::memSize() {
+  Lock l(key_cache_mu_);
+
+  size_t mem_size = 0;
+  for (const auto& item : key_cache_) {
+    mem_size += item.second.second.memSize();
+  }
+
+  return mem_size;
+}
+
 } // namespace PS
