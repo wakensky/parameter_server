@@ -47,4 +47,5 @@ ${3}/ps_cdn \
     -log_instant ${log_instant} \
     -load_limit ${load_limit} \
     -print_van ${print_van} \
-    -shuffle_fea_id ${shuffle_fea_id}
+    -shuffle_fea_id ${shuffle_fea_id} \
+    || { echo "rank:${my_rank} launch failed"; exit -1; }
