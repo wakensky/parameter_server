@@ -59,6 +59,7 @@ class Van {
   size_t data_sent_ = 0;
   size_t data_received_ = 0;
   std::ofstream debug_out_;
+  int num_retries_ = 0;
   // std::ostream& debug_out_;
 
   Node assembleMyNode();

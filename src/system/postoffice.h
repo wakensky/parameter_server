@@ -37,6 +37,7 @@ class Postoffice {
   // accessors and mutators
   YellowPages& yp() { return yellow_pages_; }
   Node& myNode() { return yellow_pages_.van().myNode(); }
+  Node& scheduler() { return yellow_pages_.van().scheduler(); }
 
   HeartbeatInfo& hb() { return heartbeat_info_; };
 

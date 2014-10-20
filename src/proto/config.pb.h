@@ -298,12 +298,12 @@ class DataConfig : public ::google::protobuf::Message {
   inline ::PS::PbRange* release_range();
   inline void set_allocated_range(::PS::PbRange* range);
 
-  // optional bool ignore_fea_grp = 6;
-  inline bool has_ignore_fea_grp() const;
-  inline void clear_ignore_fea_grp();
-  static const int kIgnoreFeaGrpFieldNumber = 6;
-  inline bool ignore_fea_grp() const;
-  inline void set_ignore_fea_grp(bool value);
+  // optional bool ignore_feature_group = 6;
+  inline bool has_ignore_feature_group() const;
+  inline void clear_ignore_feature_group();
+  static const int kIgnoreFeatureGroupFieldNumber = 6;
+  inline bool ignore_feature_group() const;
+  inline void set_ignore_feature_group(bool value);
 
   // @@protoc_insertion_point(class_scope:PS.DataConfig)
  private:
@@ -315,8 +315,8 @@ class DataConfig : public ::google::protobuf::Message {
   inline void clear_has_hdfs();
   inline void set_has_range();
   inline void clear_has_range();
-  inline void set_has_ignore_fea_grp();
-  inline void clear_has_ignore_fea_grp();
+  inline void set_has_ignore_feature_group();
+  inline void clear_has_ignore_feature_group();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -325,7 +325,7 @@ class DataConfig : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedPtrField< ::std::string> file_;
   ::PS::HDFSConfig* hdfs_;
   ::PS::PbRange* range_;
-  bool ignore_fea_grp_;
+  bool ignore_feature_group_;
 
   mutable int _cached_size_;
   ::google::protobuf::uint32 _has_bits_[(6 + 31) / 32];
@@ -570,7 +570,7 @@ class LearningRateConfig : public ::google::protobuf::Message {
 
   // accessors -------------------------------------------------------
 
-  // required .PS.LearningRateConfig.Type type = 1;
+  // optional .PS.LearningRateConfig.Type type = 1;
   inline bool has_type() const;
   inline void clear_type();
   static const int kTypeFieldNumber = 1;
@@ -584,14 +584,14 @@ class LearningRateConfig : public ::google::protobuf::Message {
   inline double eta() const;
   inline void set_eta(double value);
 
-  // optional double alpha = 3;
+  // optional double alpha = 3 [default = 1];
   inline bool has_alpha() const;
   inline void clear_alpha();
   static const int kAlphaFieldNumber = 3;
   inline double alpha() const;
   inline void set_alpha(double value);
 
-  // optional double beta = 4;
+  // optional double beta = 4 [default = 1];
   inline bool has_beta() const;
   inline void clear_beta();
   static const int kBetaFieldNumber = 4;
@@ -1035,26 +1035,26 @@ inline void DataConfig::set_allocated_range(::PS::PbRange* range) {
   }
 }
 
-// optional bool ignore_fea_grp = 6;
-inline bool DataConfig::has_ignore_fea_grp() const {
+// optional bool ignore_feature_group = 6;
+inline bool DataConfig::has_ignore_feature_group() const {
   return (_has_bits_[0] & 0x00000020u) != 0;
 }
-inline void DataConfig::set_has_ignore_fea_grp() {
+inline void DataConfig::set_has_ignore_feature_group() {
   _has_bits_[0] |= 0x00000020u;
 }
-inline void DataConfig::clear_has_ignore_fea_grp() {
+inline void DataConfig::clear_has_ignore_feature_group() {
   _has_bits_[0] &= ~0x00000020u;
 }
-inline void DataConfig::clear_ignore_fea_grp() {
-  ignore_fea_grp_ = false;
-  clear_has_ignore_fea_grp();
+inline void DataConfig::clear_ignore_feature_group() {
+  ignore_feature_group_ = false;
+  clear_has_ignore_feature_group();
 }
-inline bool DataConfig::ignore_fea_grp() const {
-  return ignore_fea_grp_;
+inline bool DataConfig::ignore_feature_group() const {
+  return ignore_feature_group_;
 }
-inline void DataConfig::set_ignore_fea_grp(bool value) {
-  set_has_ignore_fea_grp();
-  ignore_fea_grp_ = value;
+inline void DataConfig::set_ignore_feature_group(bool value) {
+  set_has_ignore_feature_group();
+  ignore_feature_group_ = value;
 }
 
 // -------------------------------------------------------------------
@@ -1224,7 +1224,7 @@ inline void ParameterInitConfig::set_allocated_file_name(::std::string* file_nam
 
 // LearningRateConfig
 
-// required .PS.LearningRateConfig.Type type = 1;
+// optional .PS.LearningRateConfig.Type type = 1;
 inline bool LearningRateConfig::has_type() const {
   return (_has_bits_[0] & 0x00000001u) != 0;
 }
@@ -1269,7 +1269,7 @@ inline void LearningRateConfig::set_eta(double value) {
   eta_ = value;
 }
 
-// optional double alpha = 3;
+// optional double alpha = 3 [default = 1];
 inline bool LearningRateConfig::has_alpha() const {
   return (_has_bits_[0] & 0x00000004u) != 0;
 }
@@ -1280,7 +1280,7 @@ inline void LearningRateConfig::clear_has_alpha() {
   _has_bits_[0] &= ~0x00000004u;
 }
 inline void LearningRateConfig::clear_alpha() {
-  alpha_ = 0;
+  alpha_ = 1;
   clear_has_alpha();
 }
 inline double LearningRateConfig::alpha() const {
@@ -1291,7 +1291,7 @@ inline void LearningRateConfig::set_alpha(double value) {
   alpha_ = value;
 }
 
-// optional double beta = 4;
+// optional double beta = 4 [default = 1];
 inline bool LearningRateConfig::has_beta() const {
   return (_has_bits_[0] & 0x00000008u) != 0;
 }
@@ -1302,7 +1302,7 @@ inline void LearningRateConfig::clear_has_beta() {
   _has_bits_[0] &= ~0x00000008u;
 }
 inline void LearningRateConfig::clear_beta() {
-  beta_ = 0;
+  beta_ = 1;
   clear_has_beta();
 }
 inline double LearningRateConfig::beta() const {

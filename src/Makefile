@@ -52,16 +52,20 @@ SRCS = $(PROTOS_CC) \
 	data/slot_reader.cc \
 	linear_method/linear_method.cc \
 	linear_method/batch_solver.cc \
-	linear_method/darling.cc
+	linear_method/darling.cc \
+	linear_method/ftrl.cc
 
 
 TESTS = \
+	stream_reader_test \
 	slot_reader_test \
 	matrix_io_test \
 	localizer_test \
 	countmin_test \
 	snappy_test \
 	shared_array_test \
+	grad_desc_test \
+	ftrl_test \
 	# sparse_matrix_perf \
 	auc_test \
 	io_test \
@@ -71,7 +75,6 @@ TESTS = \
 	auc_layer_test \
 	# double_test \
 	# aggregated_gradient_test \
-	# grad_desc_test \
 	# strtonum_test
 	#partition_test
 	# van_test \
@@ -85,7 +88,7 @@ data: $(addprefix $(BIN)/, showins proto2bin)
 test: $(addprefix $(BIN)/, $(TESTS))
 
 # t: ../bin/slot_reader_test
-t: ../bin/localizer_test
+t: ../bin/ftrl_test
 
 dir:
 	mkdir -p $(LIB)

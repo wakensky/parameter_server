@@ -23,7 +23,7 @@ message DataConfig {
   // only valid for the binary format
   optional PbRange range = 4;
   // ignore the feature group information
-  optional bool ignore_fea_grp = 6;
+  optional bool ignore_feature_group = 6;
 }
 
 message ParameterInitConfig {
@@ -46,10 +46,10 @@ message LearningRateConfig {
   enum Type {
     CONSTANT = 1;
   }
-  required Type type = 1;
+  optional Type type = 1;
   optional double eta = 2 [default = 1];
-  optional double alpha = 3;
-  optional double beta = 4;
+  optional double alpha = 3 [default = 1];
+  optional double beta = 4 [default = 1];
 }
 
 

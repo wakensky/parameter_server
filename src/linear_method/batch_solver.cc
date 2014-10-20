@@ -220,6 +220,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
   bool hit_cache = get(msg).hit_cache();
 
+  int max_parallel = std::max(1, conf_.solver().max_num_parallel_groups_in_preprocessing());
+
   if (IamWorker()) {
     std::vector<int> pull_time(grp_size);
     for (int i = 0; i < grp_size; ++i, time += kPace) {
@@ -230,7 +232,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       SArray<Key> uniq_key;
       SArray<uint32> key_cnt;
       // Localizer
-      Localizer<Key> *localizer = new Localizer<Key>();
+      Localizer<Key, double> *localizer = new Localizer<Key, double>();
 
       if (FLAGS_verbose) {
         LI << "counting unique key [" << i + 1 << "/" << grp_size << "]";
@@ -247,10 +249,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       MessagePtr count(new Message(kServerGroup, time));
       count->addKV(uniq_key, {key_cnt});
       count->task.set_key_channel(grp);
-      auto sc = w_->set(count);
-      sc->set_insert_key_freq(true);
-      sc->set_countmin_k(conf_.solver().countmin_k());
-      sc->set_countmin_n((int)(uniq_key.size()*conf_.solver().countmin_n_ratio()));
+      auto arg = w_->set(count);
+      arg->set_insert_key_freq(true);
+      arg->set_countmin_k(conf_.solver().countmin_k());
+      arg->set_countmin_n((int)(uniq_key.size()*conf_.solver().countmin_n_ratio()));
       CHECK_EQ(time, w_->push(count));
 
       // time 2: pull filered keys
@@ -266,8 +268,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         }
 
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        auto X = localizer->remapIndex<double>(slot_reader_, grp, w_->key(grp));
+        auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_);
         delete localizer;
+        slot_reader_.clear(grp);
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
         if (!X) return;
 
@@ -288,11 +291,14 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       };
       CHECK_EQ(time+2, w_->pull(filter));
       pull_time[i] = time + 2;
+
+      // wait
+      if (!hit_cache && i >= max_parallel) w_->waitOutMsg(kServerGroup, pull_time[i-max_parallel]);
     }
 
     for (int i = 0; i < grp_size; ++i, time += kPace) {
-      if (!hit_cache) w_->waitOutMsg(kServerGroup, pull_time[i]);
-      // wait until the i-th channel's keys are ready
+      // wait
+      if (!hit_cache && i >= grp_size - max_parallel) w_->waitOutMsg(kServerGroup, pull_time[i]);
 
       // time 0: push the filtered keys to servers
       MessagePtr push_key(new Message(kServerGroup, time));
@@ -346,11 +352,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->waitInMsg(kWorkerGroup, time);
       w_->finish(kWorkerGroup, time+1);
     }
-
     for (int i = 0; i < grp_size; ++i, time += kPace) {
       w_->waitInMsg(kWorkerGroup, time);
       int chl = fea_grp_[i];
-      w_->clearKeyFilter(chl);
+      w_->keyFilter(chl).clear();
       w_->value(chl).resize(w_->key(chl).size());
       w_->value(chl).setValue(conf_.init_w());
       w_->finish(kWorkerGroup, time+1);

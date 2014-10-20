@@ -18,7 +18,7 @@ int RNode::submit(const MessagePtr& msg) {
   msg->original_recver = id();
   {
     Lock l(mu_);
-    if (task.has_time()) {
+    if (task.has_time() && task.time() > Message::kInvalidTime) {
       time_ = std::max(task.time(), time_);
     } else {
       // choose a timestamp
@@ -105,7 +105,7 @@ void RNode::cacheKeySender(const MessagePtr& msg) {
     return;
   }
 
-  auto sig = crc32c::Value(msg->key.data(), msg->key.size());
+  auto sig = crc32c::Value(msg->key.data(), std::min(msg->key.size(), max_sig_len_));
   msg->task.set_key_signature(sig);
   Lock l(key_cache_mu_);
   auto& cache = key_cache_[cache_k];
@@ -128,6 +128,8 @@ void RNode::cacheKeySender(const MessagePtr& msg) {
         msg->shortDebugString() << "]";
     }
   }
+
+  if (msg->task.erase_key_cache() && !msg->task.request()) key_cache_.erase(cache_k);
 }
 
 void RNode::cacheKeyRecver(const MessagePtr& msg) {
@@ -152,7 +154,7 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
   auto& cache = key_cache_[cache_k];
   if (msg->task.has_key()) {
     // double check
-    CHECK_EQ(crc32c::Value(msg->key.data(), msg->key.size()), sig);
+    CHECK_EQ(crc32c::Value(msg->key.data(), std::min(msg->key.size(), max_sig_len_)), sig);
     cache.first = sig;
     cache.second = msg->key;
 

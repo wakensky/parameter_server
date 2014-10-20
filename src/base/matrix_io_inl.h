@@ -222,7 +222,7 @@ bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat, bool ve
   }
 
   // TODO. multi-thread
-  TextParser parser(data.text(), data.ignore_fea_grp());
+  TextParser parser(data.text(), data.ignore_feature_group());
 
   SArray<V> label;
   struct Slot {

@@ -9,8 +9,8 @@ namespace PS {
 
 DEFINE_bool(enable_fault_tolerance, false, "enable fault tolerance feature");
 DEFINE_int32(num_replicas, 0, "number of replica");
-DEFINE_int32(num_servers, 1, "number of servers");
-DEFINE_int32(num_workers, 1, "number of clients");
+DEFINE_int32(num_servers, 0, "number of servers");
+DEFINE_int32(num_workers, 0, "number of clients");
 DEFINE_int32(num_unused, 0, "number of unused nodes");
 DEFINE_int32(num_threads, 2, "number of computational threads");
 DEFINE_string(app, "../config/rcv1_l1lr.config", "the configuration file of app");
@@ -62,16 +62,18 @@ void Postoffice::run() {
     case Node::SCHEDULER: {
       // get all node information
       yellow_pages_.add(myNode());
-      nodes_are_ready_.get_future().wait();
-      LI << "Scheduler connected " << FLAGS_num_servers << " servers and "
-         << FLAGS_num_workers << " workers";
+      if (FLAGS_num_workers || FLAGS_num_servers) {
+        nodes_are_ready_.get_future().wait();
+        LI << "Scheduler connected " << FLAGS_num_servers << " servers and "
+           << FLAGS_num_workers << " workers";
+      }
 
       // run the application
       AppConfig conf; readFileToProtoOrDie(FLAGS_app, &conf);
       AppPtr app = App::create(conf);
       yellow_pages_.add(app);
       app->run();
-      app->stop();
+      app->stopAll();
       break;
     } default:
       // run as a daemon
@@ -135,7 +137,7 @@ void Postoffice::recv() {
 
     auto& tk = msg->task;
     if (tk.request() && tk.type() == Task::TERMINATE) {
-      yellow_pages_.van().statistic();
+      // yellow_pages_.van().statistic();
       done_ = true;
       break;
     } else if (tk.request() && tk.type() == Task::MANAGE) {
@@ -201,8 +203,10 @@ void Postoffice::manageNode(const Task& tk) {
       for (auto n : nodes) yellow_pages_.add(n);
       if (obj != nullptr) {
         obj->exec().init(nodes);
-        for (auto c : obj->children())
-          yellow_pages_.customer(c)->exec().init(nodes);
+        for (auto c : obj->children()) {
+          auto child = yellow_pages_.customer(c);
+          if (child) child->exec().init(nodes);
+        }
       }
       break;
     case ManageNode::REPLACE:

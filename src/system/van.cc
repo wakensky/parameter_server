@@ -6,9 +6,10 @@
 
 namespace PS {
 
-DEFINE_string(my_node, "", "my node");
-DEFINE_string(scheduler, "", "the scheduler node");
+DEFINE_string(my_node, "role:SCHEDULER,hostname:'127.0.0.1',port:8000,id:'H'", "my node");
+DEFINE_string(scheduler, "role:SCHEDULER,hostname:'127.0.0.1',port:8000,id:'H'", "the scheduler node");
 DEFINE_string(server_master, "", "the master of servers");
+DEFINE_int32(num_retries, 3, "number of retries for zmq");
 DEFINE_bool(compress_message, true, "");
 DEFINE_bool(print_van, false, "");
 DEFINE_int32(my_rank, -1, "my rank among MPI peers");
@@ -19,6 +20,7 @@ DECLARE_int32(num_servers);
 
 void Van::init() {
   scheduler_ = parseNode(FLAGS_scheduler);
+  num_retries_ = std::max(0, FLAGS_num_retries);
 
   // assemble my_node_
   if (FLAGS_my_rank < 0) {
@@ -143,10 +145,12 @@ Status Van::send(const MessageCPtr& msg, size_t& send_bytes) {
       << "failed to serialize " << task.ShortDebugString();
   int tag = ZMQ_SNDMORE;
   if (data.size() == 0) tag = 0; // ZMQ_DONTWAIT;
-  send_bytes += str.size();
-  if (zmq_send(socket, str.c_str(), str.size(), tag) != str.size())
+  while (true) {
+    if (zmq_send(socket, str.c_str(), str.size(), tag) == str.size()) break;
+    if (errno == EINTR) continue;  // maybe interupted by google profiler
     return Status::NetError(
         "failed to send mailer to node " + (id) + zmq_strerror(errno));
+  }
   data_sent_ += str.size();
 
   // send key and value
@@ -154,7 +158,9 @@ Status Van::send(const MessageCPtr& msg, size_t& send_bytes) {
     const auto& raw = data[i];
     if (i == data.size() - 1) tag = 0; // ZMQ_DONTWAIT;
     send_bytes += raw.size();
-    if (zmq_send(socket, raw.data(), raw.size(), tag) != raw.size()) {
+    while (true) {
+      if (zmq_send(socket, raw.data(), raw.size(), tag) == raw.size()) break;
+      if (errno == EINTR) continue;  // maybe interupted by google profiler
       return Status::NetError(
           "failed to send mailer to node " + (id) + zmq_strerror(errno));
     }
@@ -176,7 +182,9 @@ Status Van::recv(const MessagePtr& msg, size_t& recv_bytes) {
   for (int i = 0; ; ++i) {
     zmq_msg_t zmsg;
     CHECK(zmq_msg_init(&zmsg) == 0) << zmq_strerror(errno);
-    if (zmq_msg_recv(&zmsg, receiver_, 0) == -1) {
+    while (true) {
+      if (zmq_msg_recv(&zmsg, receiver_, 0) != -1) break;
+      if (errno == EINTR) continue;  // maybe interupted by google profiler
       return Status::NetError(
           "recv message failed: " + std::string(zmq_strerror(errno)));
     }
