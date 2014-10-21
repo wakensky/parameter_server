@@ -24,14 +24,14 @@ for ((my_rank=0; my_rank<=${num_servers}+${num_workers}; ++my_rank)); do
     ${arg} \
     -num_threads 4 \
     -my_rank ${my_rank} \
-    -report_interval 0 \
-    -load_limit 0 \
+    -report_interval 10 \
+    -load_limit 1 \
     -line_limit 0 \
-    -noverbose \
-    -nolog_to_file \
-    -nolog_instant \
-    -noprint_van \
-    -noshuffle_fea_id \
+    -verbose \
+    -log_to_file \
+    -log_instant \
+    -print_van \
+    -shuffle_fea_id \
     -noparallel_match \
     &
 done

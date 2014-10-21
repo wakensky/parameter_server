@@ -280,7 +280,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         }
 
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        if (conf_.solver().has_feature_block_ratio()) X = X->toColMajor();
+        if (conf_.solver().has_feature_block_ratio() && !X->empty()) {
+          X = X->toColMajor();
+        }
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
 
         if (FLAGS_verbose) {

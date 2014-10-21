@@ -15,7 +15,8 @@ void SlotReader::init(const DataConfig& data, const DataConfig& cache) {
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
   CHECK_GT(data.file_size(), 0);
-  return cache_ + getFilename(data.file(0)) + "_slot_" + std::to_string(slot_id);
+  return cache_ + std::to_string(DJBHash32(data.file(0))) + "-" + \
+    getFilename(data.file(0)) + "_slot_" + std::to_string(slot_id);
 }
 
 size_t SlotReader::nnzEle(int slot_id) const {
@@ -61,7 +62,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       loaded_file_count_ << "/" << data_.file_size() << "]";
   }
 
-  string info_name = cache_ + getFilename(data.file(0)) + ".info";
+  string info_name = cache_ + std::to_string(DJBHash32(data.file(0))) + "-" + \
+                     getFilename(data.file(0)) + ".info";
   ExampleInfo info;
   if (readFileToProto(info_name, &info)) {
     // the data is already in cache_dir
