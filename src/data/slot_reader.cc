@@ -35,7 +35,7 @@ int SlotReader::read(ExampleInfo* info) {
   {
     if (FLAGS_verbose) {
       for (size_t i = 0; i < data_.file_size(); ++i) {
-        LI << "I will load adfea data [" << i + 1 << "/" <<
+        LI << "I will load data file [" << i + 1 << "/" <<
           data_.file_size() << "] [" << data_.file(i) << "]";
       }
     }
@@ -57,7 +57,7 @@ int SlotReader::read(ExampleInfo* info) {
 bool SlotReader::readOneFile(const DataConfig& data) {
   if (FLAGS_verbose) {
     Lock l(mu_);
-    LI << "loading adfea file [" << data.file(0) << "]; loaded [" <<
+    LI << "loading data file [" << data.file(0) << "]; loaded [" <<
       loaded_file_count_ << "/" << data_.file_size() << "]";
   }
 
@@ -122,7 +122,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     loaded_file_count_++;
 
     if (FLAGS_verbose) {
-      LI << "loaded adfea file [" << data.file(0) << "]; loaded [" <<
+      LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
         loaded_file_count_ << "/" << data_.file_size() << "]";
     }
   }

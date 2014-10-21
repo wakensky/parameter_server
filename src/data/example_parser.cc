@@ -7,7 +7,7 @@
 namespace PS {
 
 DEFINE_bool(shuffle_fea_id, false,
-  "shuffle fea id of Adfea (lowest 54bits) with MurmurHash3 "
+  "shuffle fea id of Terafea (lowest 54bits) with MurmurHash3 "
   "on downloading");
 
 // NOTICE: Do not use strtok, it is not thread-safe, use strtok_r instead
@@ -19,7 +19,9 @@ void ExampleParser::init(TextFormat format, bool ignore_fea_slot) {
     parser_ = std::bind(&ExampleParser::parseLibsvm, this, _1, _2);
   } else if (format == DataConfig::ADFEA) {
     parser_ = std::bind(&ExampleParser::parseAdfea, this, _1, _2);
-  } else {
+  } else if (format == DataConfig::TERAFEA) {
+    parser_ = std::bind(&ExampleParser::parseTerafea, this, _1, _2);
+  }else {
     CHECK(false) << "unknown text format " << format;
   }
 }
@@ -66,6 +68,8 @@ ExampleInfo ExampleParser::info() {
       if (format_ == DataConfig::LIBSVM) {
         sinfo.set_format(SlotInfo::SPARSE);
       } else if (format_ == DataConfig::ADFEA) {
+        sinfo.set_format(SlotInfo::SPARSE_BINARY);
+      } else if (format_ == DataConfig::TERAFEA) {
         sinfo.set_format(SlotInfo::SPARSE_BINARY);
       }
     }
@@ -115,12 +119,53 @@ bool ExampleParser::parseLibsvm(char* buff, Example* ex) {
 
 // adfea format:
 //
+//   line_id 1 clicked_or_not key:grp_id key:grp_id ...
+//
+// same group_ids should appear together, but not necesary be ordered
+bool ExampleParser::parseAdfea(char* line, Example* ex) {
+  uint64 key = -1;
+  int pre_slot_id = 0;
+  Slot* slot = ex->add_slot();
+  slot->set_id(0);
+
+  char* saveptr;
+  char* tk = strtok_r(line, " :", &saveptr);
+  for (int i = 0; tk != NULL; tk = strtok_r(NULL, " :", &saveptr), ++i) {
+    if (i == 0) {
+      // skip the line id
+    } else if (i == 1) {
+      // skip, it is always 1
+    } else if (i == 2) {
+      int32 label;
+      if (!strtoi32(tk, &label)) return false;
+      slot->add_val(label > 0 ? 1.0 : -1.0);
+    } else if (i % 2 == 1) {
+      if (!strtou64(tk, &key)) return false;
+    } else {
+      int slot_id = 1;
+      if (!ignore_fea_slot_ && !strtoi32(tk, &slot_id)) return false;
+      if (slot_id != pre_slot_id) {
+        slot = ex->add_slot();
+        slot->set_id(slot_id);
+        pre_slot_id = slot_id;
+      }
+      slot->add_key(key);
+    }
+  }
+  // LL << ex->ShortDebugString();
+  return true;
+}
+
+// terafea format:
+//
 //   clicked_or_not line_id | uint64 uint64 ...
 //   uint64:
 //      the most significant 10 bits    - group id
 //      lower 54 bits                   - feature id
 //
-bool ExampleParser::parseAdfea(char* line, Example* ex) {
+//  no guarantee that the same group ids stay contiguously
+//
+bool ExampleParser::parseTerafea(char* line, Example* ex) {
   // key:   group id
   // value: index in Example::slot[]
   std::unordered_map<uint32, uint32> gid_idx_map;

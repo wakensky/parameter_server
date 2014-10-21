@@ -1,28 +1,39 @@
 #!/bin/bash
-
+if [ $# -lt 3 ]; then
+    echo "usage: ./local.sh num_servers num_workers app_conf [args]"
+    exit -1;
+fi
 dir=`dirname "$0"`
-cd ${dir}
 
-killall -q ps
+killall -q ps_cdn
 
-scheduler="role:SCHEDULER,hostname:'127.0.0.1',port:8000,id:'H'"
-W0="role:WORKER,hostname:'127.0.0.1',port:8001,id:'W0'"
-W1="role:WORKER,hostname:'127.0.0.1',port:8002,id:'W1'"
-W2="role:WORKER,hostname:'127.0.0.1',port:8003,id:'W2'"
-S0="role:SERVER,hostname:'127.0.0.1',port:8010,id:'S0'"
-S1="role:SERVER,hostname:'127.0.0.1',port:8011,id:'S1'"
-arg="-num_servers 1 -num_workers 2 -num_threads 2 -app ../config/rcv1_l1lr.conf"
+num_servers=$1
+shift
+num_workers=$1
+shift
+bin=${dir}/../scheduler/ps_cdn
+Sch="role:SCHEDULER,hostname:'127.0.0.1',port:2060,id:'H'"
+arg="-num_servers ${num_servers} -num_workers ${num_workers} -scheduler ${Sch} -app ${dir}/$@"
 
 mkdir -p ../output
+FLAGS_logtostderr=1
 
-bin="../bin/ps"
-
-${bin} ${arg} -scheduler ${scheduler} -my_node ${scheduler} &
-${bin} ${arg} -scheduler ${scheduler} -my_node ${W0} &
-${bin} ${arg} -scheduler ${scheduler} -my_node ${S0} &
-
-${bin} ${arg} -scheduler ${scheduler} -my_node ${W1} &
-# ${bin} ${arg} -scheduler ${scheduler} -my_node ${W2} &
-# ${bin} ${arg} -scheduler ${scheduler} -my_node ${S1} &
+# start instances
+for ((my_rank=0; my_rank<=${num_servers}+${num_workers}; ++my_rank)); do
+    ${bin} \
+    ${arg} \
+    -num_threads 4 \
+    -my_rank ${my_rank} \
+    -report_interval 0 \
+    -load_limit 0 \
+    -line_limit 0 \
+    -noverbose \
+    -nolog_to_file \
+    -nolog_instant \
+    -noprint_van \
+    -noshuffle_fea_id \
+    -noparallel_match \
+    &
+done
 
 wait

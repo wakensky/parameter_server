@@ -24,6 +24,11 @@ TextParser::TextParser(TextFormat format, bool ignore_feature_group) {
       info_.set_fea_type(InstanceInfo::SPARSE_BINARY);
       info_.set_label_type(InstanceInfo::BINARY);
       break;
+    case DataConfig::TERAFEA:
+      convertor_ = std::bind(&TextParser::parseTerafea, this, _1, _2);
+      info_.set_fea_type(InstanceInfo::SPARSE_BINARY);
+      info_.set_label_type(InstanceInfo::BINARY);
+      break;
     default:
       CHECK(false) << "unknown text format " << format;
   }
@@ -119,12 +124,52 @@ bool TextParser::parseLibsvm(char* buff, Instance* ins) {
 
 // adfea format:
 //
+//   line_id 1 clicked_or_not fea_id:grp_id fea_id:grp_id ...
+//
+// same group_ids should appear together, but not necesary be ordered
+bool TextParser::parseAdfea(char* line, Instance* ins) {
+  uint64 fea_id = -1;
+  int pre_grp_id = -1;
+  FeatureGroup* grp = nullptr;
+
+  char *saveptr;
+  char* tk = strtok_r(line, " :", &saveptr);
+  for (int i = 0; tk != NULL; tk = strtok_r(NULL, " :", &saveptr), ++i) {
+    if (i == 0) {
+      // skip it the ins id
+    } else if (i == 1) {
+      // skip, it is 1
+    } else if (i == 2) {
+      int32 label;
+      if (!strtoi32(tk, &label)) return false;
+      ins->set_label(label > 0 ? 1 : -1);
+    } else if (i % 2 == 1) {
+      if (!strtou64(tk, &fea_id)) return false;
+    } else {
+      int grp_id = 0;
+      if (!ignore_fea_grp_ && !strtoi32(tk, &grp_id)) return false;
+      if (grp_id != pre_grp_id) {
+        grp = ins->add_fea_grp();
+        grp->set_grp_id(grp_id);
+        pre_grp_id = grp_id;
+      }
+      grp->add_fea_id(fea_id);
+    }
+  }
+  // LL << ins->ShortDebugString();
+  return true;
+}
+
+// terafea format:
+//
 //   clicked_or_not line_id | uint64 uint64 ...
 //   uint64:
 //      the most significant 10 bits    - group id
 //      lower 54 bits                   - feature id
 //
-bool TextParser::parseAdfea(char* line, Instance* ins) {
+//  no guarantee that the same group ids stay contiguously
+//
+bool TextParser::parseTerafea(char* line, Instance* ins) {
   // key:   group id
   // value: index in Example::slot[]
   std::unordered_map<uint32, uint32> gid_idx_map;
@@ -171,7 +216,6 @@ bool TextParser::parseAdfea(char* line, Instance* ins) {
   // LL << ins->ShortDebugString();
   return true;
 }
-
 
 // ps format: TODO
 //

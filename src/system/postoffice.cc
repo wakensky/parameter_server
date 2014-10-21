@@ -15,13 +15,13 @@ DEFINE_int32(num_unused, 0, "number of unused nodes");
 DEFINE_int32(num_threads, 2, "number of computational threads");
 DEFINE_string(app, "../config/rcv1_l1lr.config", "the configuration file of app");
 DEFINE_string(node_file, "./nodes", "node information");
-DEFINE_int32(report_interval, 5,
+DEFINE_int32(report_interval, 0,
   "Servers/Workers report running status to scheduler "
   "in every report_interval seconds. "
-  "default: 5; if set to 0, heartbeat is disabled");
+  "default: 0; if set to 0, heartbeat is disabled");
 DEFINE_bool(verbose, false, "print extra debug info");
 DEFINE_bool(log_to_file, false, "redirect INFO log to file; eg. log_w1_datetime");
-
+DEFINE_bool(parallel_match, false, "enable multi-threaded match operation");
 DECLARE_string(interface);
 
 Postoffice::~Postoffice() {
