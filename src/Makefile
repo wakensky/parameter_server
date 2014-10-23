@@ -53,7 +53,8 @@ SRCS = $(PROTOS_CC) \
 	linear_method/linear_method.cc \
 	linear_method/batch_solver.cc \
 	linear_method/darling.cc \
-	linear_method/ftrl.cc
+	linear_method/ftrl.cc \
+	linear_method/feature_station.cc
 
 
 TESTS = \

@@ -103,6 +103,26 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   if (IamWorker()) {
     // dual_ = exp(y.*(X_*w_))
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
+
+    // memory usage in X_, y_, w_ and dual_ (features in training data)
+    if (FLAGS_verbose) {
+      // X_
+      size_t sum = 0;
+      for (const auto& x_grp : X_) {
+        LI << "memSize in X_[" << x_grp.first << "]: " << x_grp.second->memSize();
+        sum += x_grp.second->memSize();
+      }
+      LI << "total memSize in X_: " << sum;
+
+      // y_
+      LI << "total memSize in y_: " << y_->memSize();
+
+      // w_
+      LI << "total memSize in w_: " << w_->memSize();
+
+      // dual_
+      LI << "total memSize in dual_: " << dual_.memSize();
+    }
   }
   for (int grp : fea_grp_) {
     size_t n = w_->key(grp).size();
@@ -110,6 +130,7 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     delta_[grp].resize(n);
     delta_[grp].setValue(conf_.darling().delta_init_value());
   }
+
 
   // size_t mem = 0;
   // for (const auto& it : X_) mem += it.second->memSize();
