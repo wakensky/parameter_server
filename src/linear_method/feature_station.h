@@ -31,6 +31,10 @@ class FeatureStation {
     void dropFeature(const int task_id);
 
   private: // internal types
+    typedef size_t OffType;
+    typedef double ValType;
+    typedef Key KeyType;
+
     struct PrefetchJob {
       int task_id;
       int grp_id;
@@ -61,6 +65,13 @@ class FeatureStation {
         range(rhs.range),
         mem_size(rhs.mem_size) {
         // do nothing
+      }
+
+      string shortDebugString() {
+        std::stringstream ss;
+        ss << "task_id: " << task_id << " grp_id: " << grp_id << " range:[" <<
+          range.begin() << "," << range.end() << ") mem_size:" << mem_size;
+        return ss.str();
       }
     }; // struct PrefetchJob
 
@@ -140,6 +151,13 @@ class FeatureStation {
     size_t memSize();
 
     void prefetchThreadFunc();
+
+    // assemble a SparseMatrix out of corresponding DataSource
+    // returned MatrixPtr contains nothing on failure
+    MatrixPtr<double> assembleFeatureMatrix(const PrefetchJob& job);
+
+    // estimate memory usage on a specific range (in Bytes)
+    size_t estimateRangeMemSize(const int grp_id, const SizeR range);
 
   private: // attributes
     std::mutex general_mu_;

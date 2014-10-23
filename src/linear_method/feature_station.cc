@@ -11,6 +11,26 @@ FeatureStation::FeatureStation(
   prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_mb * 1024 * 1024);
 }
 
+FeatureStation::~FeatureStation() {
+  // munmap
+  for (auto& item : grp_to_data_source_) {
+    auto& dsc = item.second;
+    if (DataSourceType::MMAP != dsc.type) {
+      continue;
+    }
+
+    if (nullptr != dsc.colidx.first) {
+      munmap(dsc.first, dsc.second);
+    }
+    if (nullptr != dsc.rowsiz.first) {
+      munmap(dsc.first, dsc.second);
+    }
+    if (nullptr != dsc.value.first) {
+      munmap(dsc.first, dsc.second);
+    }
+  }
+}
+
 bool FeatureStation::addFeatureGrp(
   const int grp_id, const MatrixPtr<double> feature) {
   if (!feature) {
@@ -103,6 +123,7 @@ DataSource FeatureStation::mapOneFile(const string& full_file_path) {
     if (MAP_FAILED == mmap_ptr) {
       throw std::runtime_error("mmap failed");
     }
+    close(fd);
 
     return makeDataSource(mmap_ptr, st.st_size);
   } catch (std::except& e) {
@@ -136,7 +157,7 @@ size_t FeatureStation::memSize() {
 
 void FeatureStation::prefetch(
   const int task_id, const int grp_id, const SizeR range) {
-  PrefetchJob new_job(task_id, grp_id, range);
+  PrefetchJob new_job(task_id, grp_id, estimateRangeMemSize(grp_id, range));
   pending_jobs_.push(new_job);
 
   return;
@@ -150,11 +171,15 @@ void FeatureStation::prefetchThreadFunc() {
     loading_jobs_.[job.task_id] = job;
 
     // check memory usage
-    // If memory exceeds limit, I will wait until dropFeature frees some memory
+    // If memory exceeds limit, I will wait
+    //   until dropFeature frees some memory
     prefetch_mem_record_.push(job.task_id, job.mem_size);
 
     // prefetch
     MatrixPtr<double> feature = assembleFeatureMatrix(job);
+    if (!feature) {
+      LL << "assembleFeatureMatrix failed. [" << job.shortDebugString() << "]";
+    }
 
     // store in loaded_features_
     loaded_features_[job.task_id] = feature;
@@ -164,9 +189,57 @@ void FeatureStation::prefetchThreadFunc() {
   };
 }
 
+MatrixPtr<double> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job) {
+  if (0 == job.mem_size) {
+    LL << "empty job [" << job.shortDebugString() << "]";
+    return MatrixPtr<double>();
+  }
+
+  // load offset
+  SArray<OffType> offset(job.range.end() + 1 - job.range.begin());
+}
+
 DataSource FeatureStation::makeDataSource(
   const char* in_ptr, const size_t in_size) {
   return std::make_pair(in_ptr, in_size);
+}
+
+size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range) {
+  if (range.empty()) {
+    return 0;
+  }
+
+  // locate DataSourceCollection
+  auto iter = grp_to_data_source_.find(grp_id);
+  if (grp_to_data_source_::end() == iter) {
+    LL << "illegal grp_id [" << grp_id << "]";
+    return 0;
+  }
+
+  // check range
+  const DataSourceCollection& dsc = iter->second;
+  const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.rowsiz.first);
+  if (nullptr == dsc.rowsiz.first) {
+    LL << "requesting an empty dsc.rowsiz. grp_id [" << grp_id << "]";
+    return 0;
+  }
+  const full_offset_length = dsc.rowsiz.second / sizeof(OffType);
+  if (range.end() >= full_offset_length) {
+    LL << "illegal range:[" << range.begin() << "," << range.end() <<
+      ") offset_len:" << full_offset_length;
+    return 0;
+  }
+
+  // estimate memory usage
+  // NOTE:
+  //    On MMAP mode, full_offset resides on disk.
+  //    I hope two random reads here won't hurt performance too much.
+  const size_t count = full_offset[range.end()] - full_offset[range.begin()];
+  size_t sum = (sizeof(KeyType) + sizeof(OffType)) * count;
+  if (nullptr != dsc.value.first) {
+    sum += sizeof(ValType) * count;
+  }
+  return sum;
 }
 
 }; // namespace PS
