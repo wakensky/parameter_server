@@ -15,16 +15,18 @@ class Darling : public BatchSolver {
   virtual void preprocessData(const MessageCPtr& msg);
   virtual void updateModel(const MessagePtr& msg);
 
-  SArrayList<double> computeGradients(int grp, SizeR col_range);
-  void updateDual(int grp, SizeR col_range, SArray<double> new_weight);
+  SArrayList<double> computeGradients(int task_id, int grp, SizeR col_range);
+  void updateDual(int task_id, int grp, SizeR col_range, SArray<double> new_weight);
   void updateWeight(int grp, SizeR col_range, SArray<double> G, SArray<double> U);
 
   Progress evaluateProgress();
   void showProgress(int iter);
   void showKKTFilter(int iter);
 
-  void computeGradients(int grp, SizeR col_range, SArray<double> G, SArray<double> U);
-  void updateDual(int grp, SizeR row_range, SizeR col_range, SArray<double> w_delta);
+  void computeGradients(const SparseMatrixPtr<uint32, double>& X, int grp,
+    SizeR col_range, size_t starting_line, SArray<double> G, SArray<double> U);
+  void updateDual(const SparseMatrixPtr<uint32, double>& X, int grp,
+    SizeR row_range, SizeR col_range, SArray<double> w_delta);
 
   double newDelta(double delta_w) {
     return std::min(conf_.darling().delta_max_value(), 2 * fabs(delta_w) + .1);

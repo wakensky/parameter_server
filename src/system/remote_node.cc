@@ -114,19 +114,23 @@ void RNode::cacheKeySender(const MessagePtr& msg) {
     msg->key.clear();
     msg->task.set_has_key(false);
 
+#if 0
     if (FLAGS_verbose) {
       LI << "cacheKeySender clears msg's key; msg [" <<
         msg->shortDebugString() << "]";
     }
+#endif
   } else {
     cache.first = sig;
     cache.second = msg->key;
     msg->task.set_has_key(true);
 
+#if 0
     if (FLAGS_verbose) {
       LI << "cacheKeySender stores key for msg [" <<
         msg->shortDebugString() << "]";
     }
+#endif
   }
 
   if (msg->task.erase_key_cache() && !msg->task.request()) key_cache_.erase(cache_k);
@@ -140,12 +144,14 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
     Lock l(key_cache_mu_);
     key_cache_.erase(cache_k);
 
+#if 0
     if (FLAGS_verbose) {
       LI << "cacheKeyRecver erases key_cache_ item [" <<
         cache_k.first << "{" << cache_k.second.begin() << "," <<
         cache_k.second.end() << "}] " <<
         "msg [" << msg->shortDebugString() << "]";
     }
+#endif
     return;
   }
   auto sig = msg->task.key_signature();
@@ -158,17 +164,21 @@ void RNode::cacheKeyRecver(const MessagePtr& msg) {
     cache.first = sig;
     cache.second = msg->key;
 
+#if 0
     if (FLAGS_verbose) {
       LI << "cacheKeyRecver stores key for msg [" << msg->shortDebugString() << "]";
     }
+#endif
   } else {
     // the cache is invalid... may ask the sender to resend this task
     CHECK_EQ(sig, cache.first) << msg->debugString();
     msg->key = cache.second;
 
+#if 0
     if (FLAGS_verbose) {
       LI << "cacheKeyRecver restores key for msg [" << msg->shortDebugString() << "]";
     }
+#endif
   }
   if (msg->task.erase_key_cache()) key_cache_.erase(cache_k);
 }

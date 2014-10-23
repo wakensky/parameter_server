@@ -25,6 +25,8 @@ class KVVector : public SharedParameter<K> {
   // return the data received at time t, then *delete* it.
   AlignedArrayList<V> received(int t);
 
+  size_t memSize();
+
   // implement the virtual functions required
   MessagePtrList slice(const MessagePtr& msg, const KeyList& sep);
   void getValue(const MessagePtr& msg);
@@ -230,6 +232,30 @@ template <typename K, typename V>
 MessagePtrList KVVector<K,V>::slice(const MessagePtr& msg, const KeyList& sep) {
   if (get(msg).replica()) return Customer::slice(msg, sep);
   return sliceKeyOrderedMsg<K>(msg, sep);
+}
+
+template <typename K, typename V>
+size_t KVVector<K,V>::memSize() {
+  size_t sum = 0;
+
+  for (const auto& item : key_) {
+    sum += item.second.memSize();
+  }
+  for (const auto& item : val_) {
+    sum += item.second.memSize();
+  }
+
+  {
+    Lock l(recved_val_mu_);
+
+    for (const auto& item : recved_val_) {
+      for (const auto& aligned : item.second) {
+        sum += aligned.second.memSize();
+      }
+    }
+  }
+
+  return sum;
 }
 
 

@@ -68,6 +68,9 @@ template<typename V> class SArray {
   size_t capacity() const { return capacity_; }
   size_t memSize() const { return capacity_*sizeof(V); }
 
+  // wakensky
+  size_t ptrUseCount() { return ptr_.use_count(); }
+
   // static int64 gMemSize() { return g_mem_usage_sarray.load(); }
 
   bool empty() const { return size() == 0; }

@@ -17,7 +17,6 @@ THIRD_LIB=$(THIRD)/lib
 WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare
 INCPATH = -I. -I${THIRD_INC}
 
-STATIC := 1
 ifeq (${STATIC}, 1)
 # TODO a lot of warning on mac with llvm
     CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
@@ -25,7 +24,8 @@ else
     CFLAGS = -std=c++0x $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
 endif
 
-LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++
+LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ -ltcmalloc \
+	-Wl,-rpath centos_lib -Wl,-dynamic-linker=./centos_lib/ld-linux-x86-64.so.2
 GTEST = -lgtest_main -lgtest
 
 OBJS = $(SRCS:.cc=.o)
@@ -46,6 +46,7 @@ SRCS = $(PROTOS_CC) \
 	system/remote_node.cc \
 	system/executor.cc \
 	system/app.cc \
+	system/ocean.cc \
 	data/common.cc \
 	data/text_parser.cc \
 	data/example_parser.cc \
@@ -53,7 +54,8 @@ SRCS = $(PROTOS_CC) \
 	linear_method/linear_method.cc \
 	linear_method/batch_solver.cc \
 	linear_method/darling.cc \
-	linear_method/ftrl.cc
+	linear_method/ftrl.cc \
+	linear_method/feature_station.cc
 
 
 TESTS = \

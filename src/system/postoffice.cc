@@ -193,7 +193,14 @@ void Postoffice::manageNode(const Task& tk) {
   auto obj = yellow_pages_.customer(tk.customer());
   switch (mng.cmd()) {
     case ManageNode::ADD:
-      for (auto n : nodes) yellow_pages_.add(n);
+      for (auto n : nodes) {
+        yellow_pages_.add(n);
+
+        if (FLAGS_verbose) {
+          LI << "I have detected node [" << n.id() << "," <<
+            n.hostname() << "]";
+        }
+      }
       if (yellow_pages_.num_workers() >= FLAGS_num_workers &&
           yellow_pages_.num_servers() >= FLAGS_num_servers) {
         nodes_are_ready_.set_value();
@@ -299,6 +306,7 @@ string Postoffice::printDashboardTitle() {
   ss << std::setfill(' ') <<
     std::setw(WIDTH) << "Node" <<
     std::setw(WIDTH) << "Task" <<
+    std::setw(WIDTH) << "TP" <<
     std::setw(WIDTH) << "MyCPU(%)" <<
     std::setw(WIDTH) << "MyRSS(M)" <<
     std::setw(WIDTH) << "MyVir(M)" <<
@@ -319,6 +327,10 @@ string Postoffice::printHeartbeatReport(
   const HeartbeatReport& report) {
   std::stringstream ss;
   const size_t WIDTH = 10;
+
+  time_t tp = static_cast<time_t>(report.seconds_since_epoch());
+  char tp_buffer[128];
+  strftime(tp_buffer, sizeof(tp_buffer), "%H:%M:%S", localtime(&tp));
 
   std::stringstream busy_time_with_ratio;
   busy_time_with_ratio << report.busy_time_milli() <<
@@ -343,6 +355,7 @@ string Postoffice::printHeartbeatReport(
   ss << std::setiosflags(std::ios::left) <<
     std::setw(WIDTH) << node_id <<
     std::setw(WIDTH) << report.task_id() <<
+    std::setw(WIDTH) << tp_buffer <<
     std::setw(WIDTH) << report.process_cpu_usage() <<
     std::setw(WIDTH) << report.process_rss_mb() <<
     std::setw(WIDTH) << report.process_virt_mb() <<

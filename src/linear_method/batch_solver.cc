@@ -1,3 +1,5 @@
+#include <limits>
+#include <gperftools/malloc_extension.h>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
 #include "base/matrix_io_inl.h"
@@ -15,6 +17,7 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
+  feature_station_.init(myNodeID(), conf_);
 }
 
 void BatchSolver::run() {
@@ -67,6 +70,14 @@ void BatchSolver::run() {
   Task preprocess = newTask(Call::PREPROCESS_DATA);
   for (auto grp : fea_grp_) set(&preprocess)->add_fea_grp(grp);
   set(&preprocess)->set_hit_cache(hit_cache > 0);
+  // add all block partitions into preprocess task
+  for (const auto& block_info : fea_blk_) {
+    // add
+    PartitionInfo* partition = preprocess.add_partition_info();
+    // set
+    partition->set_fea_grp(block_info.first);
+    block_info.second.to(partition->mutable_key());
+  }
   active_nodes->submitAndWait(preprocess);
   if (sol_cf.tail_feature_freq()) {
     LI << "Features with frequency <= " << sol_cf.tail_feature_freq() << " are filtered";
@@ -289,7 +300,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
 
-        { Lock l(mu_); X_[grp] = X; }
+        feature_station_.addFeatureGrp(grp, X);
+        // wakensky; tcmalloc force return memory to kernel
+        MallocExtension::instance()->ReleaseFreeMemory();
       };
       CHECK_EQ(time+2, w_->pull(filter));
       pull_time[i] = time + 2;
@@ -325,17 +338,22 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->value(grp) = init_w[0].second;
 
       // set the local variable
-      auto X = X_[grp];
-      if (!X) continue;
+      MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
+      size_t rows = matrix_info.row().end() - matrix_info.row().begin();
+      if (0 == rows) continue;
       if (dual_.empty()) {
-        dual_.resize(X->rows());
+        dual_.resize(rows);
         dual_.setZero();
       } else {
-        CHECK_EQ(dual_.size(), X->rows());
+        CHECK_EQ(dual_.size(), rows);
       }
+#if 0
+      // wakensky: If ZERO initialization is good enough,
+      //    we can save a lot of disk read cost here
       if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
         dual_.eigenVector() = *X * w_->value(grp).eigenVector();
       }
+#endif
     }
     // the label
     if (!hit_cache) {
