@@ -7,6 +7,10 @@ namespace PS {
 
 class FeatureStation {
   public:
+    typedef size_t OffType;
+    typedef double ValType;
+    typedef uint32 KeyType;
+
     FeatureStation(const std::vector<string>& directories);
     ~FeatureStation();
     FeatureStation(const FeatureStation& other) = delete;
@@ -16,7 +20,7 @@ class FeatureStation {
     // return false on failure
     //      for example: cannot write to disk file
     //      for example: grp_id has existed
-    bool addFeatureGrp(const int grp_id, const MatrixPtr<double> feature);
+    bool addFeatureGrp(const int grp_id, const MatrixPtr<ValType> feature);
 
     // add prefetch job
     // prefetch may not start immediately if memory usage reaches limit
@@ -25,16 +29,12 @@ class FeatureStation {
     // get feature used by a specific task
     // returned matrix resides in memory
     //   something wrong if returned shared_ptr is empty
-    MatrixPtr<double> getFeature(const int task_id);
+    MatrixPtr<ValType> getFeature(const int task_id);
 
     // frees memory space corresponds to a specific task
     void dropFeature(const int task_id);
 
   private: // internal types
-    typedef size_t OffType;
-    typedef double ValType;
-    typedef Key KeyType;
-
     struct PrefetchJob {
       int task_id;
       int grp_id;
@@ -135,7 +135,7 @@ class FeatureStation {
     // dump feature group to disk
     // return the path of file just created
     //  empty string on failure
-    string dumpFeature(const int grp_id, const MatrixPtr<double> feature);
+    string dumpFeature(const int grp_id, const MatrixPtr<ValType> feature);
 
     // map colidx/rowsiz/value files to DataSourceCollection
     // failure if returned DataSourceCollection is invalid
@@ -154,7 +154,7 @@ class FeatureStation {
 
     // assemble a SparseMatrix out of corresponding DataSource
     // returned MatrixPtr contains nothing on failure
-    MatrixPtr<double> assembleFeatureMatrix(const PrefetchJob& job);
+    MatrixPtr<ValType> assembleFeatureMatrix(const PrefetchJob& job);
 
     // estimate memory usage on a specific range (in Bytes)
     size_t estimateRangeMemSize(const int grp_id, const SizeR range);
@@ -162,6 +162,7 @@ class FeatureStation {
   private: // attributes
     std::mutex general_mu_;
     std::unordered_map<int, DataSourceCollection> grp_to_data_source_;
+    std::unordered_map<int, MatrixInfo> grp_to_matrix_info_;
     threadsafe_queue<PrefetchJob> pending_jobs_;
     threadsafe_map<PrefetchJob> loading_jobs_;
     // trace the memory usage of prefetch threads
@@ -171,7 +172,7 @@ class FeatureStation {
     //  you may take the advantage of multi-disks and multi-threaded prefetch
     std::vector<string> directories_;
     // stores all prefetched matrixes
-    threadsafe_map<int, MatrixPtr<double> > loaded_features_;
+    threadsafe_map<int, MatrixPtr<ValType> > loaded_features_;
 
 }; // class Featurestation
 

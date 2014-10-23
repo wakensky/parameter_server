@@ -32,7 +32,7 @@ FeatureStation::~FeatureStation() {
 }
 
 bool FeatureStation::addFeatureGrp(
-  const int grp_id, const MatrixPtr<double> feature) {
+  const int grp_id, const MatrixPtr<ValType> feature) {
   if (!feature) {
     return true;
   }
@@ -68,13 +68,14 @@ bool FeatureStation::addFeatureGrp(
     Lock l(general_mu_);
 
     grp_to_file_path_[grp_id] = file_path;
+    grp_to_matrix_info_[grp_id] = feature.info();
   }
 
   return true;
 }
 
 string FeatureStation::dumpFeature(
-  const int grp_id, const MatrixPtr<double> feature) {
+  const int grp_id, const MatrixPtr<ValType> feature) {
   if (!feature) {
     return "";
   }
@@ -176,7 +177,7 @@ void FeatureStation::prefetchThreadFunc() {
     prefetch_mem_record_.push(job.task_id, job.mem_size);
 
     // prefetch
-    MatrixPtr<double> feature = assembleFeatureMatrix(job);
+    MatrixPtr<ValType> feature = assembleFeatureMatrix(job);
     if (!feature) {
       LL << "assembleFeatureMatrix failed. [" << job.shortDebugString() << "]";
     }
@@ -189,14 +190,63 @@ void FeatureStation::prefetchThreadFunc() {
   };
 }
 
-MatrixPtr<double> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job) {
+MatrixPtr<ValType> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job) {
   if (0 == job.mem_size) {
     LL << "empty job [" << job.shortDebugString() << "]";
-    return MatrixPtr<double>();
+    return MatrixPtr<ValType>();
   }
 
+  auto iter = grp_to_data_source_.find(job.task_id);
+  if (grp_to_data_source_::end() == iter) {
+    LL << "assembleFeatureMatrix cannot locate DataSourceCollection for grp_id [" <<
+      job.grp_id << "]";
+    return MatrixPtr<ValType>();
+  }
+  const DataSourceCollection& dsc = iter->second;
+
   // load offset
+  const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.offset.first);
+  CHECK(nullptr != full_offset);
   SArray<OffType> offset(job.range.end() + 1 - job.range.begin());
+  offset.copyFrom(
+    full_offset + job.range.begin(),
+    offset.size());
+
+  // load index
+  const KeyType* full_index = reinterpret_cast<const KeyType*>(dsc.index.first);
+  CHECK(nullptr != full_index);
+  SArray<KeyType> index(offset.back() - offset.front());
+  index.copyFrom(
+    full_index + offset[0],
+    index.size());
+
+  // load value if necessary
+  const ValType* full_value = reinterpret_cast<const ValType*>(dsc.value.first);
+  SArray<ValType> value;
+  if (nullptr != full_value) {
+    value.resize(index.size());
+    value.copyFrom(
+      full_value + offset[0],
+      value.size());
+  }
+
+  // localize offset
+  // TODO performance issue, maybe
+  offset.eigenArray() -= offset[0];
+
+  // matrix info
+  auto info_iter = grp_to_matrix_info_.find(job.grp_id);
+  CHECK(grp_to_matrix_info_.end() != info_iter);
+  MatrixInfo info = info_iter->second;
+  info.set_nnz(index.size());
+  info.clear_ins_info();
+  if (!info.row_major()) {
+    info.mutable_col()->set(0, job.range.end() - job.range.begin());
+  }
+
+  // assemble
+  return MatrixPtr<ValType>(
+    new SparseMatrix<KeyType, ValType>(info, offset, index, value));
 }
 
 DataSource FeatureStation::makeDataSource(
