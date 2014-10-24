@@ -37,8 +37,14 @@ public:
   // return false if empty
   bool tryPop(K& out_key, V& out_val);
 
+  // pop out an element
+  // wait if empty
+  void waitAndPop(K& out_key, V& out_val);
+
   // return immediately no matter whether key exists or not
   void erase(const K& key);
+
+  size_t size();
 
 private: // attributes
   std::map<K, V> map_;
@@ -69,7 +75,7 @@ template <typename K, typename V>
 bool ThreadsafeMap<K, V>::addWithoutModify(const K& key, const V& val) {
   Lock l(mu_);
 
-  if (map_.end() == map_.find(key)) {
+  if (!test(key)) {
     // insert
     map_[key] = val;
     cond_.notify_all();
@@ -122,10 +128,28 @@ bool ThreadsafeMap<K, V>::tryPop(K& out_key, V& out_val) {
 }
 
 template <typename K, typename V>
+void ThreadsafeMap<K, V>::waitAndPop(K& out_key, V& out_val) {
+  std::unique_lock<std::mutex> lk(mu_);
+  cond_.wait(lk, [this]() { return !map_.empty(); });
+
+  auto iter = map_.begin();
+  out_key = iter->first;
+  out_val = iter->second;
+  map_.erase(iter);
+  return;
+}
+
+template <typename K, typename V>
 void ThreadsafeMap<K, V>::erase(const K& key) {
   Lock l(mu_);
   map_.erase(key);
   return;
+}
+
+template <typename K, typename V>
+size_t ThreadsafeMap<K, V>::size() {
+  Lock l(mu_);
+  return map_.size();
 }
 
 }; // namespace PS

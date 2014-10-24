@@ -70,7 +70,7 @@ bool FeatureStation::addFeatureGrp(
     return true;
   }
 
-  // dump feature group
+  // dump feature group to HDD
   string file_path = dumpFeature(grp_id, feature);
   if (file_path.empty()) {
     LL << "dumpFeature grp_id[" << grp_id << "] failed";
@@ -202,15 +202,16 @@ void FeatureStation::prefetch(
   }
 
   PrefetchJob new_job(task_id, grp_id, range, estimateRangeMemSize(grp_id, range));
-  pending_jobs_.push(new_job);
+  pending_jobs_.addWithoutModify(task_id, new_job);
   return;
 }
 
 void FeatureStation::prefetchThreadFunc() {
   while (go_on_prefetching_) {
     // take out a job
+    int task_id = 0;
     PrefetchJob job;
-    pending_jobs_.wait_and_pop(job);
+    pending_jobs_.waitAndPop(task_id, job);
     if (!loading_jobs_.addWithoutModify(job.task_id, job) ||
         loaded_features_.test(job.task_id)) {
       // task_id is being loaded
@@ -379,6 +380,16 @@ void FeatureStation::dropFeature(const int task_id) {
 
   loaded_features_.addAndModify(task_id, MatrixPtr<ValType>());
   prefetch_mem_record_.erase(task_id);
+}
+
+size_t FeatureStation::pendingPrefetchJobCount() {
+  return pending_jobs_.size();
+}
+
+bool FeatureStation::taskIDUsed(const int task_id) {
+  return pending_jobs_.test(task_id) ||
+    loading_jobs_.test(task_id) ||
+    loaded_features_.test(task_id);
 }
 
 }; // namespace PS

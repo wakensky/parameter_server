@@ -259,5 +259,17 @@ void Executor::replace(const Node& dead, const Node& live) {
   // }
 }
 
+void Executor::forEach(std::function<void(MessagePtr&)> handle) {
+  Lock l(recved_msg_mu_);
+
+  for (auto& msg : recved_msgs_) {
+    if (msg) {
+      handle(msg);
+    }
+  }
+
+  return;
+}
+
 
 } // namespace PS

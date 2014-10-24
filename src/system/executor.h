@@ -79,6 +79,10 @@ class Executor {
   string lastRecvReply();
 
   Customer& obj() { return obj_; }
+
+  // apply handle function on each MessagePtr in recved_msgs_
+  void forEach(std::function<void(MessagePtr&)> handle);
+
  private:
   Customer& obj_;
   // Temporal buffer for received messages

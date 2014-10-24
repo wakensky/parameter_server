@@ -51,6 +51,12 @@ class FeatureStation {
     // frees memory space corresponds to a specific task
     void dropFeature(const int task_id);
 
+    // get pending jobs' number
+    size_t pendingPrefetchJobCount();
+
+    // Did I invoke prefetch or getFeature on the task id?
+    bool taskIDUsed(const int task_id);
+
   private: // internal types
     struct PrefetchJob {
       int task_id;
@@ -193,9 +199,12 @@ class FeatureStation {
 
   private: // attributes
     std::mutex general_mu_;
+    // {grp_id, DataSourceCollection}
     ThreadsafeMap<int, DataSourceCollection> grp_to_data_source_;
+    // {int, MatrixInfo}
     ThreadsafeMap<int, MatrixInfo> grp_to_matrix_info_;
-    threadsafe_queue<PrefetchJob> pending_jobs_;
+    // {task_id, Prefetchjob}
+    ThreadsafeMap<int, PrefetchJob> pending_jobs_;
     // {task_id, Prefetchjob}
     ThreadsafeMap<int, PrefetchJob> loading_jobs_;
     // trace the memory usage of prefetch threads

@@ -1,3 +1,4 @@
+#include <limits>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
 #include "base/matrix_io_inl.h"
@@ -293,7 +294,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
 
-        { Lock l(mu_); X_[grp] = X; }
+        feature_station_.addFeatureGrp(grp, X);
       };
       CHECK_EQ(time+2, w_->pull(filter));
       pull_time[i] = time + 2;
@@ -328,8 +329,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       CHECK_EQ(w_->key(grp).size(), init_w[0].first.size());
       w_->value(grp) = init_w[0].second;
 
+      // TODO unnecessary disk load may happen here
       // set the local variable
-      auto X = X_[grp];
+      auto X = feature_station_.getFeature(
+        time + 2, grp, SizeR(0, std::numeric_limits<size_t>::max()));
       if (!X) continue;
       if (dual_.empty()) {
         dual_.resize(X->rows());
@@ -340,6 +343,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
         dual_.eigenVector() = *X * w_->value(grp).eigenVector();
       }
+      feature_station_.dropFeature(time + 2);
     }
     // the label
     if (!hit_cache) {
