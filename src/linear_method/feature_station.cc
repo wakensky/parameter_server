@@ -9,15 +9,26 @@
 namespace PS {
 
 DECLARE_bool(verbose);
+DECLARE_int32(num_threads);
 
-FeatureStation::FeatureStation(
-  const std::vector<string>& directories) :
-  directories_(directories) {
-  CHECK(!directories_.empty());
+FeatureStation::FeatureStation() :
+  go_on_prefetching_(true) {
   prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_mb);
+
+  // launch prefetch threads
+  for (int i = 0; i < FLAGS_num_threads; ++i) {
+    thread_vec_.push_back(std::move(
+      std::thread(&FeatureStation::prefetchThreadFunc, this)));
+  }
 }
 
 FeatureStation::~FeatureStation() {
+  // stop prefetching
+  go_on_prefetching_ = false;
+  for (auto& thread : thread_vec_) {
+    thread.join();
+  }
+
   // munmap
   int grp_id = 0;
   DataSourceCollection dsc;
@@ -74,6 +85,30 @@ bool FeatureStation::addFeatureGrp(
   grp_to_matrix_info_.addWithoutModify(grp_id, feature->info());
 
   return true;
+}
+
+bool FeatureStation::addDirectory(const string& dir) {
+  Lock l(general_mu_);
+
+  // check permission
+  struct stat st;
+  if (-1 == stat(dir.c_str(), &st)) {
+    LL << "dir [" << dir << "] cannot be added since error [" <<
+      strerror(errno) << "]";
+    return false;
+  }
+  if (!S_ISDIR(st.st_mode)) {
+    LL << "dir [" << dir << "] is not a regular directory";
+    return false;
+  }
+  if (0 != access(dir.c_str(), R_OK | W_OK)) {
+    LL << "I donnot have read&write permission on dir [" << dir << "]";
+    return false;
+  }
+
+  // add
+  directories_.push_back(dir);
+  return false;
 }
 
 string FeatureStation::dumpFeature(
@@ -143,6 +178,11 @@ FeatureStation::DataSource FeatureStation::mapOneFile(
 }
 
 string FeatureStation::pickDirRandomly() {
+  Lock l(general_mu_);
+  if (directories_.empty()) {
+    return "";
+  }
+
   std::default_random_engine rng(time(nullptr));
   std::uniform_int_distribution<size_t> distribution(0, directories_.size() - 1);
   const size_t random_idx = distribution(rng);
@@ -158,7 +198,7 @@ void FeatureStation::prefetch(
 }
 
 void FeatureStation::prefetchThreadFunc() {
-  while (1) {
+  while (go_on_prefetching_) {
     // take out a job
     PrefetchJob job;
     pending_jobs_.wait_and_pop(job);

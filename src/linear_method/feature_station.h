@@ -1,8 +1,11 @@
 #pragma once
+#include <atomic>
+#include <thread>
 #include "util/common.h"
 #include "util/threadsafe_queue.h"
 #include "util/threadsafe_map.h"
 #include "util/threadsafe_limited_set.h"
+#include "util/threadpool.h"
 #include "base/sparse_matrix.h"
 #include "system/message.h"
 
@@ -18,10 +21,17 @@ class FeatureStation {
     typedef double ValType;
     typedef uint32 KeyType;
 
-    FeatureStation(const std::vector<string>& directories);
+    FeatureStation();
     ~FeatureStation();
     FeatureStation(const FeatureStation& other) = delete;
     FeatureStation& operator= (const FeatureStation& rhs) = delete;
+
+    // add new directory
+    // return false on:
+    //  1. dir is not a regular directory
+    //  2. I have no read & write permission
+    // a directory can be added more than once
+    bool addDirectory(const string& dir);
 
     // dump specific feature group to disk
     // return false on failure
@@ -197,7 +207,8 @@ class FeatureStation {
     std::vector<string> directories_;
     // stores all prefetched matrixes
     ThreadsafeMap<int, MatrixPtr<ValType> > loaded_features_;
-
+    std::vector<std::thread> thread_vec_;
+    std::atomic_bool go_on_prefetching_;
 }; // class Featurestation
 
 }; // namespace PS
