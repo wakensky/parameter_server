@@ -18,6 +18,8 @@ DECLARE_bool(verbose);
 DECLARE_int32(num_threads);
 
 FeatureStation::FeatureStation() :
+  loaded_features_mem_size_(0),
+  memory_features_mem_size_(0),
   go_on_prefetching_(true) {
   prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_mb);
 
@@ -66,7 +68,9 @@ bool FeatureStation::addFeatureGrp(
 
   if (!FLAGS_mmap_training_data) {
     // simply store all training in memory
-    memory_features_.addWithoutModify(grp_id, feature);
+    if (memory_features_.addWithoutModify(grp_id, feature)) {
+      memory_features_mem_size_ += feature->memSize();
+    }
     return true;
   }
 
@@ -233,7 +237,9 @@ void FeatureStation::prefetchThreadFunc() {
     }
 
     // store in loaded_features_
-    loaded_features_.addWithoutModify(job.task_id, feature);
+    if (loaded_features_.addWithoutModify(job.task_id, feature)) {
+      loaded_features_mem_size_ += feature->memSize();
+    }
 
     // remove from loading_jobs_
     loading_jobs_.erase(job.task_id);
@@ -343,10 +349,10 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
 
 MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
   const int task_id, const int grp_id, const SizeR range) {
-  MatrixPtr<ValType> ret_ptr;
+  MatrixPtr<ValType> ret_ptr(nullptr);
   if (!FLAGS_mmap_training_data) {
     memory_features_.tryGet(grp_id, ret_ptr);
-    if (ret_ptr) {
+    if (ret_ptr && !range.empty()) {
       ret_ptr = ret_ptr->colBlock(range);
     }
     return ret_ptr;
@@ -367,7 +373,9 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
       LL << "getFeature encounters an error while loading job[" <<
         job.shortDebugString() << "] synchronously";
     }
-    loaded_features_.addWithoutModify(task_id, ret_ptr);
+    if (loaded_features_.addWithoutModify(task_id, ret_ptr)) {
+      loaded_features_mem_size_ += ret_ptr->memSize();
+    }
   }
 
   return ret_ptr;
@@ -378,7 +386,11 @@ void FeatureStation::dropFeature(const int task_id) {
     return;
   }
 
-  loaded_features_.addAndModify(task_id, MatrixPtr<ValType>());
+  MatrixPtr<ValType> feature_ptr;
+  if (loaded_features_.tryGet(task_id, feature_ptr)) {
+    loaded_features_mem_size_ -= feature_ptr->memSize();
+  }
+  loaded_features_.addAndModify(task_id, MatrixPtr<ValType>(nullptr));
   prefetch_mem_record_.erase(task_id);
 }
 
@@ -390,6 +402,12 @@ bool FeatureStation::taskIDUsed(const int task_id) {
   return pending_jobs_.test(task_id) ||
     loading_jobs_.test(task_id) ||
     loaded_features_.test(task_id);
+}
+
+MatrixInfo FeatureStation::getMatrixInfo(const int grp_id) {
+  MatrixInfo info;
+  grp_to_matrix_info_.tryGet(grp_id, info);
+  return info;
 }
 
 }; // namespace PS

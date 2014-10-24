@@ -57,6 +57,14 @@ class FeatureStation {
     // Did I invoke prefetch or getFeature on the task id?
     bool taskIDUsed(const int task_id);
 
+    // memory usage
+    size_t memSize() {
+      return loaded_features_mem_size_ + memory_features_mem_size_;
+    };
+
+    // get MatrixInfo of an entire group
+    MatrixInfo getMatrixInfo(const int grp_id);
+
   private: // internal types
     struct PrefetchJob {
       int task_id;
@@ -216,7 +224,9 @@ class FeatureStation {
     // stores all prefetched matrixes
     // {task_id, MatrixPtr<ValType>}; SparseMatrix actually
     ThreadsafeMap<int, MatrixPtr<ValType> > loaded_features_;
+    size_t loaded_features_mem_size_;
     ThreadsafeMap<int, MatrixPtr<ValType> > memory_features_;
+    size_t memory_features_mem_size_;
     std::vector<std::thread> thread_vec_;
     std::atomic_bool go_on_prefetching_;
 }; // class Featurestation

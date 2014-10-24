@@ -107,12 +107,7 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     // memory usage in X_, y_, w_ and dual_ (features in training data)
     if (FLAGS_verbose) {
       // X_
-      size_t sum = 0;
-      for (const auto& x_grp : X_) {
-        LI << "memSize in X_[" << x_grp.first << "]: " << x_grp.second->memSize();
-        sum += x_grp.second->memSize();
-      }
-      LI << "total memSize in X_: " << sum;
+      LI << "total memSize in training features: " << feature_station_.memSize();
 
       // y_
       LI << "total memSize in y_: " << y_->memSize();
@@ -283,13 +278,13 @@ void Darling::computeGradients(
     int task_id, int grp, SizeR col_range, SArray<double> G, SArray<double> U) {
   CHECK_EQ(G.size(), col_range.size());
   CHECK_EQ(U.size(), col_range.size());
-  CHECK(X_[grp]->colMajor());
 
   const auto& active_set = active_set_[grp];
   const auto& delta = delta_[grp];
   const double* y = y_->value().data();
   auto X = std::static_pointer_cast<SparseMatrix<uint32, double>>(
       feature_station_.getFeature(task_id, grp, col_range));
+  CHECK(X->colMajor());
   const size_t* offset = X->offset().data();
   uint32* index = X->index().data() + offset[0];
   double* value = X->value().data() + offset[0];
@@ -348,8 +343,8 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
     cw = nw;
   }
 
-  CHECK(X_[grp]);
-  SizeR row_range(0, X_[grp]->rows());
+  MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
+  SizeR row_range(0, matrix_info.row().end() - matrix_info.row().begin());
   ThreadPool pool(FLAGS_num_threads);
   int npart = FLAGS_num_threads;
   for (int i = 0; i < npart; ++i) {
@@ -365,12 +360,12 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
 void Darling::updateDual(
     int task_id, int grp, SizeR row_range, SizeR col_range, SArray<double> w_delta) {
   CHECK_EQ(w_delta.size(), col_range.size());
-  CHECK(X_[grp]->colMajor());
 
   const auto& active_set = active_set_[grp];
   double* y = y_->value().data();
   auto X = std::static_pointer_cast<
     SparseMatrix<uint32, double>>(feature_station_.getFeature(task_id, grp, col_range));
+  CHECK(X->colMajor());
   size_t* offset = X->offset().data();
   uint32* index = X->index().data() + offset[0];
   double* value = X->value().data();

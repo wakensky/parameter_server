@@ -75,7 +75,7 @@ template <typename K, typename V>
 bool ThreadsafeMap<K, V>::addWithoutModify(const K& key, const V& val) {
   Lock l(mu_);
 
-  if (!test(key)) {
+  if (map_.end() == map_.find(key)) {
     // insert
     map_[key] = val;
     cond_.notify_all();

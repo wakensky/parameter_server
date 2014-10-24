@@ -331,8 +331,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // TODO unnecessary disk load may happen here
       // set the local variable
-      auto X = feature_station_.getFeature(
-        time + 2, grp, SizeR(0, std::numeric_limits<size_t>::max()));
+      auto X = feature_station_.getFeature(time + 2, grp, SizeR());
       if (!X) continue;
       if (dual_.empty()) {
         dual_.resize(X->rows());
