@@ -1,3 +1,9 @@
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+#include <stdexcept>
 #include "linear_method/feature_station.h"
 
 namespace PS {
@@ -8,26 +14,36 @@ FeatureStation::FeatureStation(
   const std::vector<string>& directories) :
   directories_(directories) {
   CHECK(!directories_.empty());
-  prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_mb * 1024 * 1024);
+  prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_mb);
 }
 
 FeatureStation::~FeatureStation() {
   // munmap
-  for (auto& item : grp_to_data_source_) {
-    auto& dsc = item.second;
-    if (DataSourceType::MMAP != dsc.type) {
-      continue;
+  int grp_id = 0;
+  DataSourceCollection dsc;
+  while (grp_to_data_source_.tryPop(grp_id, dsc)) {
+    if (DataSourceType::MMAP == dsc.type) {
+      if (nullptr != dsc.colidx.first) {
+        munmap((void*)dsc.colidx.first, dsc.colidx.second);
+      }
+      if (nullptr != dsc.rowsiz.first) {
+        munmap((void*)dsc.rowsiz.first, dsc.rowsiz.second);
+      }
+      if (nullptr != dsc.value.first) {
+        munmap((void*)dsc.value.first, dsc.value.second);
+      }
+    } else if (DataSourceType::MEMORY == dsc.type) {
+      if (nullptr != dsc.colidx.first) {
+        delete dsc.colidx.first;
+      }
+      if (nullptr != dsc.rowsiz.first) {
+        delete dsc.rowsiz.first;
+      }
+      if (nullptr != dsc.value.first) {
+        delete dsc.value.first;
+      }
     }
 
-    if (nullptr != dsc.colidx.first) {
-      munmap(dsc.first, dsc.second);
-    }
-    if (nullptr != dsc.rowsiz.first) {
-      munmap(dsc.first, dsc.second);
-    }
-    if (nullptr != dsc.value.first) {
-      munmap(dsc.first, dsc.second);
-    }
   }
 }
 
@@ -35,15 +51,6 @@ bool FeatureStation::addFeatureGrp(
   const int grp_id, const MatrixPtr<ValType> feature) {
   if (!feature) {
     return true;
-  }
-  {
-    Lock l(general_mu_);
-
-    auto iter = grp_to_file_path_.find(grp_id);
-    if (grp_to_file_path_.end() != iter) {
-      LL << "grp_id[" << grp_id << "] existed in FeatureStation";
-      return false;
-    }
   }
 
   // dump feature group
@@ -63,13 +70,8 @@ bool FeatureStation::addFeatureGrp(
     return false;
   }
 
-  // store the relationship: grp_id -> file_path
-  {
-    Lock l(general_mu_);
-
-    grp_to_file_path_[grp_id] = file_path;
-    grp_to_matrix_info_[grp_id] = feature.info();
-  }
+  grp_to_data_source_.addWithoutModify(grp_id, dsc);
+  grp_to_matrix_info_.addWithoutModify(grp_id, feature->info());
 
   return true;
 }
@@ -91,7 +93,8 @@ string FeatureStation::dumpFeature(
   return prefix;
 }
 
-DataSourceCollection FeatureStation::mapFiles(const string& file_prefix) {
+FeatureStation::DataSourceCollection FeatureStation::mapFiles(
+  const string& file_prefix) {
   DataSourceCollection dsc(DataSourceType::MMAP);
   dsc.colidx = mapOneFile(file_prefix + ".colidx");
   dsc.rowsiz = mapOneFile(file_prefix + ".rowsiz");
@@ -100,7 +103,8 @@ DataSourceCollection FeatureStation::mapFiles(const string& file_prefix) {
   return dsc;
 }
 
-DataSource FeatureStation::mapOneFile(const string& full_file_path) {
+FeatureStation::DataSource FeatureStation::mapOneFile(
+  const string& full_file_path) {
   // open
   int fd = ::open(full_file_path.c_str(), O_RDONLY);
   if (-1 == fd) {
@@ -120,14 +124,14 @@ DataSource FeatureStation::mapOneFile(const string& full_file_path) {
     }
 
     // mmap
-    const char* mmap_ptr = mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+    const char* mmap_ptr = (const char*)mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
     if (MAP_FAILED == mmap_ptr) {
       throw std::runtime_error("mmap failed");
     }
     close(fd);
 
     return makeDataSource(mmap_ptr, st.st_size);
-  } catch (std::except& e) {
+  } catch (std::exception& e) {
     LL << "file [" << full_file_path << "] mapOneFile failed. error [" <<
       e.what() << "] description [" << strerror(errno) << "]";
     if (fd > 0) {
@@ -145,20 +149,9 @@ string FeatureStation::pickDirRandomly() {
   return directories_.at(random_idx);
 }
 
-size_t FeatureStation::memSize() {
-  Lock l(general_mu_);
-
-  size_t sum = 0;
-  for (const auto& item : pool_) {
-    sum += item.second->memSize();
-  }
-
-  return sum;
-}
-
 void FeatureStation::prefetch(
   const int task_id, const int grp_id, const SizeR range) {
-  PrefetchJob new_job(task_id, grp_id, estimateRangeMemSize(grp_id, range));
+  PrefetchJob new_job(task_id, grp_id, range, estimateRangeMemSize(grp_id, range));
   pending_jobs_.push(new_job);
 
   return;
@@ -181,7 +174,7 @@ void FeatureStation::prefetchThreadFunc() {
     // check memory usage
     // If memory exceeds limit, I will wait
     //   until dropFeature frees some memory
-    prefetch_mem_record_.push(job.task_id, job.mem_size);
+    prefetch_mem_record_.waitAndAdd(job.task_id, job.mem_size / 1024 / 1024);
 
     // prefetch
     MatrixPtr<ValType> feature = assembleFeatureMatrix(job);
@@ -190,29 +183,29 @@ void FeatureStation::prefetchThreadFunc() {
     }
 
     // store in loaded_features_
-    loaded_features_[job.task_id] = feature;
+    loaded_features_.addWithoutModify(job.task_id, feature);
 
     // remove from loading_jobs_
     loading_jobs_.erase(job.task_id);
   };
 }
 
-MatrixPtr<ValType> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job) {
+MatrixPtr<FeatureStation::ValType> FeatureStation::assembleFeatureMatrix(
+  const PrefetchJob& job) {
   if (0 == job.mem_size) {
     LL << "empty job [" << job.shortDebugString() << "]";
     return MatrixPtr<ValType>();
   }
 
-  auto iter = grp_to_data_source_.find(job.task_id);
-  if (grp_to_data_source_::end() == iter) {
+  DataSourceCollection dsc;
+  if (!grp_to_data_source_.tryGet(job.grp_id, dsc)) {
     LL << "assembleFeatureMatrix cannot locate DataSourceCollection for grp_id [" <<
       job.grp_id << "]";
     return MatrixPtr<ValType>();
   }
-  const DataSourceCollection& dsc = iter->second;
 
   // load offset
-  const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.offset.first);
+  const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.rowsiz.first);
   CHECK(nullptr != full_offset);
   SArray<OffType> offset(job.range.end() + 1 - job.range.begin());
   offset.copyFrom(
@@ -220,7 +213,7 @@ MatrixPtr<ValType> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job)
     offset.size());
 
   // load index
-  const KeyType* full_index = reinterpret_cast<const KeyType*>(dsc.index.first);
+  const KeyType* full_index = reinterpret_cast<const KeyType*>(dsc.colidx.first);
   CHECK(nullptr != full_index);
   SArray<KeyType> index(offset.back() - offset.front());
   index.copyFrom(
@@ -242,13 +235,13 @@ MatrixPtr<ValType> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job)
   offset.eigenArray() -= offset[0];
 
   // matrix info
-  auto info_iter = grp_to_matrix_info_.find(job.grp_id);
-  CHECK(grp_to_matrix_info_.end() != info_iter);
-  MatrixInfo info = info_iter->second;
+  MatrixInfo info;
+  CHECK(grp_to_matrix_info_.tryGet(job.grp_id, info));
   info.set_nnz(index.size());
   info.clear_ins_info();
   if (!info.row_major()) {
-    info.mutable_col()->set(0, job.range.end() - job.range.begin());
+    SizeR range(0, job.range.end() - job.range.begin());
+    range.to(info.mutable_col());
   }
 
   // assemble
@@ -256,7 +249,7 @@ MatrixPtr<ValType> FeatureStation::assembleFeatureMatrix(const PrefetchJob& job)
     new SparseMatrix<KeyType, ValType>(info, offset, index, value));
 }
 
-DataSource FeatureStation::makeDataSource(
+FeatureStation::DataSource FeatureStation::makeDataSource(
   const char* in_ptr, const size_t in_size) {
   return std::make_pair(in_ptr, in_size);
 }
@@ -267,20 +260,19 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
   }
 
   // locate DataSourceCollection
-  auto iter = grp_to_data_source_.find(grp_id);
-  if (grp_to_data_source_::end() == iter) {
+  DataSourceCollection dsc;
+  if (!grp_to_data_source_.tryGet(grp_id, dsc)) {
     LL << "illegal grp_id [" << grp_id << "]";
     return 0;
   }
 
   // check range
-  const DataSourceCollection& dsc = iter->second;
   const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.rowsiz.first);
   if (nullptr == dsc.rowsiz.first) {
     LL << "requesting an empty dsc.rowsiz. grp_id [" << grp_id << "]";
     return 0;
   }
-  const full_offset_length = dsc.rowsiz.second / sizeof(OffType);
+  const size_t full_offset_length = dsc.rowsiz.second / sizeof(OffType);
   if (range.end() >= full_offset_length) {
     LL << "illegal range:[" << range.begin() << "," << range.end() <<
       ") offset_len:" << full_offset_length;
@@ -299,17 +291,20 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
   return sum;
 }
 
-MatrixPtr<ValType> FeatureStation::getFeature(const int task_id) {
+MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
+  const int task_id, const int grp_id, const SizeR range) {
   MatrixPtr<ValType> ret_ptr;
 
   if (loaded_features_.tryGet(task_id, ret_ptr)) {
-    // If what I want is ready, simply return it
+    // What I want is ready, simply return it
   } else if (loading_jobs_.test(task_id)) {
-    // If what I want is being loaded, wait
+    // What I want is being loaded, wait
     loaded_features_.waitAndGet(task_id, ret_ptr);
   } else {
     // Nobody cares about me
     // I must load all by myself
+    size_t mem_size = estimateRangeMemSize(grp_id, range);
+    PrefetchJob job(task_id, grp_id, range, mem_size);
     ret_ptr = assembleFeatureMatrix(job);
     if (!ret_ptr) {
       LL << "getFeature encounters an error while loading job[" <<
@@ -323,7 +318,7 @@ MatrixPtr<ValType> FeatureStation::getFeature(const int task_id) {
 
 void FeatureStation::dropFeature(const int task_id) {
   loaded_features_.addAndModify(task_id, MatrixPtr<ValType>());
-  prefetch_mem_record_.tryErase(task_id);
+  prefetch_mem_record_.erase(task_id);
 }
 
 }; // namespace PS

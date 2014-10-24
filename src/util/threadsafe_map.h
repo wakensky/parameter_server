@@ -33,8 +33,12 @@ public:
   // return true if key exists
   bool test(const K& key);
 
-private: // methods
+  // pop out an element
+  // return false if empty
+  bool tryPop(K& out_key, V& out_val);
 
+  // return immediately no matter whether key exists or not
+  void erase(const K& key);
 
 private: // attributes
   std::map<K, V> map_;
@@ -79,7 +83,7 @@ template <typename K, typename V>
 bool ThreadsafeMap<K, V>::tryGet(const K& in_key, V& out_val) {
   Lock l(mu_);
 
-  auto iter = map_.find(key);
+  auto iter = map_.find(in_key);
   if (map_.end() == iter) {
     return false;
   }
@@ -90,8 +94,8 @@ bool ThreadsafeMap<K, V>::tryGet(const K& in_key, V& out_val) {
 
 template <typename K, typename V>
 void ThreadsafeMap<K, V>::waitAndGet(const K& in_key, V& out_val) {
-  Lock l(mu_);
-  cond_.wait(l, [this]() {return map_.end() != map_.find(in_key)});
+  std::unique_lock<std::mutex> l(mu_);
+  cond_.wait(l, [this, in_key]() { return map_.end() != map_.find(in_key); });
 
   out_val = map_.at(in_key);
   return;
@@ -101,6 +105,27 @@ template <typename K, typename V>
 bool ThreadsafeMap<K, V>::test(const K& key) {
   Lock l(mu_);
   return map_.end() != map_.find(key);
+}
+
+template <typename K, typename V>
+bool ThreadsafeMap<K, V>::tryPop(K& out_key, V& out_val) {
+  Lock l(mu_);
+  if (map_.empty()) {
+    return false;
+  }
+
+  auto iter = map_.begin();
+  out_key = iter->first;
+  out_val = iter->second;
+  map_.erase(iter);
+  return true;
+}
+
+template <typename K, typename V>
+void ThreadsafeMap<K, V>::erase(const K& key) {
+  Lock l(mu_);
+  map_.erase(key);
+  return;
 }
 
 }; // namespace PS

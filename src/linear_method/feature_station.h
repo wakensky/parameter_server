@@ -1,9 +1,16 @@
 #pragma once
 #include "util/common.h"
-#include "base/matrix.h"
+#include "util/threadsafe_queue.h"
+#include "util/threadsafe_map.h"
+#include "util/threadsafe_limited_set.h"
+#include "base/sparse_matrix.h"
 #include "system/message.h"
 
 namespace PS {
+
+DEFINE_int32(prefetch_mem_limit_mb, 1024,
+  "memory usage limit (in MBytes) while prefetching training data "
+  "in the process of UPDATE_MODEL");
 
 class FeatureStation {
   public:
@@ -29,7 +36,8 @@ class FeatureStation {
     // get feature used by a specific task
     // returned matrix resides in memory
     //   something wrong if returned shared_ptr is empty
-    MatrixPtr<ValType> getFeature(const int task_id);
+    MatrixPtr<ValType> getFeature(
+      const int task_id, const int grp_id, const SizeR range);
 
     // frees memory space corresponds to a specific task
     void dropFeature(const int task_id);
@@ -41,8 +49,16 @@ class FeatureStation {
       SizeR range;
       size_t mem_size;
 
+      PrefetchJob() :
+        task_id(0),
+        grp_id(0),
+        range(SizeR()),
+        mem_size(0) {
+        // do nothing
+      }
+
       PrefetchJob(
-        const int in_task_id, const in_grp_id,
+        const int in_task_id, const int in_grp_id,
         const SizeR in_range, const size_t in_mem_size) :
           task_id(in_task_id),
           grp_id(in_grp_id),
@@ -59,15 +75,16 @@ class FeatureStation {
         // do nothing
       }
 
-      PrefetchJob& operator= (const PrefetchJob& rhs) :
-        task_id(rhs.task_id),
-        grp_id(rhs.grp_id),
-        range(rhs.range),
-        mem_size(rhs.mem_size) {
-        // do nothing
+      PrefetchJob& operator= (const PrefetchJob& rhs) {
+        task_id = rhs.task_id;
+        grp_id = rhs.grp_id;
+        range = rhs.range;
+        mem_size = rhs.mem_size;
+
+        return *this;
       }
 
-      string shortDebugString() {
+      string shortDebugString() const {
         std::stringstream ss;
         ss << "task_id: " << task_id << " grp_id: " << grp_id << " range:[" <<
           range.begin() << "," << range.end() << ") mem_size:" << mem_size;
@@ -92,6 +109,14 @@ class FeatureStation {
       DataSource value;
       DataSourceType type;
 
+      DataSourceCollection() :
+        colidx(std::make_pair(nullptr, 0)),
+        rowsiz(std::make_pair(nullptr, 0)),
+        value(std::make_pair(nullptr, 0)),
+        type(DataSourceType::NUM) {
+        // do nothing
+      }
+
       DataSourceCollection(const DataSourceType in_type) :
         colidx(std::make_pair(nullptr, 0)),
         rowsiz(std::make_pair(nullptr, 0)),
@@ -108,12 +133,13 @@ class FeatureStation {
         // do nothing
       }
 
-      DataSourceCollection& operator= (const DataSourceCollection& rhs) :
-        colidx(rhs.colidx),
-        rowsiz(rhs.rowsiz),
-        value(rhs.value),
-        type(rhs.type) {
-        // do nothing
+      DataSourceCollection& operator= (const DataSourceCollection& rhs) {
+        colidx = rhs.colidx;
+        rowsiz = rhs.rowsiz;
+        value = rhs.value;
+        type = rhs.type;
+
+        return *this;
       }
 
       bool operator! () const {
@@ -147,9 +173,6 @@ class FeatureStation {
     // pick a random directory from directories_
     string pickDirRandomly();
 
-    // current memory usage
-    size_t memSize();
-
     void prefetchThreadFunc();
 
     // assemble a SparseMatrix out of corresponding DataSource
@@ -164,10 +187,11 @@ class FeatureStation {
     ThreadsafeMap<int, DataSourceCollection> grp_to_data_source_;
     ThreadsafeMap<int, MatrixInfo> grp_to_matrix_info_;
     threadsafe_queue<PrefetchJob> pending_jobs_;
-    ThreadsafeMap<PrefetchJob> loading_jobs_;
+    // {task_id, Prefetchjob}
+    ThreadsafeMap<int, PrefetchJob> loading_jobs_;
     // trace the memory usage of prefetch threads
     // {task_id, memory capacity}
-    threadsafeLimitedSet<int> prefetch_mem_record_;
+    ThreadsafeLimitedSet<int> prefetch_mem_record_;
     // available directories
     //  you may take the advantage of multi-disks and multi-threaded prefetch
     std::vector<string> directories_;

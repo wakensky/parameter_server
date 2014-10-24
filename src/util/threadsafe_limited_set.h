@@ -28,8 +28,8 @@ private:
   std::mutex mu_;
   std::condition_variable full_cond_;
   std::map<T, size_t> map_;
-  size_t max_capacity_;
   size_t cur_capacity_;
+  size_t max_capacity_;
 }; // class Threadsafelimitedset
 
 template <typename T>
@@ -59,7 +59,7 @@ void ThreadsafeLimitedSet<T>::erase(const T& val) {
 
 template <typename T>
 void ThreadsafeLimitedSet<T>::waitAndAdd(const T& val, const size_t capacity) {
-  Lock l(mu_);
+  std::unique_lock<std::mutex> l(mu_);
   CHECK_LE(capacity, max_capacity_);
 
   full_cond_.wait(l, [this, capacity]() {
