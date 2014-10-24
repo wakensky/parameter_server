@@ -169,7 +169,14 @@ void FeatureStation::prefetchThreadFunc() {
     // take out a job
     PrefetchJob job;
     pending_jobs_.wait_and_pop(job);
-    loading_jobs_.[job.task_id] = job;
+    if (!loading_jobs_.addWithoutModify(job.task_id, job) ||
+        loaded_features_.test(job.task_id)) {
+      // task_id is being loaded
+      // or
+      // task_id has been loaded before
+      // simply drop the PrefetchJob
+      continue;
+    }
 
     // check memory usage
     // If memory exceeds limit, I will wait
@@ -290,6 +297,33 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
     sum += sizeof(ValType) * count;
   }
   return sum;
+}
+
+MatrixPtr<ValType> FeatureStation::getFeature(const int task_id) {
+  MatrixPtr<ValType> ret_ptr;
+
+  if (loaded_features_.tryGet(task_id, ret_ptr)) {
+    // If what I want is ready, simply return it
+  } else if (loading_jobs_.test(task_id)) {
+    // If what I want is being loaded, wait
+    loaded_features_.waitAndGet(task_id, ret_ptr);
+  } else {
+    // Nobody cares about me
+    // I must load all by myself
+    ret_ptr = assembleFeatureMatrix(job);
+    if (!ret_ptr) {
+      LL << "getFeature encounters an error while loading job[" <<
+        job.shortDebugString() << "] synchronously";
+    }
+    loaded_features_.addWithoutModify(task_id, ret_ptr);
+  }
+
+  return ret_ptr;
+}
+
+void FeatureStation::dropFeature(const int task_id) {
+  loaded_features_.addAndModify(task_id, MatrixPtr<ValType>());
+  prefetch_mem_record_.tryErase(task_id);
 }
 
 }; // namespace PS

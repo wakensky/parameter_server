@@ -161,10 +161,10 @@ class FeatureStation {
 
   private: // attributes
     std::mutex general_mu_;
-    std::unordered_map<int, DataSourceCollection> grp_to_data_source_;
-    std::unordered_map<int, MatrixInfo> grp_to_matrix_info_;
+    ThreadsafeMap<int, DataSourceCollection> grp_to_data_source_;
+    ThreadsafeMap<int, MatrixInfo> grp_to_matrix_info_;
     threadsafe_queue<PrefetchJob> pending_jobs_;
-    threadsafe_map<PrefetchJob> loading_jobs_;
+    ThreadsafeMap<PrefetchJob> loading_jobs_;
     // trace the memory usage of prefetch threads
     // {task_id, memory capacity}
     threadsafeLimitedSet<int> prefetch_mem_record_;
@@ -172,7 +172,7 @@ class FeatureStation {
     //  you may take the advantage of multi-disks and multi-threaded prefetch
     std::vector<string> directories_;
     // stores all prefetched matrixes
-    threadsafe_map<int, MatrixPtr<ValType> > loaded_features_;
+    ThreadsafeMap<int, MatrixPtr<ValType> > loaded_features_;
 
 }; // class Featurestation
 
