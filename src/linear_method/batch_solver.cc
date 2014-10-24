@@ -16,8 +16,8 @@ void BatchSolver::init() {
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
 
-  for (int i = 0; i < conf_.local_cache_size(); ++i) {
-    feature_station_.addDirectory(local_cache(i));
+  for (int i = 0; i < conf_.local_cache().file_size(); ++i) {
+    feature_station_.addDirectory(conf_.local_cache().file(i));
   }
 }
 

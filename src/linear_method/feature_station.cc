@@ -5,9 +5,15 @@
 #include <sys/mman.h>
 #include <stdexcept>
 #include "linear_method/feature_station.h"
+#include "base/shared_array_inl.h"
 
 namespace PS {
 
+DEFINE_int32(prefetch_mem_limit_mb, 1024,
+  "memory usage limit (in MBytes) while prefetching training data "
+  "in the process of UPDATE_MODEL");
+DEFINE_bool(mmap_training_data, false,
+  "move training data to disk");
 DECLARE_bool(verbose);
 DECLARE_int32(num_threads);
 
@@ -26,6 +32,11 @@ FeatureStation::~FeatureStation() {
   // stop prefetching
   go_on_prefetching_ = false;
   for (auto& thread : thread_vec_) {
+    for (int i = 0; i < FLAGS_num_threads * 64; ++i) {
+      // pump in a lot of illegal prefetch jobs
+      // let prefetch threads move on
+      prefetch(0, 0, SizeR());
+    }
     thread.join();
   }
 
@@ -43,24 +54,19 @@ FeatureStation::~FeatureStation() {
       if (nullptr != dsc.value.first) {
         munmap((void*)dsc.value.first, dsc.value.second);
       }
-    } else if (DataSourceType::MEMORY == dsc.type) {
-      if (nullptr != dsc.colidx.first) {
-        delete dsc.colidx.first;
-      }
-      if (nullptr != dsc.rowsiz.first) {
-        delete dsc.rowsiz.first;
-      }
-      if (nullptr != dsc.value.first) {
-        delete dsc.value.first;
-      }
     }
-
   }
 }
 
 bool FeatureStation::addFeatureGrp(
   const int grp_id, const MatrixPtr<ValType> feature) {
   if (!feature) {
+    return true;
+  }
+
+  if (!FLAGS_mmap_training_data) {
+    // simply store all training in memory
+    memory_features_.addWithoutModify(grp_id, feature);
     return true;
   }
 
@@ -191,9 +197,12 @@ string FeatureStation::pickDirRandomly() {
 
 void FeatureStation::prefetch(
   const int task_id, const int grp_id, const SizeR range) {
+  if (!FLAGS_mmap_training_data) {
+    return;
+  }
+
   PrefetchJob new_job(task_id, grp_id, range, estimateRangeMemSize(grp_id, range));
   pending_jobs_.push(new_job);
-
   return;
 }
 
@@ -334,6 +343,13 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
 MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
   const int task_id, const int grp_id, const SizeR range) {
   MatrixPtr<ValType> ret_ptr;
+  if (!FLAGS_mmap_training_data) {
+    memory_features_.tryGet(grp_id, ret_ptr);
+    if (ret_ptr) {
+      ret_ptr = ret_ptr->colBlock(range);
+    }
+    return ret_ptr;
+  }
 
   if (loaded_features_.tryGet(task_id, ret_ptr)) {
     // What I want is ready, simply return it
@@ -357,6 +373,10 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
 }
 
 void FeatureStation::dropFeature(const int task_id) {
+  if (!FLAGS_mmap_training_data) {
+    return;
+  }
+
   loaded_features_.addAndModify(task_id, MatrixPtr<ValType>());
   prefetch_mem_record_.erase(task_id);
 }

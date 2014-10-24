@@ -11,9 +11,8 @@
 
 namespace PS {
 
-DEFINE_int32(prefetch_mem_limit_mb, 1024,
-  "memory usage limit (in MBytes) while prefetching training data "
-  "in the process of UPDATE_MODEL");
+DECLARE_int32(prefetch_mem_limit_mb);
+DECLARE_bool(mmap_training_data);
 
 class FeatureStation {
   public:
@@ -206,7 +205,9 @@ class FeatureStation {
     //  you may take the advantage of multi-disks and multi-threaded prefetch
     std::vector<string> directories_;
     // stores all prefetched matrixes
+    // {task_id, MatrixPtr<ValType>}; SparseMatrix actually
     ThreadsafeMap<int, MatrixPtr<ValType> > loaded_features_;
+    ThreadsafeMap<int, MatrixPtr<ValType> > memory_features_;
     std::vector<std::thread> thread_vec_;
     std::atomic_bool go_on_prefetching_;
 }; // class Featurestation
