@@ -71,6 +71,7 @@ bool FeatureStation::addFeatureGrp(
     if (memory_features_.addWithoutModify(grp_id, feature)) {
       memory_features_mem_size_ += feature->memSize();
     }
+    grp_to_matrix_info_.addWithoutModify(grp_id, feature->info());
     return true;
   }
 

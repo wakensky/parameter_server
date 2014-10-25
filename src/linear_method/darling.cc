@@ -345,6 +345,7 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
 
   MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
   SizeR row_range(0, matrix_info.row().end() - matrix_info.row().begin());
+
   ThreadPool pool(FLAGS_num_threads);
   int npart = FLAGS_num_threads;
   for (int i = 0; i < npart; ++i) {
@@ -366,6 +367,7 @@ void Darling::updateDual(
   auto X = std::static_pointer_cast<
     SparseMatrix<uint32, double>>(feature_station_.getFeature(task_id, grp, col_range));
   CHECK(X->colMajor());
+
   size_t* offset = X->offset().data();
   uint32* index = X->index().data() + offset[0];
   double* value = X->value().data();
