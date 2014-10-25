@@ -60,11 +60,25 @@ FeatureStation::~FeatureStation() {
   }
 }
 
+void FeatureStation::init(const string& identity, const LM::Config& conf) {
+  identity_ = identity;
+
+  for (int i = 0; i < conf.local_cache().file_size(); ++i) {
+    addDirectory(conf.local_cache().file(i));
+  }
+
+  CHECK(!identity_.empty());
+  CHECK(!directories_.empty());
+
+  return;
+}
+
 bool FeatureStation::addFeatureGrp(
   const int grp_id, const MatrixPtr<ValType> feature) {
-  if (!feature) {
+  if (!feature || feature->empty()) {
     return true;
   }
+  CHECK(!identity_.empty());
 
   if (!FLAGS_mmap_training_data) {
     // simply store all training in memory
@@ -86,7 +100,9 @@ bool FeatureStation::addFeatureGrp(
   }
 
   // map files into DataSourceCollection
-  DataSourceCollection dsc = mapFiles(file_path);
+  DataSourceCollection dsc = mapFiles(
+    file_path,
+    std::static_pointer_cast<SparseMatrix<KeyType, ValType>>(feature)->binary());
   if (!dsc) {
     LL << "mapFiles failed. path [" << file_path << "]";
     return false;
@@ -129,7 +145,8 @@ string FeatureStation::dumpFeature(
   }
 
   // target filename (directory + prefix)
-  string prefix = pickDirRandomly() + "/feature.slot_" + std::to_string(grp_id);
+  string prefix = pickDirRandomly() + "/" + identity_ +
+    ".feature.slot_" + std::to_string(grp_id);
 
   // dump
   if (!feature->writeToBinFile(prefix)) {
@@ -140,11 +157,13 @@ string FeatureStation::dumpFeature(
 }
 
 FeatureStation::DataSourceCollection FeatureStation::mapFiles(
-  const string& file_prefix) {
+  const string& file_prefix, const bool binary) {
   DataSourceCollection dsc(DataSourceType::MMAP);
-  dsc.colidx = mapOneFile(file_prefix + ".colidx");
-  dsc.rowsiz = mapOneFile(file_prefix + ".rowsiz");
-  dsc.value = mapOneFile(file_prefix + ".value");
+  dsc.colidx = mapOneFile(file_prefix + ".index");
+  dsc.rowsiz = mapOneFile(file_prefix + ".offset");
+  if (!binary) {
+    dsc.value = mapOneFile(file_prefix + ".value");
+  }
 
   return dsc;
 }
@@ -286,10 +305,6 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::assembleFeatureMatrix(
       full_value + offset[0],
       value.size());
   }
-
-  // localize offset
-  // TODO performance issue, maybe
-  offset.eigenArray() -= offset[0];
 
   // matrix info
   MatrixInfo info;

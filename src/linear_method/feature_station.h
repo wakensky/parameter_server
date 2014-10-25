@@ -6,6 +6,7 @@
 #include "util/threadsafe_map.h"
 #include "util/threadsafe_limited_set.h"
 #include "util/threadpool.h"
+#include "proto/linear_method.pb.h"
 #include "base/sparse_matrix.h"
 #include "system/message.h"
 
@@ -25,12 +26,8 @@ class FeatureStation {
     FeatureStation(const FeatureStation& other) = delete;
     FeatureStation& operator= (const FeatureStation& rhs) = delete;
 
-    // add new directory
-    // return false on:
-    //  1. dir is not a regular directory
-    //  2. I have no read & write permission
-    // a directory can be added more than once
-    bool addDirectory(const string& dir);
+    // initialization
+    void init(const string& identity, const LM::Config& conf);
 
     // dump specific feature group to disk
     // return false on failure
@@ -186,9 +183,16 @@ class FeatureStation {
     //  empty string on failure
     string dumpFeature(const int grp_id, const MatrixPtr<ValType> feature);
 
+    // add new directory
+    // return false on:
+    //  1. dir is not a regular directory
+    //  2. I have no read & write permission
+    // a directory can be added more than once
+    bool addDirectory(const string& dir);
+
     // map colidx/rowsiz/value files to DataSourceCollection
     // failure if returned DataSourceCollection is invalid
-    DataSourceCollection mapFiles(const string& file_prefix);
+    DataSourceCollection mapFiles(const string& file_prefix, const bool binary);
 
     // map a specific file into memory
     DataSource mapOneFile(const string& full_file_path);
@@ -206,6 +210,7 @@ class FeatureStation {
     size_t estimateRangeMemSize(const int grp_id, const SizeR range);
 
   private: // attributes
+    string identity_;
     std::mutex general_mu_;
     // {grp_id, DataSourceCollection}
     ThreadsafeMap<int, DataSourceCollection> grp_to_data_source_;

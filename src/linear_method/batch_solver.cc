@@ -16,10 +16,7 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
-
-  for (int i = 0; i < conf_.local_cache().file_size(); ++i) {
-    feature_station_.addDirectory(conf_.local_cache().file(i));
-  }
+  feature_station_.init(myNodeID(), conf_);
 }
 
 void BatchSolver::run() {
@@ -294,6 +291,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
 
+        { Lock l(mu_); X_[grp] = X; } // wakensky
         feature_station_.addFeatureGrp(grp, X);
       };
       CHECK_EQ(time+2, w_->pull(filter));
@@ -329,20 +327,23 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       CHECK_EQ(w_->key(grp).size(), init_w[0].first.size());
       w_->value(grp) = init_w[0].second;
 
-      // TODO unnecessary disk load may happen here
       // set the local variable
-      auto X = feature_station_.getFeature(time + 2, grp, SizeR());
-      if (!X) continue;
+      MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
+      size_t rows = matrix_info.row().end() - matrix_info.row().begin();
+      if (0 == rows) continue;
       if (dual_.empty()) {
-        dual_.resize(X->rows());
+        dual_.resize(rows);
         dual_.setZero();
       } else {
-        CHECK_EQ(dual_.size(), X->rows());
+        CHECK_EQ(dual_.size(), rows);
       }
+#if 0
+      // wakensky: If ZERO initialization is good enough,
+      //    we can save a lot of disk read cost here
       if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
         dual_.eigenVector() = *X * w_->value(grp).eigenVector();
       }
-      feature_station_.dropFeature(time + 2);
+#endif
     }
     // the label
     if (!hit_cache) {

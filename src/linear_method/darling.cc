@@ -258,6 +258,13 @@ SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_ran
     grads[i].resize(col_range.size());
     grads[i].setZero();
   }
+
+  // load SparseMatrix
+  auto X = std::static_pointer_cast<SparseMatrix<uint32, double>>(
+    feature_station_.getFeature(task_id, grp, col_range));
+  CHECK(!X->empty());
+  CHECK(X->colMajor());
+
   // TODO partition by rows for small col_range size
   int num_threads = col_range.size() < 64 ? 1 : FLAGS_num_threads;
   ThreadPool pool(num_threads);
@@ -266,8 +273,9 @@ SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_ran
     auto thr_range = col_range.evenDivide(npart, i);
     if (thr_range.empty()) continue;
     auto gr = thr_range - col_range.begin();
-    pool.add([this, grp, thr_range, gr, &grads, task_id]() {
-        computeGradients(task_id, grp, thr_range, grads[0].segment(gr), grads[1].segment(gr));
+    pool.add([this, grp, thr_range, gr, &grads, &X, &col_range]() {
+        computeGradients(X, grp, thr_range - col_range.begin(), col_range.begin(),
+          grads[0].segment(gr), grads[1].segment(gr));
       });
   }
   pool.startWorkers();
@@ -275,38 +283,50 @@ SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_ran
 }
 
 void Darling::computeGradients(
-    int task_id, int grp, SizeR col_range, SArray<double> G, SArray<double> U) {
+  const SparseMatrixPtr<uint32, double>& X, int grp, SizeR col_range,
+  size_t starting_line, SArray<double> G, SArray<double> U) {
   CHECK_EQ(G.size(), col_range.size());
   CHECK_EQ(U.size(), col_range.size());
 
   const auto& active_set = active_set_[grp];
   const auto& delta = delta_[grp];
   const double* y = y_->value().data();
-  auto X = std::static_pointer_cast<SparseMatrix<uint32, double>>(
-      feature_station_.getFeature(task_id, grp, col_range));
-  CHECK(X->colMajor());
-  const size_t* offset = X->offset().data();
-  uint32* index = X->index().data() + offset[0];
-  double* value = X->value().data() + offset[0];
+  const size_t* offset = X->offset().data() + col_range.begin();
+  size_t shift = 0;
+  if (FLAGS_mmap_training_data) {
+    shift = offset[0];
+  }
+
+  uint32* index = X->index().data() + (offset[0] - shift);
+  double* value = X->value().data() + (offset[0] - shift);
   bool binary = X->binary();
 
   // j: column id, i: row id
-  for (size_t j = 0; j < X->cols(); ++j) {
-    size_t k = j + col_range.begin();
+  for (size_t j = 0; j < col_range.size(); ++j) {
+    size_t k = j + col_range.begin() + starting_line;
     size_t n = offset[j+1] - offset[j];
     if (!active_set.test(k)) {
       index += n;
       if (!binary) value += n;
+      // wakensky
+      CHECK_LE(j, G.size());
+      CHECK_LE(j, U.size());
       G[j] = U[j] = kInactiveValue_;
       continue;
     }
     double g = 0, u = 0;
+    // wakensky
+    CHECK_LE(k, delta.size());
     double d = binary ? exp(delta[k]) : delta[k];
     // TODO unroll loop
     for (size_t o = 0; o < n; ++o) {
       auto i = *(index ++);
+      // wakensky
+      CHECK_LE(i, dual_.size());
       double tau = 1 / ( 1 + dual_[i] );
       if (binary) {
+        // wakensky
+        CHECK(i < y_->value().size());
         g -= y[i] * tau;
         u += std::min(tau*(1-tau)*d, .25);
         // u += tau * (1-tau);
@@ -317,6 +337,9 @@ void Darling::computeGradients(
         // u += tau * (1-tau) * v * v;
       }
     }
+    // wakensky
+    CHECK_LE(j, G.size());
+    CHECK_LE(j, U.size());
     G[j] = g; U[j] = u;
   }
 }
@@ -343,6 +366,11 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
     cw = nw;
   }
 
+  // load SparseMatrix
+  auto X = std::static_pointer_cast<
+    SparseMatrix<uint32, double>>(feature_station_.getFeature(task_id, grp, col_range));
+  CHECK(X->colMajor());
+
   MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
   SizeR row_range(0, matrix_info.row().end() - matrix_info.row().begin());
 
@@ -351,30 +379,33 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
   for (int i = 0; i < npart; ++i) {
     auto thr_range = row_range.evenDivide(npart, i);
     if (thr_range.empty()) continue;
-    pool.add([this, grp, thr_range, col_range, delta_w, task_id]() {
-        updateDual(task_id, grp, thr_range, col_range, delta_w);
+    pool.add([this, grp, thr_range, col_range, delta_w, &X]() {
+        updateDual(X, grp, thr_range, col_range, delta_w);
       });
   }
   pool.startWorkers();
 }
 
 void Darling::updateDual(
-    int task_id, int grp, SizeR row_range, SizeR col_range, SArray<double> w_delta) {
+  const SparseMatrixPtr<uint32, double>& X, int grp,
+  SizeR row_range, SizeR col_range, SArray<double> w_delta) {
   CHECK_EQ(w_delta.size(), col_range.size());
 
   const auto& active_set = active_set_[grp];
   double* y = y_->value().data();
-  auto X = std::static_pointer_cast<
-    SparseMatrix<uint32, double>>(feature_station_.getFeature(task_id, grp, col_range));
-  CHECK(X->colMajor());
 
   size_t* offset = X->offset().data();
-  uint32* index = X->index().data() + offset[0];
+  size_t shift = 0;
+  if (FLAGS_mmap_training_data) {
+    shift = offset[0];
+  }
+
+  uint32* index = X->index().data() + (offset[0] - shift);
   double* value = X->value().data();
   bool binary = X->binary();
 
   // j: column id, i: row id
-  for (size_t j = 0; j < X->cols(); ++j) {
+  for (size_t j = 0; j < col_range.size(); ++j) {
     size_t k  = j + col_range.begin();
     size_t n = offset[j+1] - offset[j];
     double wd = w_delta[j];
@@ -386,7 +417,7 @@ void Darling::updateDual(
     for (size_t o = offset[j]; o < offset[j+1]; ++o) {
       auto i = *(index++);
       if (!row_range.contains(i)) continue;
-      dual_[i] *= binary ? exp(y[i] * wd) : exp(y[i] * wd * value[o]);
+      dual_[i] *= binary ? exp(y[i] * wd) : exp(y[i] * wd * value[o - shift]);
     }
   }
 }
