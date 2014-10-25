@@ -252,13 +252,13 @@ void FeatureStation::prefetchThreadFunc() {
 
     // prefetch
     MatrixPtr<ValType> feature = assembleFeatureMatrix(job);
-    if (!feature) {
+    if (feature) {
+      // store in loaded_features_
+      if (loaded_features_.addWithoutModify(job.task_id, feature)) {
+        loaded_features_mem_size_ += feature->memSize();
+      }
+    } else {
       LL << "assembleFeatureMatrix failed. [" << job.shortDebugString() << "]";
-    }
-
-    // store in loaded_features_
-    if (loaded_features_.addWithoutModify(job.task_id, feature)) {
-      loaded_features_mem_size_ += feature->memSize();
     }
 
     // remove from loading_jobs_

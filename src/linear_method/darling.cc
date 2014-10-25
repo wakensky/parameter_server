@@ -291,14 +291,16 @@ void Darling::computeGradients(
   const auto& active_set = active_set_[grp];
   const auto& delta = delta_[grp];
   const double* y = y_->value().data();
-  const size_t* offset = X->offset().data() + col_range.begin();
+  const size_t* offset = X->offset().data();
+
   size_t shift = 0;
   if (FLAGS_mmap_training_data) {
     shift = offset[0];
   }
 
-  uint32* index = X->index().data() + (offset[0] - shift);
-  double* value = X->value().data() + (offset[0] - shift);
+  uint32* index = X->index().data() + (offset[col_range.begin()] - shift);
+  double* value = X->value().data() + (offset[col_range.begin()] - shift);
+  offset = X->offset().data() + col_range.begin();
   bool binary = X->binary();
 
   // j: column id, i: row id
@@ -308,25 +310,16 @@ void Darling::computeGradients(
     if (!active_set.test(k)) {
       index += n;
       if (!binary) value += n;
-      // wakensky
-      CHECK_LE(j, G.size());
-      CHECK_LE(j, U.size());
       G[j] = U[j] = kInactiveValue_;
       continue;
     }
     double g = 0, u = 0;
-    // wakensky
-    CHECK_LE(k, delta.size());
     double d = binary ? exp(delta[k]) : delta[k];
     // TODO unroll loop
     for (size_t o = 0; o < n; ++o) {
       auto i = *(index ++);
-      // wakensky
-      CHECK_LE(i, dual_.size());
       double tau = 1 / ( 1 + dual_[i] );
       if (binary) {
-        // wakensky
-        CHECK(i < y_->value().size());
         g -= y[i] * tau;
         u += std::min(tau*(1-tau)*d, .25);
         // u += tau * (1-tau);
@@ -337,9 +330,6 @@ void Darling::computeGradients(
         // u += tau * (1-tau) * v * v;
       }
     }
-    // wakensky
-    CHECK_LE(j, G.size());
-    CHECK_LE(j, U.size());
     G[j] = g; U[j] = u;
   }
 }
@@ -393,8 +383,8 @@ void Darling::updateDual(
 
   const auto& active_set = active_set_[grp];
   double* y = y_->value().data();
-
   size_t* offset = X->offset().data();
+
   size_t shift = 0;
   if (FLAGS_mmap_training_data) {
     shift = offset[0];
