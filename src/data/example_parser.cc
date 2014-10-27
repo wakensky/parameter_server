@@ -166,14 +166,13 @@ bool ExampleParser::parseAdfea(char* line, Example* ex) {
 //  no guarantee that the same group ids stay contiguously
 //
 bool ExampleParser::parseTerafea(char* line, Example* ex) {
-  // key:   group id
-  // value: index in Example::slot[]
-  std::unordered_map<uint32, uint32> gid_idx_map;
+  std::vector<uint64> group_feature_vec;
+  group_feature_vec.reserve(1024);
 
   // add the very first slot
+  uint64 pre_grp_id = 0;
   Slot* slot = ex->add_slot();
   slot->set_id(0);
-  gid_idx_map[0] = 0;
 
   char* saveptr;
   char* tk = strtok_r(line, " |", &saveptr);
@@ -190,29 +189,31 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
     } else {
       uint64 key = -1;
       if (!strtou64(tk, &key)) return false;
-
-      uint64 grp_id = key >> 54;
-      uint64 fea_id = key & 0x3FFFFFFFFFFFFF;
-
-      if (FLAGS_shuffle_fea_id) {
-        uint64 murmur_out[2];
-        MurmurHash3_x64_128(&fea_id, 8, 512927377, murmur_out);
-        fea_id = (murmur_out[0] ^ murmur_out[1]);
-      }
-
-      auto iter = gid_idx_map.find(grp_id);
-      if (gid_idx_map.end() != iter) {
-        slot = ex->mutable_slot(iter->second);
-      } else {
-        // register in the map
-        gid_idx_map[grp_id] = ex->slot_size();
-        // add new slot in Example
-        slot = ex->add_slot();
-        slot->set_id(grp_id);
-      }
-      slot->add_key(fea_id);
+      group_feature_vec.push_back(key);
     }
   }
+
+  // sort; make same group_ids appear together
+  std::sort(group_feature_vec.begin(), group_feature_vec.end());
+
+  for (const auto& key : group_feature_vec) {
+    uint64 grp_id = key >> 54;
+    uint64 fea_id = key & 0x3FFFFFFFFFFFFF;
+
+    if (FLAGS_shuffle_fea_id) {
+      uint64 murmur_out[2];
+      MurmurHash3_x64_128(&fea_id, 8, 512927377, murmur_out);
+      fea_id = (murmur_out[0] ^ murmur_out[1]);
+    }
+
+    if (grp_id != pre_grp_id) {
+      slot = ex->add_slot();
+      slot->set_id(grp_id);
+      pre_grp_id = grp_id;
+    }
+    slot->add_key(fea_id);
+  }
+
   // LL << ex->ShortDebugString();
   return true;
 }

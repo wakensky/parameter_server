@@ -25,7 +25,8 @@ FeatureStation::FeatureStation() :
   loaded_features_mem_size_(0),
   memory_features_mem_size_(0),
   go_on_prefetching_(true),
-  log_prefix_("[FeatureStation] ") {
+  log_prefix_("[FeatureStation] "),
+  max_task_id_(0) {
   prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_kb);
 
   // launch prefetch threads
@@ -214,6 +215,10 @@ void FeatureStation::prefetch(
     return;
   }
 
+  if (task_id > max_task_id_) {
+    max_task_id_ = task_id;
+  }
+
   PrefetchJob new_job(task_id, grp_id, range, estimateRangeMemSize(grp_id, range));
   pending_jobs_.addWithoutModify(task_id, new_job);
 
@@ -375,6 +380,10 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
       ret_ptr = ret_ptr->colBlock(range);
     }
     return ret_ptr;
+  }
+
+  if (task_id > max_task_id_) {
+    max_task_id_ = task_id;
   }
 
   if (FLAGS_prefetch_detail) {

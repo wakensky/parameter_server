@@ -62,6 +62,11 @@ class FeatureStation {
     // get MatrixInfo of an entire group
     MatrixInfo getMatrixInfo(const int grp_id);
 
+    // max task_id I have passed to prefetch or getFeature
+    int maxTaskID() {
+      return max_task_id_;
+    }
+
   private: // internal types
     struct PrefetchJob {
       int task_id;
@@ -236,6 +241,7 @@ class FeatureStation {
     std::vector<std::thread> thread_vec_;
     std::atomic_bool go_on_prefetching_;
     string log_prefix_;
+    std::atomic_int max_task_id_;
 }; // class Featurestation
 
 }; // namespace PS

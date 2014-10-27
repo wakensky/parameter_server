@@ -159,8 +159,13 @@ void Darling::updateModel(const MessagePtr& msg) {
   auto seg_pos = w_->find(grp, g_key_range);
 
   auto prefetch_handle = [&](MessagePtr& another) {
+    const int max_processed_task_id =
+      feature_station_.maxTaskID() > msg->task.time() ?
+      feature_station_.maxTaskID() : msg->task.time();
     if (Call::UPDATE_MODEL == get(another).cmd() &&
-        !feature_station_.taskIDUsed(another->task.time())) {
+        !feature_station_.taskIDUsed(another->task.time()) &&
+        another->task.time() <=
+          max_processed_task_id + 4 * conf_.solver().max_block_delay()) {
       // column range
       Range<Key> key_range(get(another).key());
       SizeR range = w_->find(get(another).fea_grp(0), key_range);
@@ -176,7 +181,8 @@ void Darling::updateModel(const MessagePtr& msg) {
 
   if (IamWorker()) {
     // prefetch
-    if (feature_station_.pendingPrefetchJobCount() < 32) {
+    if (feature_station_.pendingPrefetchJobCount() <
+      conf_.solver().max_block_delay() + 8) {
       exec().forEach(prefetch_handle);
     }
 

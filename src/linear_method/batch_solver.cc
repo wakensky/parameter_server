@@ -1,4 +1,5 @@
 #include <limits>
+#include <gperftools/malloc_extension.h>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
 #include "base/matrix_io_inl.h"
@@ -292,6 +293,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         }
 
         feature_station_.addFeatureGrp(grp, X);
+        // wakensky; tcmalloc force return memory to kernel
+        MallocExtension::instance()->ReleaseFreeMemory();
       };
       CHECK_EQ(time+2, w_->pull(filter));
       pull_time[i] = time + 2;
