@@ -50,23 +50,6 @@ FeatureStation::~FeatureStation() {
     }
     thread.join();
   }
-
-  // munmap
-  int grp_id = 0;
-  DataSourceCollection dsc;
-  while (grp_to_data_source_.tryPop(grp_id, dsc)) {
-    if (DataSourceType::MMAP == dsc.type) {
-      if (nullptr != dsc.colidx.first) {
-        munmap((void*)dsc.colidx.first, dsc.colidx.second);
-      }
-      if (nullptr != dsc.rowsiz.first) {
-        munmap((void*)dsc.rowsiz.first, dsc.rowsiz.second);
-      }
-      if (nullptr != dsc.value.first) {
-        munmap((void*)dsc.value.first, dsc.value.second);
-      }
-    }
-  }
 }
 
 void FeatureStation::init(const string& identity, const LM::Config& conf) {
@@ -183,7 +166,6 @@ FeatureStation::DataSourceCollection FeatureStation::mapFiles(
 
 FeatureStation::DataSource FeatureStation::mapOneFile(
   const string& full_file_path) {
-  // open
   int fd = ::open(full_file_path.c_str(), O_RDONLY);
   if (-1 == fd) {
     LL << log_prefix_ << "mapOnefile [" << full_file_path << "] failed. error [" <<
@@ -200,15 +182,8 @@ FeatureStation::DataSource FeatureStation::mapOneFile(
     if (!S_ISREG(st.st_mode)) {
       throw std::runtime_error("not a regular file");
     }
-
-    // mmap
-    const char* mmap_ptr = (const char*)mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
-    if (MAP_FAILED == mmap_ptr) {
-      throw std::runtime_error("mmap failed");
-    }
     close(fd);
-
-    return makeDataSource(mmap_ptr, st.st_size);
+    return makeDataSource(full_file_path, st.st_size);
   } catch (std::exception& e) {
     LL << log_prefix_ << "file [" << full_file_path <<
       "] mapOneFile failed. error [" <<
@@ -313,28 +288,20 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::assembleFeatureMatrix(
   }
 
   // load offset
-  const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.rowsiz.first);
-  CHECK(nullptr != full_offset);
   SArray<OffType> offset;
-  offset.copyFrom(
-    full_offset + job.range.begin(),
-    job.range.end() + 1 - job.range.begin());
+  SizeR range(job.range.begin(), job.range.end() + 1);
+  CHECK(offset.readFromFile(range, dsc.rowsiz.first));
 
   // load index
-  const KeyType* full_index = reinterpret_cast<const KeyType*>(dsc.colidx.first);
-  CHECK(nullptr != full_index);
   SArray<KeyType> index;
-  index.copyFrom(
-    full_index + offset[0],
-    offset.back() - offset.front());
+  range.set(offset.front(), offset.back());
+  CHECK(index.readFromFile(range, dsc.colidx.first));
 
   // load value if necessary
-  const ValType* full_value = reinterpret_cast<const ValType*>(dsc.value.first);
   SArray<ValType> value;
-  if (nullptr != full_value) {
-    value.copyFrom(
-      full_value + offset[0],
-      value.size());
+  if (!dsc.value.first.empty()) {
+    range.set(offset.front(), offset.back());
+    CHECK(value.readFromFile(range, dsc.value.first));
   }
 
   // matrix info
@@ -353,7 +320,7 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::assembleFeatureMatrix(
 }
 
 FeatureStation::DataSource FeatureStation::makeDataSource(
-  const char* in_ptr, const size_t in_size) {
+  const string in_ptr, const size_t in_size) {
   return std::make_pair(in_ptr, in_size);
 }
 
@@ -370,11 +337,6 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
   }
 
   // check range
-  const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.rowsiz.first);
-  if (nullptr == dsc.rowsiz.first) {
-    LL << "requesting an empty dsc.rowsiz. grp_id [" << grp_id << "]";
-    return 0;
-  }
   const size_t full_offset_length = dsc.rowsiz.second / sizeof(OffType);
   if (range.end() >= full_offset_length) {
     LL << "illegal range:[" << range.begin() << "," << range.end() <<
@@ -382,14 +344,23 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
     return 0;
   }
 
-  // estimate memory usage
   // NOTE:
   //    On MMAP mode, full_offset resides on disk.
   //    I hope two random reads here won't hurt performance too much.
-  const size_t count = full_offset[range.end()] - full_offset[range.begin()];
+  File* offset_file = File::openOrDie(dsc.rowsiz.first, "r");
+  OffType offset_begin = 0;
+  offset_file->seek(range.begin() * sizeof(OffType));
+  offset_file->readOrDie(&offset_begin, sizeof(OffType));
+  OffType offset_end = 0;
+  offset_file->seek(range.end() * sizeof(OffType));
+  offset_file->readOrDie(&offset_end, sizeof(OffType));
+  offset_file->close();
+
+  // estimate memory usage
+  const size_t count = offset_end - offset_begin;
   size_t sum = sizeof(KeyType) * count;  // sizeof index
   sum += sizeof(OffType) * (range.end() - range.begin()); // sizeof offset
-  if (nullptr != dsc.value.first) {
+  if (!dsc.value.first.empty()) {
     sum += sizeof(ValType) * count; // sizeof value
   }
   return sum;

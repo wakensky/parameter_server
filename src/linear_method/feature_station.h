@@ -118,9 +118,9 @@ class FeatureStation {
       NUM
     };
 
-    // first: pointer to data; second: size in bytes
+    // first: file path; second: size in bytes
     // The pointer may refer to real memory region or a mapped file
-    typedef std::pair<const char*, size_t> DataSource;
+    typedef std::pair<string, size_t> DataSource;
 
     // represents a specific feature group
     struct DataSourceCollection {
@@ -130,17 +130,17 @@ class FeatureStation {
       DataSourceType type;
 
       DataSourceCollection() :
-        colidx(std::make_pair(nullptr, 0)),
-        rowsiz(std::make_pair(nullptr, 0)),
-        value(std::make_pair(nullptr, 0)),
+        colidx(std::make_pair("", 0)),
+        rowsiz(std::make_pair("", 0)),
+        value(std::make_pair("", 0)),
         type(DataSourceType::NUM) {
         // do nothing
       }
 
       DataSourceCollection(const DataSourceType in_type) :
-        colidx(std::make_pair(nullptr, 0)),
-        rowsiz(std::make_pair(nullptr, 0)),
-        value(std::make_pair(nullptr, 0)),
+        colidx(std::make_pair("", 0)),
+        rowsiz(std::make_pair("", 0)),
+        value(std::make_pair("", 0)),
         type(in_type) {
         // do nothing
       }
@@ -167,16 +167,16 @@ class FeatureStation {
       }
 
       bool valid() const {
-        return nullptr != colidx.first ||
-          nullptr != rowsiz.first ||
-          nullptr != value.first;
+        return !colidx.first.empty() ||
+          !rowsiz.first.empty() ||
+          !value.first.empty();
       }
     }; // struct MapCollection
 
   private: // methods
     // assemble a DataSource
     DataSource makeDataSource(
-      const char* in_ptr = nullptr, const size_t in_size = 0);
+      const string = "", const size_t in_size = 0);
 
     // dump feature group to disk
     // return the path of file just created
