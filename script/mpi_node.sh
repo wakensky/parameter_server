@@ -50,4 +50,7 @@ ${3}/ps_cdn \
     ${print_van} \
     ${shuffle_fea_id} \
     ${parallel_match} \
+    ${mmap_training_data} \
+    -prefetch_mem_limit_kb ${prefetch_mem_limit_kb} \
+    ${prefetch_detail} \
     || { echo "rank:${my_rank} launch failed"; exit -1; }

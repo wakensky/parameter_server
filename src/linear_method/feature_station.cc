@@ -4,29 +4,38 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <stdexcept>
+#include <malloc.h>
+#include <gperftools/malloc_extension.h>
 #include "linear_method/feature_station.h"
 #include "base/shared_array_inl.h"
 
 namespace PS {
 
-DEFINE_int32(prefetch_mem_limit_mb, 1024,
-  "memory usage limit (in MBytes) while prefetching training data "
+DEFINE_int32(prefetch_mem_limit_kb, 1024 * 1024,
+  "memory usage limit (in KiloBytes) while prefetching training data "
   "in the process of UPDATE_MODEL");
 DEFINE_bool(mmap_training_data, false,
   "move training data to disk");
+DEFINE_bool(prefetch_detail, false,
+  "print detailed prefetch log. enabled with -verbose");
 DECLARE_bool(verbose);
 DECLARE_int32(num_threads);
 
 FeatureStation::FeatureStation() :
   loaded_features_mem_size_(0),
   memory_features_mem_size_(0),
-  go_on_prefetching_(true) {
-  prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_mb);
+  go_on_prefetching_(true),
+  log_prefix_("[FeatureStation] ") {
+  prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_kb);
 
   // launch prefetch threads
   for (int i = 0; i < FLAGS_num_threads; ++i) {
     thread_vec_.push_back(std::move(
       std::thread(&FeatureStation::prefetchThreadFunc, this)));
+  }
+
+  if (!FLAGS_verbose) {
+    FLAGS_prefetch_detail = false;
   }
 }
 
@@ -34,10 +43,10 @@ FeatureStation::~FeatureStation() {
   // stop prefetching
   go_on_prefetching_ = false;
   for (auto& thread : thread_vec_) {
-    for (int i = 0; i < FLAGS_num_threads * 64; ++i) {
+    for (int i = 0; i < FLAGS_num_threads + 1; ++i) {
       // pump in a lot of illegal prefetch jobs
       // let prefetch threads move on
-      prefetch(0, 0, SizeR());
+      prefetch(i + 1, 0, SizeR());
     }
     thread.join();
   }
@@ -92,11 +101,11 @@ bool FeatureStation::addFeatureGrp(
   // dump feature group to HDD
   string file_path = dumpFeature(grp_id, feature);
   if (file_path.empty()) {
-    LL << "dumpFeature grp_id[" << grp_id << "] failed";
+    LL << log_prefix_ << "dumpFeature grp_id[" << grp_id << "] failed";
     return false;
   }
   if (FLAGS_verbose) {
-    LI << "dumped grp[" << grp_id << "] at [" << file_path << "]";
+    LI << log_prefix_ << "dumped grp[" << grp_id << "] to [" << file_path << "]";
   }
 
   // map files into DataSourceCollection
@@ -104,7 +113,7 @@ bool FeatureStation::addFeatureGrp(
     file_path,
     std::static_pointer_cast<SparseMatrix<KeyType, ValType>>(feature)->binary());
   if (!dsc) {
-    LL << "mapFiles failed. path [" << file_path << "]";
+    LL << log_prefix_ << "mapFiles failed. path [" << file_path << "]";
     return false;
   }
 
@@ -120,17 +129,21 @@ bool FeatureStation::addDirectory(const string& dir) {
   // check permission
   struct stat st;
   if (-1 == stat(dir.c_str(), &st)) {
-    LL << "dir [" << dir << "] cannot be added since error [" <<
+    LL << log_prefix_ << "dir [" << dir << "] cannot be added since error [" <<
       strerror(errno) << "]";
     return false;
   }
   if (!S_ISDIR(st.st_mode)) {
-    LL << "dir [" << dir << "] is not a regular directory";
+    LL << log_prefix_ << "dir [" << dir << "] is not a regular directory";
     return false;
   }
   if (0 != access(dir.c_str(), R_OK | W_OK)) {
-    LL << "I donnot have read&write permission on dir [" << dir << "]";
+    LL << log_prefix_ << "I donnot have read&write permission on dir [" << dir << "]";
     return false;
+  }
+
+  if (FLAGS_verbose) {
+    LI << log_prefix_ << "dir [" << dir << "] has been added to featureStation";
   }
 
   // add
@@ -173,7 +186,7 @@ FeatureStation::DataSource FeatureStation::mapOneFile(
   // open
   int fd = ::open(full_file_path.c_str(), O_RDONLY);
   if (-1 == fd) {
-    LL << "mapOnefile [" << full_file_path << "] failed. error [" <<
+    LL << log_prefix_ << "mapOnefile [" << full_file_path << "] failed. error [" <<
       strerror(errno) << "]";
     return makeDataSource();
   }
@@ -197,7 +210,8 @@ FeatureStation::DataSource FeatureStation::mapOneFile(
 
     return makeDataSource(mmap_ptr, st.st_size);
   } catch (std::exception& e) {
-    LL << "file [" << full_file_path << "] mapOneFile failed. error [" <<
+    LL << log_prefix_ << "file [" << full_file_path <<
+      "] mapOneFile failed. error [" <<
       e.what() << "] description [" << strerror(errno) << "]";
     if (fd > 0) {
       close(fd);
@@ -227,6 +241,11 @@ void FeatureStation::prefetch(
 
   PrefetchJob new_job(task_id, grp_id, range, estimateRangeMemSize(grp_id, range));
   pending_jobs_.addWithoutModify(task_id, new_job);
+
+  if (FLAGS_prefetch_detail) {
+    LI << log_prefix_ << "add PrefetchJob [" <<
+      new_job.shortDebugString() << "]";
+  }
   return;
 }
 
@@ -236,29 +255,42 @@ void FeatureStation::prefetchThreadFunc() {
     int task_id = 0;
     PrefetchJob job;
     pending_jobs_.waitAndPop(task_id, job);
+
+    // check memory usage
+    // If memory exceeds limit, I will wait
+    //   until dropFeature frees some memory
+    prefetch_mem_record_.waitAndAdd(job.task_id, job.mem_size / 1024);
+
     if (!loading_jobs_.addWithoutModify(job.task_id, job) ||
         loaded_features_.test(job.task_id)) {
       // task_id is being loaded
       // or
       // task_id has been loaded before
       // simply drop the PrefetchJob
+      prefetch_mem_record_.erase(job.task_id);
       continue;
     }
 
-    // check memory usage
-    // If memory exceeds limit, I will wait
-    //   until dropFeature frees some memory
-    prefetch_mem_record_.waitAndAdd(job.task_id, job.mem_size / 1024 / 1024);
-
+    if (FLAGS_prefetch_detail) {
+      LI << log_prefix_ << "prefetching PrefetchJob [" <<
+        job.shortDebugString() << "]";
+    }
     // prefetch
     MatrixPtr<ValType> feature = assembleFeatureMatrix(job);
     if (feature) {
       // store in loaded_features_
       if (loaded_features_.addWithoutModify(job.task_id, feature)) {
         loaded_features_mem_size_ += feature->memSize();
+        // wakensky
+        LI << "wakensky; loaded_size:" << loaded_features_mem_size_ <<
+          " prefetched_size:" << feature->memSize();
       }
     } else {
       LL << "assembleFeatureMatrix failed. [" << job.shortDebugString() << "]";
+    }
+    if (FLAGS_prefetch_detail) {
+      LI << log_prefix_ << "prefetched PrefetchJob [" <<
+        job.shortDebugString() << "]";
     }
 
     // remove from loading_jobs_
@@ -283,24 +315,23 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::assembleFeatureMatrix(
   // load offset
   const OffType* full_offset = reinterpret_cast<const OffType*>(dsc.rowsiz.first);
   CHECK(nullptr != full_offset);
-  SArray<OffType> offset(job.range.end() + 1 - job.range.begin());
+  SArray<OffType> offset;
   offset.copyFrom(
     full_offset + job.range.begin(),
-    offset.size());
+    job.range.end() + 1 - job.range.begin());
 
   // load index
   const KeyType* full_index = reinterpret_cast<const KeyType*>(dsc.colidx.first);
   CHECK(nullptr != full_index);
-  SArray<KeyType> index(offset.back() - offset.front());
+  SArray<KeyType> index;
   index.copyFrom(
     full_index + offset[0],
-    index.size());
+    offset.back() - offset.front());
 
   // load value if necessary
   const ValType* full_value = reinterpret_cast<const ValType*>(dsc.value.first);
   SArray<ValType> value;
   if (nullptr != full_value) {
-    value.resize(index.size());
     value.copyFrom(
       full_value + offset[0],
       value.size());
@@ -356,9 +387,10 @@ size_t FeatureStation::estimateRangeMemSize(const int grp_id, const SizeR range)
   //    On MMAP mode, full_offset resides on disk.
   //    I hope two random reads here won't hurt performance too much.
   const size_t count = full_offset[range.end()] - full_offset[range.begin()];
-  size_t sum = (sizeof(KeyType) + sizeof(OffType)) * count;
+  size_t sum = sizeof(KeyType) * count;  // sizeof index
+  sum += sizeof(OffType) * (range.end() - range.begin()); // sizeof offset
   if (nullptr != dsc.value.first) {
-    sum += sizeof(ValType) * count;
+    sum += sizeof(ValType) * count; // sizeof value
   }
   return sum;
 }
@@ -374,9 +406,16 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
     return ret_ptr;
   }
 
+  if (FLAGS_prefetch_detail) {
+    LI << log_prefix_ << "getting task_id [" << task_id << "]";
+  }
+
   if (loaded_features_.tryGet(task_id, ret_ptr)) {
     // What I want is ready, simply return it
   } else if (loading_jobs_.test(task_id)) {
+    if (FLAGS_prefetch_detail) {
+      LI << log_prefix_ << "waiting task_id [" << task_id << "]";
+    }
     // What I want is being loaded, wait
     loaded_features_.waitAndGet(task_id, ret_ptr);
   } else {
@@ -384,14 +423,28 @@ MatrixPtr<FeatureStation::ValType> FeatureStation::getFeature(
     // I must load all by myself
     size_t mem_size = estimateRangeMemSize(grp_id, range);
     PrefetchJob job(task_id, grp_id, range, mem_size);
+
+    if (FLAGS_prefetch_detail) {
+      LI << log_prefix_ << "loading job synchronously [" <<
+        job.shortDebugString() << "]";
+    }
+
     ret_ptr = assembleFeatureMatrix(job);
-    if (!ret_ptr) {
+    if (ret_ptr) {
+      if (loaded_features_.addWithoutModify(task_id, ret_ptr)) {
+        loaded_features_mem_size_ += ret_ptr->memSize();
+        // wakensky
+        LI << "wakensky; loaded_size:" << loaded_features_mem_size_ <<
+          " synchronously_size:" << ret_ptr->memSize();
+      }
+    } else {
       LL << "getFeature encounters an error while loading job[" <<
         job.shortDebugString() << "] synchronously";
     }
-    if (loaded_features_.addWithoutModify(task_id, ret_ptr)) {
-      loaded_features_mem_size_ += ret_ptr->memSize();
-    }
+  }
+
+  if (FLAGS_prefetch_detail) {
+    LI << log_prefix_ << "got task_id [" << task_id << "]";
   }
 
   return ret_ptr;
@@ -402,12 +455,33 @@ void FeatureStation::dropFeature(const int task_id) {
     return;
   }
 
-  MatrixPtr<ValType> feature_ptr;
+  MatrixPtr<ValType> feature_ptr(nullptr);
   if (loaded_features_.tryGet(task_id, feature_ptr)) {
     loaded_features_mem_size_ -= feature_ptr->memSize();
+    // wakensky
+    LI << "wakensky; dropFeature loaded_size:" << loaded_features_mem_size_ <<
+      " dropped_size:" << feature_ptr->memSize();
   }
   loaded_features_.addAndModify(task_id, MatrixPtr<ValType>(nullptr));
   prefetch_mem_record_.erase(task_id);
+
+  if (FLAGS_prefetch_detail) {
+    LI << log_prefix_ << "dropped task_id [" << task_id << "]";
+  }
+
+  // wakensky; tcmalloc force return memory to kernel
+  MallocExtension::instance()->ReleaseFreeMemory();
+#if 0
+  int trim = malloc_trim(0);
+  // wakensky
+  if (trim) {
+    LI << "malloc_trim returned";
+  } else {
+    LI << "malloc_trim not returned";
+  }
+#endif
+
+  return;
 }
 
 size_t FeatureStation::pendingPrefetchJobCount() {

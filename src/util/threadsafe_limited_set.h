@@ -53,7 +53,17 @@ void ThreadsafeLimitedSet<T>::setMaxCapacity(const size_t capacity) {
 template <typename T>
 void ThreadsafeLimitedSet<T>::erase(const T& val) {
   Lock l(mu_);
-  map_.erase(val);
+
+  auto iter = map_.find(val);
+  if (map_.end() != iter) {
+    // wakensky
+    LI << __PRETTY_FUNCTION__ << "; wakensky val:" << val <<
+      "; size:" << iter->second << "; cur_capacity_:" <<
+      cur_capacity_;
+    cur_capacity_ -= iter->second;
+    map_.erase(iter);
+    full_cond_.notify_all();
+  }
   return;
 }
 
@@ -62,12 +72,19 @@ void ThreadsafeLimitedSet<T>::waitAndAdd(const T& val, const size_t capacity) {
   std::unique_lock<std::mutex> l(mu_);
   CHECK_LE(capacity, max_capacity_);
 
+  // wakensky
+  LI << __PRETTY_FUNCTION__ << "; wakensky capacity:" << capacity <<
+    "; cur_capacity_:" << cur_capacity_ <<
+    "; max_capacity_:" << max_capacity_;
   full_cond_.wait(l, [this, capacity]() {
     return capacity + cur_capacity_ <= max_capacity_;
   });
 
   if (map_.end() == map_.find(val)) {
     map_[val] = capacity;
+    cur_capacity_ += capacity;
+  } else {
+    LI << __PRETTY_FUNCTION__ << ": val already exists";
   }
 
   return;

@@ -12,7 +12,7 @@
 
 namespace PS {
 
-DECLARE_int32(prefetch_mem_limit_mb);
+DECLARE_int32(prefetch_mem_limit_kb);
 DECLARE_bool(mmap_training_data);
 
 class FeatureStation {
@@ -214,7 +214,7 @@ class FeatureStation {
     std::mutex general_mu_;
     // {grp_id, DataSourceCollection}
     ThreadsafeMap<int, DataSourceCollection> grp_to_data_source_;
-    // {int, MatrixInfo}
+    // {grp_id, MatrixInfo}
     ThreadsafeMap<int, MatrixInfo> grp_to_matrix_info_;
     // {task_id, Prefetchjob}
     ThreadsafeMap<int, PrefetchJob> pending_jobs_;
@@ -229,11 +229,13 @@ class FeatureStation {
     // stores all prefetched matrixes
     // {task_id, MatrixPtr<ValType>}; SparseMatrix actually
     ThreadsafeMap<int, MatrixPtr<ValType> > loaded_features_;
-    size_t loaded_features_mem_size_;
+    std::atomic_size_t loaded_features_mem_size_;
+    // {grp_id, Sparsematrix}
     ThreadsafeMap<int, MatrixPtr<ValType> > memory_features_;
-    size_t memory_features_mem_size_;
+    std::atomic_size_t memory_features_mem_size_;
     std::vector<std::thread> thread_vec_;
     std::atomic_bool go_on_prefetching_;
+    string log_prefix_;
 }; // class Featurestation
 
 }; // namespace PS

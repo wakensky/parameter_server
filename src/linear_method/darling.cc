@@ -262,6 +262,7 @@ SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_ran
   // load SparseMatrix
   auto X = std::static_pointer_cast<SparseMatrix<uint32, double>>(
     feature_station_.getFeature(task_id, grp, col_range));
+  if (!X) return grads;
   CHECK(!X->empty());
   CHECK(X->colMajor());
 
@@ -274,9 +275,9 @@ SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_ran
     if (thr_range.empty()) continue;
     auto gr = thr_range - col_range.begin();
     pool.add([this, grp, thr_range, gr, &grads, &X, &col_range]() {
-        computeGradients(X, grp, thr_range - col_range.begin(), col_range.begin(),
-          grads[0].segment(gr), grads[1].segment(gr));
-      });
+      computeGradients(X, grp, thr_range - col_range.begin(), col_range.begin(),
+        grads[0].segment(gr), grads[1].segment(gr));
+    });
   }
   pool.startWorkers();
   return grads;
@@ -359,6 +360,7 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
   // load SparseMatrix
   auto X = std::static_pointer_cast<
     SparseMatrix<uint32, double>>(feature_station_.getFeature(task_id, grp, col_range));
+  if (!X) return;
   CHECK(X->colMajor());
 
   MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
@@ -370,8 +372,8 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
     auto thr_range = row_range.evenDivide(npart, i);
     if (thr_range.empty()) continue;
     pool.add([this, grp, thr_range, col_range, delta_w, &X]() {
-        updateDual(X, grp, thr_range, col_range, delta_w);
-      });
+      updateDual(X, grp, thr_range, col_range, delta_w);
+    });
   }
   pool.startWorkers();
 }

@@ -291,7 +291,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
 
-        { Lock l(mu_); X_[grp] = X; } // wakensky
         feature_station_.addFeatureGrp(grp, X);
       };
       CHECK_EQ(time+2, w_->pull(filter));
