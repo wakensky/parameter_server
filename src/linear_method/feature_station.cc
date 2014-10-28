@@ -26,7 +26,8 @@ FeatureStation::FeatureStation() :
   memory_features_mem_size_(0),
   go_on_prefetching_(true),
   log_prefix_("[FeatureStation] "),
-  max_task_id_(0) {
+  max_task_id_(0),
+  rng_(time(0)) {
   prefetch_mem_record_.setMaxCapacity(FLAGS_prefetch_mem_limit_kb);
 
   // launch prefetch threads
@@ -203,9 +204,8 @@ string FeatureStation::pickDirRandomly() {
     return "";
   }
 
-  std::default_random_engine rng(time(nullptr));
   std::uniform_int_distribution<size_t> distribution(0, directories_.size() - 1);
-  const size_t random_idx = distribution(rng);
+  const size_t random_idx = distribution(rng_);
   return directories_.at(random_idx);
 }
 

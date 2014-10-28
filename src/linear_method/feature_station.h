@@ -242,6 +242,7 @@ class FeatureStation {
     std::atomic_bool go_on_prefetching_;
     string log_prefix_;
     std::atomic_int max_task_id_;
+    std::default_random_engine rng_;
 }; // class Featurestation
 
 }; // namespace PS
