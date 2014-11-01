@@ -70,7 +70,12 @@ void Darling::runIteration() {
 
     // evaluate the progress
     Task eval = newTask(Call::EVALUATE_PROGRESS);
-    eval.set_wait_time(time - tau);
+    if (time - tau >= first_update_model_task_id) {
+      eval.set_wait_time(time - tau);
+    }
+    else {
+      eval.set_wait_time(first_update_model_task_id);
+    }
     time = pool->submitAndWait(
         eval, [this, iter](){ LinearMethod::mergeProgress(iter); });
     showProgress(iter);
@@ -103,21 +108,6 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   if (IamWorker()) {
     // dual_ = exp(y.*(X_*w_))
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
-
-    // memory usage in X_, y_, w_ and dual_ (features in training data)
-    if (FLAGS_verbose) {
-      // X_
-      LI << "total memSize in training features: " << feature_station_.memSize();
-
-      // y_
-      LI << "total memSize in y_: " << y_->memSize();
-
-      // w_
-      LI << "total memSize in w_: " << w_->memSize();
-
-      // dual_
-      LI << "total memSize in dual_: " << dual_.memSize();
-    }
   }
   for (int grp : fea_grp_) {
     size_t n = w_->key(grp).size();
@@ -126,6 +116,30 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     delta_[grp].setValue(conf_.darling().delta_init_value());
   }
 
+  // memory usage in y_, w_ and dual_ (features in training data)
+  if (FLAGS_verbose) {
+    LI << "total memSize in training features: " << feature_station_.memSize();
+
+    // y_
+    if (y_) {
+      LI << "total memSize in y_: " << y_->memSize();
+    }
+
+    // w_
+    if (w_) {
+      LI << "total memSize in w_: " << w_->memSize();
+    }
+
+    // dual_
+    LI << "total memSize in dual_: " << dual_.memSize();
+
+    // delta_
+    size_t delta_mem_size = 0;
+    for (const auto& item : delta_) {
+      delta_mem_size += item.second.memSize();
+    }
+    LI << "total memSize in delta_: " << delta_mem_size;
+  }
 
   // size_t mem = 0;
   // for (const auto& it : X_) mem += it.second->memSize();

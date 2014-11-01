@@ -9,6 +9,9 @@ namespace PS {
 DEFINE_bool(shuffle_fea_id, false,
   "shuffle fea id of Terafea (lowest 54bits) with MurmurHash3 "
   "on downloading");
+DEFINE_bool(add_beta_feature, false,
+  "whether add feature id 0 into a special group 1023. "
+  "help eliminate bias. false in default");
 
 // NOTICE: Do not use strtok, it is not thread-safe, use strtok_r instead
 void ExampleParser::init(TextFormat format, bool ignore_fea_slot) {
@@ -184,8 +187,6 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
       slot->add_val(label > 0 ? 1.0 : -1.0);
     } else if (i == 1) {
       // skip, line_id
-    } else if (i == 2) {
-      // skip, seperator
     } else {
       uint64 key = -1;
       if (!strtou64(tk, &key)) return false;
@@ -210,6 +211,19 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
       slot = ex->add_slot();
       slot->set_id(grp_id);
       pre_grp_id = grp_id;
+    }
+    slot->add_key(fea_id);
+  }
+
+  // add feature id 0 to special group 1023
+  if (FLAGS_add_beta_feature) {
+    const uint64 grp_id = 1023;
+    const uint64 fea_id = 0;
+
+    CHECK_LE(slot->id(), grp_id);
+    if (grp_id != slot->id()) {
+      slot = ex->add_slot();
+      slot->set_id(grp_id);
     }
     slot->add_key(fea_id);
   }

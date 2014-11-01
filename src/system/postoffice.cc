@@ -193,7 +193,14 @@ void Postoffice::manageNode(const Task& tk) {
   auto obj = yellow_pages_.customer(tk.customer());
   switch (mng.cmd()) {
     case ManageNode::ADD:
-      for (auto n : nodes) yellow_pages_.add(n);
+      for (auto n : nodes) {
+        yellow_pages_.add(n);
+
+        if (FLAGS_verbose) {
+          LI << "I have detected node [" << n.id() << "," <<
+            n.hostname() << "]";
+        }
+      }
       if (yellow_pages_.num_workers() >= FLAGS_num_workers &&
           yellow_pages_.num_servers() >= FLAGS_num_servers) {
         nodes_are_ready_.set_value();
