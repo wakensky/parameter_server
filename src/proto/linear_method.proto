@@ -141,6 +141,11 @@ message Call {
   optional bool hit_cache = 9;
 }
 
+message PartitionInfo {
+  optional int32 fea_grp = 1;
+  optional PbRange key = 2;
+}
+
 // deprecated
 message AggGradLearnerArg {
   optional double learning_rate = 1;

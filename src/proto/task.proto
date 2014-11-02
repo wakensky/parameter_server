@@ -51,6 +51,9 @@ message Task {
   // applications
   optional LM.Call linear_method = 301;
   optional CallSketch sketch = 302;
+
+  // block partition information
+  repeated PartitionInfo partition_info = 401;
 }
 
 message ManageNode {

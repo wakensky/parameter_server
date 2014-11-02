@@ -70,6 +70,15 @@ void BatchSolver::run() {
   Task preprocess = newTask(Call::PREPROCESS_DATA);
   for (auto grp : fea_grp_) set(&preprocess)->add_fea_grp(grp);
   set(&preprocess)->set_hit_cache(hit_cache > 0);
+  // add all block partitions into preprocess task
+  for (const auto& block_info : fea_blk_) {
+    // set
+    PartitionInfo partition;
+    partition.set_fea_grp(block_info.first);
+    block_info.second.to(partition.mutable_key());
+    // add
+    preprocess.add_partition_info(partition);
+  }
   active_nodes->submitAndWait(preprocess);
   if (sol_cf.tail_feature_freq()) {
     LI << "Features with frequency <= " << sol_cf.tail_feature_freq() << " are filtered";
