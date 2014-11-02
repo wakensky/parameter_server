@@ -6,8 +6,8 @@
 #include <stdexcept>
 #include <malloc.h>
 #include <gperftools/malloc_extension.h>
-#include "linear_method/feature_station.h"
 #include "base/shared_array_inl.h"
+#include "system/ocean.h"
 
 namespace PS {
 
@@ -56,7 +56,7 @@ void Ocean::init(
     Range<KeyType> range(task.partition_info(i).key());
     partition_info_[task.partition_info(i).fea_grp()].push_back(range);
   }
-  CHECK(!partition_info.empty());
+  CHECK(!partition_info_.empty());
 
   return;
 }
@@ -99,28 +99,8 @@ string Ocean::pickDirRandomly() {
   return directories_.at(random_idx);
 }
 
-JobID Ocean::makeJobID(GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = 0;
-  job_id |= (static_cast<JobID>(grp_id) << 118);
-  job_id |= (static_cast<JobID>(range.size()) << 64);
-  job_id |= range.begin();
-
-  return job_id;
-}
-
-void Ocean::parseJobID(
-  const JobID job_id,
-  GrpID& grp_id,
-  Range<KeyType>& range) {
-  grp_id = static_cast<GrpID>(job_id >> 118);
-  KeyType begin = static_cast<KeyType>((job_id << 64) >> 64);
-  KeyType end = static_cast<KeyType>((job_id << 10) >> 74);
-  range.set(begin, end);
-  return;
-}
-
 bool Ocean::dump(
-  const SArray<char>& input,
+  SArray<char>& input,
   GrpID grp_id,
   Ocean::DataType type) {
   if (input.empty()) {
@@ -133,13 +113,13 @@ bool Ocean::dump(
     for (const auto& partition_range : partition_info_[grp_id]) {
       if (!dumpSarraySegment(input, grp_id, partition_range, type)) {
         LL << "failed; group [" << grp_id << "] while dumping; " <<
-          "data type [" << type << "]";
+          "data type [" << dataTypeToString(type) << "]";
         return false;
       }
     }
   } else {
     LL << "unknown; group [" << grp_id << "] while dumping; " <<
-      "data type [" << type << "]";
+      "data type [" << dataTypeToString(type) << "]";
     return false;
   }
 
@@ -147,18 +127,18 @@ bool Ocean::dump(
 }
 
 bool Ocean::dumpSarraySegment(
-  const SArray<char>& input,
+  SArray<char>& input,
   const GrpID grp_id,
   const Range<KeyType>& global_range,
   const DataType type) {
   // make job id
-  JobID job_id = makeJobID(grp_id, global_range);
+  JobID job_id(grp_id, global_range);
 
   // get column range
   SizeR column_range;
   if (Ocean::DataType::PARAMETER_KEY == type) {
     // locate column range
-    SArray<KeyType> keys = input;
+    SArray<KeyType> keys(input);
     column_range = keys.findRange(global_range);
     column_ranges_.addWithoutModify(job_id, column_range);
   } else {
@@ -172,27 +152,29 @@ bool Ocean::dumpSarraySegment(
   }
 
   // full path
-  string full_path = pickDirRandomly() + "/" + identity_ +
+  std::stringstream ss;
+  ss << pickDirRandomly() << "/" << identity_ <<
     "." << dataTypeToString(type) << "." << grp_id <<
     "." << global_range.begin() << "-" << global_range.end();
+  string full_path = ss.str();
 
   // dump
   try {
     if (Ocean::DataType::FEATURE_KEY == type ||
         Ocean::DataType::PARAMETER_KEY == type) {
-      SArray<KeyType> array = input;
+      SArray<KeyType> array(input);
       if (!array.segment(column_range).writeToFile(full_path)) {
         throw std::runtime_error("KeyType");
       }
     } else if (Ocean::DataType::FEATURE_VALUE == type ||
                Ocean::DataType::PARAMETER_VALUE == type ||
                Ocean::DataType::DELTA == type) {
-      SArray<ValueType> array = input;
+      SArray<ValueType> array(input);
       if (!array.segment(column_range).writeToFile(full_path)) {
         throw std::runtime_error("ValueType");
       }
     } else if (Ocean::DataType::FEATURE_OFFSET == type) {
-      SArray<OffsetType> array = input;
+      SArray<OffsetType> array(input);
       if (!array.segment(column_range).writeToFile(full_path)) {
         throw std::runtime_error("OffsetType");
       }
@@ -212,7 +194,7 @@ bool Ocean::dumpSarraySegment(
 
 void Ocean::prefetch(GrpID grp_id, const Range<KeyType>& key_range) {
   // enqueue
-  JobID job_id = makeJobID(grp_id, key_range);
+  JobID job_id(grp_id, key_range);
   pending_jobs_.push(job_id);
 
   // reference count
@@ -228,13 +210,13 @@ void Ocean::prefetch(GrpID grp_id, const Range<KeyType>& key_range) {
 void Ocean::prefetchThreadFunc() {
   while (go_on_prefetching_) {
     // take out a job
-    JobID job_id = 0;
+    JobID job_id;
     pending_jobs_.wait_and_pop(job_id);
 
     // check job status
     JobStatus job_status = job_info_table_.getStatus(job_id);
-    if (JobStatus::LOADING == job_info.status ||
-        JobStatus::LOADED == job_info.status) {
+    if (JobStatus::LOADING == job_status ||
+        JobStatus::LOADED == job_status) {
       // already been prefetched
       continue;
     }
@@ -243,7 +225,7 @@ void Ocean::prefetchThreadFunc() {
     {
       std::unique_lock<std::mutex> l(prefetch_limit_mu_);
       prefetch_limit_cond_.wait(
-        l, []{loaded_data_.size() <= FLAGS_prefetch_job_limit});
+        l, [this]{ return loaded_data_.size() <= FLAGS_prefetch_job_limit; });
     }
 
     // change job status
@@ -256,58 +238,47 @@ void Ocean::prefetchThreadFunc() {
   };
 }
 
-LoadedData Ocean::loadFromDiskSynchronously(const JobID job_id) {
+Ocean::LoadedData Ocean::loadFromDiskSynchronously(const JobID job_id) {
   LoadedData memory_data;
 
   // load parameter_key
-  auto iter = lakes_[static_cast<size_t>(DataType::PARAMETER_KEY)].find(job_id);
-  if (lakes_[static_cast<size_t>(DataType::PARAMETER_KEY)].end() != iter) {
-    string full_path = iter.second;
+  string full_path;
+  if (lakes_[static_cast<size_t>(DataType::PARAMETER_KEY)].tryGet(job_id, full_path)) {
     memory_data.parameter_key.readFromFile(full_path);
-  } else {
-    return memory_data;
   }
 
   // load parameter_value
-  iter = lakes_[static_cast<size_t>(DataType::PARAMETER_VALUE)].find(job_id);
-  if (lakes_[static_cast<size_t>(DataType::PARAMETER_VALUE)].end() != iter) {
-    string full_path = iter.second;
+  if (lakes_[static_cast<size_t>(DataType::PARAMETER_VALUE)].tryGet(job_id, full_path)) {
     memory_data.parameter_value.readFromFile(full_path);
   }
 
   // load delta
-  iter = lakes_[static_cast<size_t>(DataType::DELTA)].find(job_id);
-  if (lakes_[static_cast<size_t>(DataType::DELTA)].end() != iter) {
-    string full_path = iter.second;
+  if (lakes_[static_cast<size_t>(DataType::DELTA)].tryGet(job_id, full_path)) {
     memory_data.delta.readFromFile(full_path);
   }
 
   // load feature key
-  iter = lakes_[static_cast<size_t>(DataType::FEATURE_KEY)].find(job_id);
-  if (lakes_[static_cast<size_t>(DataType::FEATURE_KEY)].end() != iter) {
-    string full_path = iter.second;
+  if (lakes_[static_cast<size_t>(DataType::FEATURE_KEY)].tryGet(job_id, full_path)) {
     memory_data.feature_key.readFromFile(full_path);
   }
 
   // load feature offset
-  iter = lakes_[static_cast<size_t>(DataType::FEATURE_OFFSET)].find(job_id);
-  if (lakes_[static_cast<size_t>(DataType::FEATURE_OFFSET)].end() != iter) {
-    string full_path = iter.second;
+  if (lakes_[static_cast<size_t>(DataType::FEATURE_OFFSET)].tryGet(job_id, full_path)) {
     memory_data.feature_offset.readFromFile(full_path);
   }
 
   // load feature value
-  iter = lakes_[static_cast<size_t>(DataType::FEATURE_VALUE)].find(job_id);
-  if (lakes_[static_cast<size_t>(DataType::FEATURE_VALUE)].end() != iter) {
-    string full_path = iter.second;
+  if (lakes_[static_cast<size_t>(DataType::FEATURE_VALUE)].tryGet(job_id, full_path)) {
     memory_data.feature_value.readFromFile(full_path);
   }
 
   return memory_data;
 }
 
-SArray<KeyType> Ocean::getParameterKey(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+SArray<Ocean::KeyType> Ocean::getParameterKey(
+  const GrpID grp_id,
+  const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   makeMemoryDataReady(job_id);
 
   LoadedData memory_data;
@@ -317,8 +288,10 @@ SArray<KeyType> Ocean::getParameterKey(const GrpID grp_id, const Range<KeyType>&
   return SArray<KeyType>();
 }
 
-SArray<ValueType> Ocean::getParameterValue(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+SArray<Ocean::ValueType> Ocean::getParameterValue(
+  const GrpID grp_id,
+  const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   makeMemoryDataReady(job_id);
 
   LoadedData memory_data;
@@ -328,8 +301,10 @@ SArray<ValueType> Ocean::getParameterValue(const GrpID grp_id, const Range<KeyTy
   return SArray<ValueType>();
 }
 
-SArray<ValueType> Ocean::getDelta(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+SArray<Ocean::ValueType> Ocean::getDelta(
+  const GrpID grp_id,
+  const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   makeMemoryDataReady(job_id);
 
   LoadedData memory_data;
@@ -339,8 +314,10 @@ SArray<ValueType> Ocean::getDelta(const GrpID grp_id, const Range<KeyType>& rang
   return SArray<ValueType>();
 }
 
-SArray<KeyType> Ocean::getFeatureKey(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+SArray<Ocean::KeyType> Ocean::getFeatureKey(
+  const GrpID grp_id,
+  const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   makeMemoryDataReady(job_id);
 
   LoadedData memory_data;
@@ -350,8 +327,10 @@ SArray<KeyType> Ocean::getFeatureKey(const GrpID grp_id, const Range<KeyType>& r
   return SArray<KeyType>();
 }
 
-SArray<OffsetType> Ocean::getFeatureOffset(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+SArray<Ocean::OffsetType> Ocean::getFeatureOffset(
+  const GrpID grp_id,
+  const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   makeMemoryDataReady(job_id);
 
   LoadedData memory_data;
@@ -361,8 +340,10 @@ SArray<OffsetType> Ocean::getFeatureOffset(const GrpID grp_id, const Range<KeyTy
   return SArray<OffsetType>();
 }
 
-SArray<ValueType> Ocean::getFeatureValue(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+SArray<Ocean::ValueType> Ocean::getFeatureValue(
+  const GrpID grp_id,
+  const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   makeMemoryDataReady(job_id);
 
   LoadedData memory_data;
@@ -372,8 +353,8 @@ SArray<ValueType> Ocean::getFeatureValue(const GrpID grp_id, const Range<KeyType
   return SArray<ValueType>();
 }
 
-void Ocean::drop(const GrpID grp_id, const Range<KeyType>& range) {
-  JobID job_id = makeJobID(grp_id, range);
+void Ocean::drop(const GrpID grp_id, const Range<Ocean::KeyType>& range) {
+  JobID job_id(grp_id, range);
   job_info_table_.decreaseRef(job_id);
 
   if (job_info_table_.getRef(job_id) <= 0) {
@@ -398,5 +379,24 @@ void Ocean::makeMemoryDataReady(const JobID job_id) {
     job_info_table_.setStatus(job_id, JobStatus::LOADED);
   }
   return;
+}
+
+string Ocean::dataTypeToString(const Ocean::DataType type) {
+  switch (type) {
+    case Ocean::DataType::FEATURE_KEY:
+      return "FEATURE_KEY";
+    case Ocean::DataType::FEATURE_OFFSET:
+      return "FEATURE_OFFSET";
+    case Ocean::DataType::FEATURE_VALUE:
+      return "FEATURE_VALUE";
+    case Ocean::DataType::DELTA:
+      return "DELTA";
+    case Ocean::DataType::PARAMETER_KEY:
+      return "PARAMETER_KEY";
+    case Ocean::DataType::PARAMETER_VALUE:
+      return "PARAMETER_VALUE";
+    default:
+      return "UNKNOWN_DATATYPE";
+  };
 }
 }; // namespace PS

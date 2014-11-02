@@ -1,16 +1,17 @@
 #pragma once
+#include <cstdint>
+#include <cinttypes>
 #include <atomic>
 #include <array>
 #include "util/common.h"
 #include "util/threadsafe_queue.h"
 #include "util/threadsafe_map.h"
-#include "util/threadsafe_limited_set.h"
 #include "util/threadpool.h"
-#include "proto/linear_method.pb.h"
-#include "base/sparse_matrix.h"
+#include "proto/task.pb.h"
 
 namespace PS {
 
+DECLARE_bool(verbose);
 DECLARE_int32(prefetch_job_limit);
 DECLARE_bool(less_memory);
 
@@ -20,7 +21,6 @@ class Ocean {
     typedef size_t OffsetType;
     typedef double ValueType;
     typedef int GrpID;
-    typedef uint128_t JobID;
     enum class DataType: unsigned char {
       FEATURE_KEY = 0,
       FEATURE_OFFSET,
@@ -28,13 +28,6 @@ class Ocean {
       PARAMETER_KEY,
       PARAMETER_VALUE,
       DELTA,
-      NUM
-    };
-    enum class JobStatus: unsigned char {
-      PENDING = 0,
-      LOADING = 1,
-      FAILED,
-      LOADED,
       NUM
     };
 
@@ -51,7 +44,7 @@ class Ocean {
     // return false on failure
     //  ex: disk is full
     //  ex: {grp_id, type} exists
-    bool dump(const SArray<char>& input, const GrpID grp_id, const Ocean::DataType type);
+    bool dump(SArray<char>& input, const GrpID grp_id, const Ocean::DataType type);
 
     // add prefetch job
     // prefetch may not start immediately if prefetch_job_limit reached
@@ -70,6 +63,72 @@ class Ocean {
     void drop(const GrpID grp_id, const Range<KeyType>& range);
 
   private: // internal types
+    enum class JobStatus: unsigned char {
+      PENDING = 0,
+      LOADING = 1,
+      FAILED,
+      LOADED,
+      NUM
+    };
+
+    struct JobID {
+      GrpID grp_id;
+      Range<KeyType> range;
+
+      JobID():
+        grp_id(0),
+        range() {
+        // do nothing
+      }
+
+      JobID(const int in_grp_id, const Range<KeyType>& in_range) :
+        grp_id(in_grp_id),
+        range(in_range) {
+        // do nothing
+      }
+
+      JobID(const JobID& other) :
+        grp_id(other.grp_id),
+        range(other.range) {
+        // do nothing
+      }
+
+      JobID& operator= (const JobID& rhs) {
+        grp_id = rhs.grp_id;
+        range = rhs.range;
+        return *this;
+      }
+
+      bool operator< (const JobID& rhs) const {
+        if (grp_id < rhs.grp_id) {
+          return true;
+        } else if (range.begin() < rhs.range.begin()) {
+          return true;
+        } else if (range.end() < rhs.range.end()) {
+          return true;
+        }
+        return false;
+      }
+
+      bool operator== (const JobID& rhs) const {
+        return grp_id == rhs.grp_id && range == rhs.range;
+      }
+    };
+
+    struct JobIDHash {
+      std::size_t operator() (const JobID& job_id) const {
+        const std::size_t magic_num = 0x9e3779b9;
+        std::size_t hash = 512927377;
+        hash ^= std::hash<int>()(job_id.grp_id) +
+          magic_num + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<KeyType>()(job_id.range.begin()) +
+          magic_num + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<KeyType>()(job_id.range.end()) +
+          magic_num + (hash << 6) + (hash >> 2);
+        return hash;
+      }
+    };
+
     struct JobInfo {
       JobStatus status;
       int ref_count;
@@ -117,6 +176,8 @@ class Ocean {
       SArray<OffsetType> feature_offset;
       SArray<ValueType> feature_value;
 
+      LoadedData() {};
+
       LoadedData(const LoadedData& other) :
         parameter_key(other.parameter_key),
         parameter_value(other.parameter_value),
@@ -140,8 +201,8 @@ class Ocean {
 
     class JobInfoTable {
       public:
-        JobInfo() {};
-        ~JobInfo() {};
+        JobInfoTable() {};
+        ~JobInfoTable() {};
 
         // will insert new JobInfo if not exists
         void setStatus(const JobID job_id, const JobStatus new_status) {
@@ -155,7 +216,7 @@ class Ocean {
           Lock l(table_mu_);
           auto iter = table_.find(job_id);
           if (table_.end() != iter) {
-            return iter->status;
+            return iter->second.status;
           }
           return JobStatus::NUM;
         }
@@ -171,7 +232,7 @@ class Ocean {
           Lock l(table_mu_);
           auto iter = table_.find(job_id);
           if (table_.end() != iter) {
-            iter->decreaseRef();
+            iter->second.decreaseRef();
           }
         }
 
@@ -183,7 +244,7 @@ class Ocean {
           Lock l(table_mu_);
           auto iter = table_.find(job_id);
           if (table_.end() != iter) {
-            return iter->ref_count;
+            return iter->second.ref_count;
           }
           return 0;
         };
@@ -194,21 +255,12 @@ class Ocean {
           table_.erase(job_id);
         }
       private:
-        std::unordered_map<JobID, JobInfo> table_;
+        std::unordered_map<JobID, JobInfo, JobIDHash> table_;
         std::mutex table_mu_;
     };
 
   private: // methods
     Ocean();
-
-    // assemble JobsID
-    // from significant bits to lower bits
-    //  10 bits: grp_id
-    //  54 bits: range size
-    //  64 bits: range begin
-    JobID makeJobID(GrpID grp_id, const Range<KeyType>& range);
-    // restore group id and range from JobID
-    void parseJobID(const JobID job_id, GrpID& grp_id, Range<KeyType>& range);
 
     // add new directory
     // return false on:
@@ -224,7 +276,7 @@ class Ocean {
     // dump an range of input into Ocean
     // true on success
     bool dumpSarraySegment(
-      const SArray<char>& input,
+      SArray<char>& input,
       const GrpID grp_id,
       const Range<KeyType>& global_range,
       const DataType type);
@@ -236,13 +288,17 @@ class Ocean {
     // true on Success
     void makeMemoryDataReady(const JobID job_id);
 
+    string dataTypeToString(const Ocean::DataType type);
+
   private: // attributes
     string identity_;
     // all block partitions
     //  includes group ID and key range within that group
     std::unordered_map<GrpID, std::vector<Range<KeyType>>> partition_info_;
     // maintaining all dumped file paths
-    std::array<ThreadsafeMap<JobID, string>, Ocean::DataType::NUM> lakes_;
+    std::array<
+      ThreadsafeMap<JobID, string>,
+      static_cast<size_t>(Ocean::DataType::NUM)> lakes_;
     // pending jobs
     threadsafe_queue<JobID> pending_jobs_;
     // Job status

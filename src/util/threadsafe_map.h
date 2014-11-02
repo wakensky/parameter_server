@@ -7,7 +7,7 @@
 
 namespace PS {
 
-template <typename K, typename V>
+template <typename K, typename V, typename Cmp = std::less<K>>
 class ThreadsafeMap {
 public:
   ThreadsafeMap();
@@ -47,32 +47,32 @@ public:
   size_t size();
 
 private: // attributes
-  std::map<K, V> map_;
+  std::map<K, V, Cmp> map_;
   mutable std::mutex mu_;
   std::condition_variable cond_;
 
 }; // class ThreadsafeMap
 
-template <typename K, typename V>
-ThreadsafeMap<K, V>::ThreadsafeMap() {
+template <typename K, typename V, typename Cmp>
+ThreadsafeMap<K, V, Cmp>::ThreadsafeMap() {
   // do nothing
 }
 
-template <typename K, typename V>
-ThreadsafeMap<K, V>::~ThreadsafeMap() {
+template <typename K, typename V, typename Cmp>
+ThreadsafeMap<K, V, Cmp>::~ThreadsafeMap() {
   // do nothing
 }
 
-template <typename K, typename V>
-void ThreadsafeMap<K, V>::addAndModify(const K& key, const V& val) {
+template <typename K, typename V, typename Cmp>
+void ThreadsafeMap<K, V, Cmp>::addAndModify(const K& key, const V& val) {
   Lock l(mu_);
   map_[key] = val;
   cond_.notify_all();
   return;
 }
 
-template <typename K, typename V>
-bool ThreadsafeMap<K, V>::addWithoutModify(const K& key, const V& val) {
+template <typename K, typename V, typename Cmp>
+bool ThreadsafeMap<K, V, Cmp>::addWithoutModify(const K& key, const V& val) {
   Lock l(mu_);
 
   if (map_.end() == map_.find(key)) {
@@ -85,8 +85,8 @@ bool ThreadsafeMap<K, V>::addWithoutModify(const K& key, const V& val) {
   }
 }
 
-template <typename K, typename V>
-bool ThreadsafeMap<K, V>::tryGet(const K& in_key, V& out_val) {
+template <typename K, typename V, typename Cmp>
+bool ThreadsafeMap<K, V, Cmp>::tryGet(const K& in_key, V& out_val) {
   Lock l(mu_);
 
   auto iter = map_.find(in_key);
@@ -98,8 +98,8 @@ bool ThreadsafeMap<K, V>::tryGet(const K& in_key, V& out_val) {
   return true;
 }
 
-template <typename K, typename V>
-void ThreadsafeMap<K, V>::waitAndGet(const K& in_key, V& out_val) {
+template <typename K, typename V, typename Cmp>
+void ThreadsafeMap<K, V, Cmp>::waitAndGet(const K& in_key, V& out_val) {
   std::unique_lock<std::mutex> l(mu_);
   cond_.wait(l, [this, in_key]() { return map_.end() != map_.find(in_key); });
 
@@ -107,14 +107,14 @@ void ThreadsafeMap<K, V>::waitAndGet(const K& in_key, V& out_val) {
   return;
 }
 
-template <typename K, typename V>
-bool ThreadsafeMap<K, V>::test(const K& key) {
+template <typename K, typename V, typename Cmp>
+bool ThreadsafeMap<K, V, Cmp>::test(const K& key) {
   Lock l(mu_);
   return map_.end() != map_.find(key);
 }
 
-template <typename K, typename V>
-bool ThreadsafeMap<K, V>::tryPop(K& out_key, V& out_val) {
+template <typename K, typename V, typename Cmp>
+bool ThreadsafeMap<K, V, Cmp>::tryPop(K& out_key, V& out_val) {
   Lock l(mu_);
   if (map_.empty()) {
     return false;
@@ -127,8 +127,8 @@ bool ThreadsafeMap<K, V>::tryPop(K& out_key, V& out_val) {
   return true;
 }
 
-template <typename K, typename V>
-void ThreadsafeMap<K, V>::waitAndPop(K& out_key, V& out_val) {
+template <typename K, typename V, typename Cmp>
+void ThreadsafeMap<K, V, Cmp>::waitAndPop(K& out_key, V& out_val) {
   std::unique_lock<std::mutex> lk(mu_);
   cond_.wait(lk, [this]() { return !map_.empty(); });
 
@@ -139,15 +139,15 @@ void ThreadsafeMap<K, V>::waitAndPop(K& out_key, V& out_val) {
   return;
 }
 
-template <typename K, typename V>
-void ThreadsafeMap<K, V>::erase(const K& key) {
+template <typename K, typename V, typename Cmp>
+void ThreadsafeMap<K, V, Cmp>::erase(const K& key) {
   Lock l(mu_);
   map_.erase(key);
   return;
 }
 
-template <typename K, typename V>
-size_t ThreadsafeMap<K, V>::size() {
+template <typename K, typename V, typename Cmp>
+size_t ThreadsafeMap<K, V, Cmp>::size() {
   Lock l(mu_);
   return map_.size();
 }
