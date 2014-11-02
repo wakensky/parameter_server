@@ -38,6 +38,7 @@ void  protobuf_AddDesc_proto_2ftask_2eproto();
 void protobuf_AssignDesc_proto_2ftask_2eproto();
 void protobuf_ShutdownFile_proto_2ftask_2eproto();
 
+class PartitionInfo;
 class Task;
 class ManageNode;
 class ManageApp;
@@ -152,6 +153,100 @@ inline bool CallSketch_Command_Parse(
     CallSketch_Command_descriptor(), name, value);
 }
 // ===================================================================
+
+class PartitionInfo : public ::google::protobuf::Message {
+ public:
+  PartitionInfo();
+  virtual ~PartitionInfo();
+
+  PartitionInfo(const PartitionInfo& from);
+
+  inline PartitionInfo& operator=(const PartitionInfo& from) {
+    CopyFrom(from);
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const {
+    return _unknown_fields_;
+  }
+
+  inline ::google::protobuf::UnknownFieldSet* mutable_unknown_fields() {
+    return &_unknown_fields_;
+  }
+
+  static const ::google::protobuf::Descriptor* descriptor();
+  static const PartitionInfo& default_instance();
+
+  void Swap(PartitionInfo* other);
+
+  // implements Message ----------------------------------------------
+
+  PartitionInfo* New() const;
+  void CopyFrom(const ::google::protobuf::Message& from);
+  void MergeFrom(const ::google::protobuf::Message& from);
+  void CopyFrom(const PartitionInfo& from);
+  void MergeFrom(const PartitionInfo& from);
+  void Clear();
+  bool IsInitialized() const;
+
+  int ByteSize() const;
+  bool MergePartialFromCodedStream(
+      ::google::protobuf::io::CodedInputStream* input);
+  void SerializeWithCachedSizes(
+      ::google::protobuf::io::CodedOutputStream* output) const;
+  ::google::protobuf::uint8* SerializeWithCachedSizesToArray(::google::protobuf::uint8* output) const;
+  int GetCachedSize() const { return _cached_size_; }
+  private:
+  void SharedCtor();
+  void SharedDtor();
+  void SetCachedSize(int size) const;
+  public:
+
+  ::google::protobuf::Metadata GetMetadata() const;
+
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+
+  // optional int32 fea_grp = 1;
+  inline bool has_fea_grp() const;
+  inline void clear_fea_grp();
+  static const int kFeaGrpFieldNumber = 1;
+  inline ::google::protobuf::int32 fea_grp() const;
+  inline void set_fea_grp(::google::protobuf::int32 value);
+
+  // optional .PS.PbRange key = 2;
+  inline bool has_key() const;
+  inline void clear_key();
+  static const int kKeyFieldNumber = 2;
+  inline const ::PS::PbRange& key() const;
+  inline ::PS::PbRange* mutable_key();
+  inline ::PS::PbRange* release_key();
+  inline void set_allocated_key(::PS::PbRange* key);
+
+  // @@protoc_insertion_point(class_scope:PS.PartitionInfo)
+ private:
+  inline void set_has_fea_grp();
+  inline void clear_has_fea_grp();
+  inline void set_has_key();
+  inline void clear_has_key();
+
+  ::google::protobuf::UnknownFieldSet _unknown_fields_;
+
+  ::PS::PbRange* key_;
+  ::google::protobuf::int32 fea_grp_;
+
+  mutable int _cached_size_;
+  ::google::protobuf::uint32 _has_bits_[(2 + 31) / 32];
+
+  friend void  protobuf_AddDesc_proto_2ftask_2eproto();
+  friend void protobuf_AssignDesc_proto_2ftask_2eproto();
+  friend void protobuf_ShutdownFile_proto_2ftask_2eproto();
+
+  void InitAsDefaultInstance();
+  static PartitionInfo* default_instance_;
+};
+// -------------------------------------------------------------------
 
 class Task : public ::google::protobuf::Message {
  public:
@@ -381,6 +476,18 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::CallSketch* release_sketch();
   inline void set_allocated_sketch(::PS::CallSketch* sketch);
 
+  // repeated .PS.PartitionInfo partition_info = 401;
+  inline int partition_info_size() const;
+  inline void clear_partition_info();
+  static const int kPartitionInfoFieldNumber = 401;
+  inline const ::PS::PartitionInfo& partition_info(int index) const;
+  inline ::PS::PartitionInfo* mutable_partition_info(int index);
+  inline ::PS::PartitionInfo* add_partition_info();
+  inline const ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo >&
+      partition_info() const;
+  inline ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo >*
+      mutable_partition_info();
+
   // @@protoc_insertion_point(class_scope:PS.Task)
  private:
   inline void set_has_type();
@@ -435,9 +542,10 @@ class Task : public ::google::protobuf::Message {
   ::PS::CallSharedPara* shared_para_;
   ::PS::LM::Call* linear_method_;
   ::PS::CallSketch* sketch_;
+  ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo > partition_info_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(17 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(18 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -1431,6 +1539,70 @@ class HeartbeatReport : public ::google::protobuf::Message {
 
 // ===================================================================
 
+// PartitionInfo
+
+// optional int32 fea_grp = 1;
+inline bool PartitionInfo::has_fea_grp() const {
+  return (_has_bits_[0] & 0x00000001u) != 0;
+}
+inline void PartitionInfo::set_has_fea_grp() {
+  _has_bits_[0] |= 0x00000001u;
+}
+inline void PartitionInfo::clear_has_fea_grp() {
+  _has_bits_[0] &= ~0x00000001u;
+}
+inline void PartitionInfo::clear_fea_grp() {
+  fea_grp_ = 0;
+  clear_has_fea_grp();
+}
+inline ::google::protobuf::int32 PartitionInfo::fea_grp() const {
+  return fea_grp_;
+}
+inline void PartitionInfo::set_fea_grp(::google::protobuf::int32 value) {
+  set_has_fea_grp();
+  fea_grp_ = value;
+}
+
+// optional .PS.PbRange key = 2;
+inline bool PartitionInfo::has_key() const {
+  return (_has_bits_[0] & 0x00000002u) != 0;
+}
+inline void PartitionInfo::set_has_key() {
+  _has_bits_[0] |= 0x00000002u;
+}
+inline void PartitionInfo::clear_has_key() {
+  _has_bits_[0] &= ~0x00000002u;
+}
+inline void PartitionInfo::clear_key() {
+  if (key_ != NULL) key_->::PS::PbRange::Clear();
+  clear_has_key();
+}
+inline const ::PS::PbRange& PartitionInfo::key() const {
+  return key_ != NULL ? *key_ : *default_instance_->key_;
+}
+inline ::PS::PbRange* PartitionInfo::mutable_key() {
+  set_has_key();
+  if (key_ == NULL) key_ = new ::PS::PbRange;
+  return key_;
+}
+inline ::PS::PbRange* PartitionInfo::release_key() {
+  clear_has_key();
+  ::PS::PbRange* temp = key_;
+  key_ = NULL;
+  return temp;
+}
+inline void PartitionInfo::set_allocated_key(::PS::PbRange* key) {
+  delete key_;
+  key_ = key;
+  if (key) {
+    set_has_key();
+  } else {
+    clear_has_key();
+  }
+}
+
+// -------------------------------------------------------------------
+
 // Task
 
 // required .PS.Task.Type type = 1;
@@ -2001,6 +2173,31 @@ inline void Task::set_allocated_sketch(::PS::CallSketch* sketch) {
   } else {
     clear_has_sketch();
   }
+}
+
+// repeated .PS.PartitionInfo partition_info = 401;
+inline int Task::partition_info_size() const {
+  return partition_info_.size();
+}
+inline void Task::clear_partition_info() {
+  partition_info_.Clear();
+}
+inline const ::PS::PartitionInfo& Task::partition_info(int index) const {
+  return partition_info_.Get(index);
+}
+inline ::PS::PartitionInfo* Task::mutable_partition_info(int index) {
+  return partition_info_.Mutable(index);
+}
+inline ::PS::PartitionInfo* Task::add_partition_info() {
+  return partition_info_.Add();
+}
+inline const ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo >&
+Task::partition_info() const {
+  return partition_info_;
+}
+inline ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo >*
+Task::mutable_partition_info() {
+  return &partition_info_;
 }
 
 // -------------------------------------------------------------------

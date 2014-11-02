@@ -216,7 +216,7 @@ void Ocean::prefetch(GrpID grp_id, const Range<KeyType>& key_range) {
   pending_jobs_.push(job_id);
 
   // reference count
-  job_status_[job_id].increaseRef();
+  job_info_table_.increaseRef(job_id);
 
   if (FLAGS_verbose) {
     LI << log_prefix_ << "add prefetch job; grp_id:" <<
@@ -232,11 +232,10 @@ void Ocean::prefetchThreadFunc() {
     pending_jobs_.wait_and_pop(job_id);
 
     // check job status
-    JobInfo job_info;
-    if (job_status_.tryGet(job_id, job_info) &&
-        (JobStatus::LOADING == job_info.status ||
-         JobStatus::LOADED == job_info.status) {
-      // already been fetched
+    JobStatus job_status = job_info_table_.getStatus(job_id);
+    if (JobStatus::LOADING == job_info.status ||
+        JobStatus::LOADED == job_info.status) {
+      // already been prefetched
       continue;
     }
 
@@ -248,21 +247,156 @@ void Ocean::prefetchThreadFunc() {
     }
 
     // change job status
-    job_info.setStatus(JobStatus::LOADING);
-    job_status_.addAndModify(job_id, job_info);
+    job_info_table_.setStatus(job_id, JobStatus::LOADING);
 
     // load from disk
     LoadedData loaded = loadFromDiskSynchronously(job_id);
-    if (loaded.valid()) {
-      loaded_data_.addWithoutModify(job_id, loaded);
-      job_info.setStatus(JobStatus::LOADED);
-    } else {
-      LL << log_prefix_ << "prefetch job failed. [" <<
-        jobIDToString(job_id) << "]";
-      job_info.setStatus(JobStatus::FAILED);
-    }
-    job_status_.addAndModify(job_info);
+    loaded_data_.addWithoutModify(job_id, loaded);
+    job_info_table_.setStatus(job_id, JobStatus::LOADED);
   };
 }
 
+LoadedData Ocean::loadFromDiskSynchronously(const JobID job_id) {
+  LoadedData memory_data;
+
+  // load parameter_key
+  auto iter = lakes_[static_cast<size_t>(DataType::PARAMETER_KEY)].find(job_id);
+  if (lakes_[static_cast<size_t>(DataType::PARAMETER_KEY)].end() != iter) {
+    string full_path = iter.second;
+    memory_data.parameter_key.readFromFile(full_path);
+  } else {
+    return memory_data;
+  }
+
+  // load parameter_value
+  iter = lakes_[static_cast<size_t>(DataType::PARAMETER_VALUE)].find(job_id);
+  if (lakes_[static_cast<size_t>(DataType::PARAMETER_VALUE)].end() != iter) {
+    string full_path = iter.second;
+    memory_data.parameter_value.readFromFile(full_path);
+  }
+
+  // load delta
+  iter = lakes_[static_cast<size_t>(DataType::DELTA)].find(job_id);
+  if (lakes_[static_cast<size_t>(DataType::DELTA)].end() != iter) {
+    string full_path = iter.second;
+    memory_data.delta.readFromFile(full_path);
+  }
+
+  // load feature key
+  iter = lakes_[static_cast<size_t>(DataType::FEATURE_KEY)].find(job_id);
+  if (lakes_[static_cast<size_t>(DataType::FEATURE_KEY)].end() != iter) {
+    string full_path = iter.second;
+    memory_data.feature_key.readFromFile(full_path);
+  }
+
+  // load feature offset
+  iter = lakes_[static_cast<size_t>(DataType::FEATURE_OFFSET)].find(job_id);
+  if (lakes_[static_cast<size_t>(DataType::FEATURE_OFFSET)].end() != iter) {
+    string full_path = iter.second;
+    memory_data.feature_offset.readFromFile(full_path);
+  }
+
+  // load feature value
+  iter = lakes_[static_cast<size_t>(DataType::FEATURE_VALUE)].find(job_id);
+  if (lakes_[static_cast<size_t>(DataType::FEATURE_VALUE)].end() != iter) {
+    string full_path = iter.second;
+    memory_data.feature_value.readFromFile(full_path);
+  }
+
+  return memory_data;
+}
+
+SArray<KeyType> Ocean::getParameterKey(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  makeMemoryDataReady(job_id);
+
+  LoadedData memory_data;
+  if (loaded_data_.tryGet(job_id, memory_data)) {
+    return memory_data.parameter_key;
+  }
+  return SArray<KeyType>();
+}
+
+SArray<ValueType> Ocean::getParameterValue(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  makeMemoryDataReady(job_id);
+
+  LoadedData memory_data;
+  if (loaded_data_.tryGet(job_id, memory_data)) {
+    return memory_data.parameter_value;
+  }
+  return SArray<ValueType>();
+}
+
+SArray<ValueType> Ocean::getDelta(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  makeMemoryDataReady(job_id);
+
+  LoadedData memory_data;
+  if (loaded_data_.tryGet(job_id, memory_data)) {
+    return memory_data.delta;
+  }
+  return SArray<ValueType>();
+}
+
+SArray<KeyType> Ocean::getFeatureKey(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  makeMemoryDataReady(job_id);
+
+  LoadedData memory_data;
+  if (loaded_data_.tryGet(job_id, memory_data)) {
+    return memory_data.feature_key;
+  }
+  return SArray<KeyType>();
+}
+
+SArray<OffsetType> Ocean::getFeatureOffset(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  makeMemoryDataReady(job_id);
+
+  LoadedData memory_data;
+  if (loaded_data_.tryGet(job_id, memory_data)) {
+    return memory_data.feature_offset;
+  }
+  return SArray<OffsetType>();
+}
+
+SArray<ValueType> Ocean::getFeatureValue(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  makeMemoryDataReady(job_id);
+
+  LoadedData memory_data;
+  if (loaded_data_.tryGet(job_id, memory_data)) {
+    return memory_data.feature_value;
+  }
+  return SArray<ValueType>();
+}
+
+void Ocean::drop(const GrpID grp_id, const Range<KeyType>& range) {
+  JobID job_id = makeJobID(grp_id, range);
+  job_info_table_.decreaseRef(job_id);
+
+  if (job_info_table_.getRef(job_id) <= 0) {
+    // release LoadedData
+    loaded_data_.erase(job_id);
+    // remove from job_info_table_
+    job_info_table_.erase(job_id);
+  }
+
+  return;
+}
+
+void Ocean::makeMemoryDataReady(const JobID job_id) {
+  if (loaded_data_.test(job_id)) {
+  } else if (JobStatus::LOADING == job_info_table_.getStatus(job_id)) {
+    LoadedData memory_data;
+    loaded_data_.waitAndGet(job_id, memory_data);
+  } else {
+    job_info_table_.setStatus(job_id, JobStatus::LOADING);
+    LoadedData memory_data = loadFromDiskSynchronously(job_id);
+    loaded_data_.addWithoutModify(job_id, memory_data);
+    job_info_table_.setStatus(job_id, JobStatus::LOADED);
+  }
+  return;
+}
 }; // namespace PS

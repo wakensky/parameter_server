@@ -199,7 +199,8 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
 
   for (const auto& key : group_feature_vec) {
     uint64 grp_id = key >> 54;
-    uint64 fea_id = key & 0x3FFFFFFFFFFFFF;
+    uint64 fea_id = key;
+    // uint64 fea_id = key & 0x3FFFFFFFFFFFFF;
 
     if (FLAGS_shuffle_fea_id) {
       uint64 murmur_out[2];

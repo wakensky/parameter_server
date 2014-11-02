@@ -51,17 +51,28 @@ class Ocean {
     // return false on failure
     //  ex: disk is full
     //  ex: {grp_id, type} exists
-    bool dump(const SArray<char>& input, GrpID grp_id, Ocean::DataType type);
+    bool dump(const SArray<char>& input, const GrpID grp_id, const Ocean::DataType type);
 
     // add prefetch job
     // prefetch may not start immediately if prefetch_job_limit reached
-    void prefetch(GrpID grp_id, const Range<KeyType>& key_range);
+    void prefetch(const GrpID grp_id, const Range<KeyType>& key_range);
+
+    // get needed SArray from memory pool
+    SArray<KeyType> getParameterKey(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<ValueType> getParameterValue(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<ValueType> getDelta(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<KeyType> getFeatureKey(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<OffsetType> getFeatureOffset(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<ValueType> getFeatureValue(const GrpID grp_id, const Range<KeyType>& range);
+
+    // notify Ocean that corresponding memory block could be released if its reference count
+    //   decreases to zero
+    void drop(const GrpID grp_id, const Range<KeyType>& range);
 
   private: // internal types
     struct JobInfo {
       JobStatus status;
       int ref_count;
-      std::mutex mu;
 
       JobInfo() :
         status(JobStatus::PENDING),
@@ -82,8 +93,6 @@ class Ocean {
       }
 
       JobInfo& operator= (const JobInfo& rhs) {
-        Lock l(mu);
-
         status = rhs.status;
         ref_count = rhs.ref_count;
         return *this;
@@ -91,21 +100,13 @@ class Ocean {
 
       void setStatus(const JobStatus new_status) {
         if (new_status > status && new_status < JobStatus::NUM) {
-          Lock l(mu);
           status = new_status;
         }
         return;
       }
 
-      void increaseRef() {
-        Lock l(mu);
-        ref_count++;
-      }
-
-      void decreaseRef() {
-        Lock l(mu);
-        ref_count--;
-      }
+      void increaseRef() { ref_count++; }
+      void decreaseRef() { ref_count--; }
     };
 
     struct LoadedData {
@@ -135,10 +136,66 @@ class Ocean {
         feature_value = rhs.feature_value;
         return *this;
       }
+    };
 
-      bool valid() {
-        return !parameter_key.empty();
-      }
+    class JobInfoTable {
+      public:
+        JobInfo() {};
+        ~JobInfo() {};
+
+        // will insert new JobInfo if not exists
+        void setStatus(const JobID job_id, const JobStatus new_status) {
+          Lock l(table_mu_);
+          table_[job_id].setStatus(new_status);
+        }
+
+        // return JobStatus::NUM if job_id does not exist
+        // will not insert new JobInfo
+        JobStatus getStatus(const JobID job_id) {
+          Lock l(table_mu_);
+          auto iter = table_.find(job_id);
+          if (table_.end() != iter) {
+            return iter->status;
+          }
+          return JobStatus::NUM;
+        }
+
+        // will insert new JobInfo if not exists
+        void increaseRef(const JobID job_id) {
+          Lock l(table_mu_);
+          table_[job_id].increaseRef();
+        }
+
+        // will not insert new JobInfo
+        void decreaseRef(const JobID job_id) {
+          Lock l(table_mu_);
+          auto iter = table_.find(job_id);
+          if (table_.end() != iter) {
+            iter->decreaseRef();
+          }
+        }
+
+        // get reference count
+        // return 0:
+        //  if job_id not exists
+        //  if the job is not used by anybody
+        int getRef(const JobID job_id) {
+          Lock l(table_mu_);
+          auto iter = table_.find(job_id);
+          if (table_.end() != iter) {
+            return iter->ref_count;
+          }
+          return 0;
+        };
+
+        // remove job information
+        void erase(const JobID job_id) {
+          Lock l(table_mu_);
+          table_.erase(job_id);
+        }
+      private:
+        std::unordered_map<JobID, JobInfo> table_;
+        std::mutex table_mu_;
     };
 
   private: // methods
@@ -172,6 +229,13 @@ class Ocean {
       const Range<KeyType>& global_range,
       const DataType type);
 
+    // read data from disk
+    LoadedData loadFromDiskSynchronously(const JobID job_id);
+
+    // make sure that what I want resides in loaded_data_ already
+    // true on Success
+    void makeMemoryDataReady(const JobID job_id);
+
   private: // attributes
     string identity_;
     // all block partitions
@@ -181,8 +245,8 @@ class Ocean {
     std::array<ThreadsafeMap<JobID, string>, Ocean::DataType::NUM> lakes_;
     // pending jobs
     threadsafe_queue<JobID> pending_jobs_;
-    // Job Status
-    ThreadsafeMap<JobID, JobInfo> job_status_;
+    // Job status
+    JobInfoTable job_info_table_;
     // memory pool for all loaded data
     ThreadsafeMap<JobID, LoadedData> loaded_data_;
     // JobID -> Column range

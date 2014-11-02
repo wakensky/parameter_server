@@ -4,6 +4,11 @@ import "proto/range.proto";
 import "proto/app.proto";
 import "proto/linear_method.proto";
 
+message PartitionInfo {
+  optional int32 fea_grp = 1;
+  optional PbRange key = 2;
+}
+
 message Task {
   enum Type {
     TERMINATE = 1;
