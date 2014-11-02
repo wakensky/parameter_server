@@ -33,6 +33,7 @@ class Ocean {
     enum class JobStatus: unsigned char {
       PENDING = 0,
       LOADING = 1,
+      FAILED,
       LOADED,
       NUM
     };
@@ -54,7 +55,7 @@ class Ocean {
 
     // add prefetch job
     // prefetch may not start immediately if prefetch_job_limit reached
-    void prefetch(GrpID grp_id, const Range<FeatureKeyType>& key_range);
+    void prefetch(GrpID grp_id, const Range<KeyType>& key_range);
 
   private: // internal types
     struct JobInfo {
@@ -108,14 +109,36 @@ class Ocean {
     };
 
     struct LoadedData {
-      // LoadedData invalid if parameter_key is empty
-      SArray<ParameterKeyType> parameter_key;
-      SArray<ParameterValueType> parameter_value;
-      SArray<DeltaType> delta;
-      SparseMatrixPtr<FeatureKeyType, FeatureValueType> feature_matrix;
+      SArray<KeyType> parameter_key;
+      SArray<ValueType> parameter_value;
+      SArray<ValueType> delta;
+      SArray<KeyType> feature_key;
+      SArray<OffsetType> feature_offset;
+      SArray<ValueType> feature_value;
 
-      LoadedData(const LoadedData& other) = delete;
-      LoadedData& operator= (const LoadedData& rhs) = delete;
+      LoadedData(const LoadedData& other) :
+        parameter_key(other.parameter_key),
+        parameter_value(other.parameter_value),
+        delta(other.delta),
+        feature_key(other.feature_key),
+        feature_offset(other.feature_offset),
+        feature_value(other.feature_value) {
+        // do nothing
+      }
+
+      LoadedData& operator= (const LoadedData& rhs) {
+        parameter_key = rhs.parameter_key;
+        parameter_value = rhs.parameter_value;
+        delta = rhs.delta;
+        feature_key = rhs.feature_key;
+        feature_offset = rhs.feature_offset;
+        feature_value = rhs.feature_value;
+        return *this;
+      }
+
+      bool valid() {
+        return !parameter_key.empty();
+      }
     };
 
   private: // methods
@@ -126,9 +149,9 @@ class Ocean {
     //  10 bits: grp_id
     //  54 bits: range size
     //  64 bits: range begin
-    JobID makeJobID(GrpID grp_id, const Range<FeatureKeyType>& range);
+    JobID makeJobID(GrpID grp_id, const Range<KeyType>& range);
     // restore group id and range from JobID
-    void parseJobID(const JobID job_id, GrpID& grp_id, Range<FeatureKeyType>& range);
+    void parseJobID(const JobID job_id, GrpID& grp_id, Range<KeyType>& range);
 
     // add new directory
     // return false on:
@@ -146,14 +169,14 @@ class Ocean {
     bool dumpSarraySegment(
       const SArray<char>& input,
       const GrpID grp_id,
-      const Range<FeatureKeyType>& global_range,
+      const Range<KeyType>& global_range,
       const DataType type);
 
   private: // attributes
     string identity_;
     // all block partitions
     //  includes group ID and key range within that group
-    std::unordered_map<GrpID, std::vector<Range<FeatureKeyType>>> partition_info_;
+    std::unordered_map<GrpID, std::vector<Range<KeyType>>> partition_info_;
     // maintaining all dumped file paths
     std::array<ThreadsafeMap<JobID, string>, Ocean::DataType::NUM> lakes_;
     // pending jobs
@@ -174,5 +197,7 @@ class Ocean {
     const string log_prefix_;
     std::default_random_engine rng_;
     std::mutex general_mu_;
+    std::mutex prefetch_limit_mu_;
+    std::condition_variable prefetch_limit_cond_;
 }; // class Ocean
 }; // namespace PS
