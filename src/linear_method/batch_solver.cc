@@ -239,6 +239,176 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       if (hit_cache) continue;
       int grp = fea_grp_[i];
 
+      // Task IDs
+      int time_count = time;
+      int time_filter = time_count + 2;
+      int time_push_key = time_filter + 2;
+      int time_pull_val = time_push_key + 2;
+      pull_time[i] = time_pull_val;
+
+      SArray<Key> uniq_key;
+      SArray<uint32> key_cnt;
+      Localizer<Key, double> *localizer = new Localizer<Key, double>();
+
+      // counting
+      if (FLAGS_verbose) {
+        LI << "counting unique key [" << i + 1 << "/" << grp_size << "]";
+      }
+      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+      localizer->countUniqIndex(slot_reader_.index(grp), &uniq_key, &key_cnt);
+      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+      if (FLAGS_verbose) {
+        LI << "counted unique key [" << i + 1 << "/" << grp_size << "]";
+      }
+
+      // Time 0: send all unique keys with their count to servers
+      MessagePtr count(new Message(kServerGroup, time_count));
+      count->addKV(uniq_key, {key_cnt});
+      count->task.set_key_channel(grp);
+      auto arg = w_->set(count);
+      arg->set_insert_key_freq(true);
+      arg->set_countmin_k(conf_.solver().countmin_k());
+      arg->set_countmin_n((int)(uniq_key.size()*conf_.solver().countmin_n_ratio()));
+      CHECK_EQ(time, w_->push(count));
+
+      // Time 2: pull filtered keys
+      MessagePtr filter(new Message(kServerGroup, time_filter, time_filter-1));
+      filter->key = uniq_key;
+      filter->task.set_key_channel(grp);
+      filter->task.set_erase_key_cache(true);
+      w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
+      filter->fin_handle = [this, grp, localizer, i, grp_size, time]() mutable {
+        // time 4: push the filtered keys to servers
+        MessagePtr push_key(new Message(kServerGroup, time_push_key));
+        push_key->key = w_->key(grp);
+        push_key->task.set_key_channel(grp);
+        CHECK_EQ(time_push_key, w_->push(push_key));
+
+        // time 6: fetch initial value of w_
+        MessagePtr pull_val(new Message(kServerGroup, time_pull_val, time_pull_val-1));
+        pull_val->key = w_->key(grp);
+        pull_val->task.set_key_channel(grp);
+        pull_val->task.set_erase_key_cache(true);
+        pull_val->fin_handle = [this]() mutable {
+          if (pull_val->key.empty()) return;
+
+          // set parameter value
+          auto init_w = w_->received(time_pull_val);
+          CHECK_EQ(init_w.size(), 1);
+          CHECK_EQ(w_->key(grp).size(), init_w[0].first.size());
+          w_->value(grp) = init_w[0].second;
+
+          // set dual
+          auto X = X_[grp];
+          if (X) {
+            if (dual_.empty()) {
+              dual_.resize(X->rows());
+              dual_.setZero();
+            } else {
+              CHECK_EQ(dual_.size(), X->rows());
+            }
+
+            if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
+              dual_.eigenVector() = *X * w_->value(grp).eigenVector();
+            }
+          }
+
+          // dump to Ocean
+          ocean_.dump(w_->key(grp), grp, Ocean::DataType::PARAMETER_KEY);
+          ocean_.dump(w_->value(grp), grp, Ocean::DataType::PARAMETER_VALUE);
+          ocean_.dump(X->index(), grp, Ocean::DataType::FEATURE_KEY);
+          ocean_.dump(X->offset(), grp, Ocean::DataType::FEATURE_OFFSET);
+          ocean_.dump(X->value(), grp, Ocean::DataType::FEATURE_VALUE);
+
+          // reset
+          w_->key(grp).clear();
+          w_->value(grp).clear();
+          X_[grp] = MatrixPtr<double>();
+        };
+        CHECK_EQ(time_pull_val, w_->pull(pull_val));
+
+        // localize the training matrix
+        if (FLAGS_verbose) {
+          LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
+        }
+        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+        auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_);
+        delete localizer;
+        slot_reader_.clear(grp);
+        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+        if (!X) return;
+
+        // to colMajor
+        if (FLAGS_verbose) {
+          LI << "finished remapIndex [" << i + 1 << "/" << grp_size << "]";
+          LI << "started toColMajor [" << i + 1 << "/" << grp_size << "]";
+        }
+        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+        if (conf_.solver().has_feature_block_ratio() && !X->empty()) {
+          X = X->toColMajor();
+        }
+        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+        if (FLAGS_verbose) {
+          LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
+        }
+      };
+      CHECK_EQ(time+2, w_->pull(filter));
+
+      // sync
+      if (!hit_cache && i >= max_parallel) {
+        w_->waitOutMsg(kServerGroup, pull_time[i-max_parallel]);
+      }
+    }
+
+    // the label
+    if (!hit_cache) {
+      y_ = MatrixPtr<double>(new DenseMatrix<double>(
+        slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+      // CHECK_EQ(y_->value().size(), info->num_ex());
+    }
+    // wait until all weight pull finished
+    for (int i = 0; i < grp_size; ++i) {
+      w_->waitOutMsg(kServerGroup, pull_time[i]);
+    }
+    saveCache("train");
+  } else {
+    for (int i = 0; i < grp_size; ++i, time += kPace) {
+      if (hit_cache) continue;
+
+      // Task IDs
+      int time_count = time;
+      int time_push_key = time_count + 4;
+      pull_time[i] = time_pull_val;
+
+      // filter
+      w_->waitInMsg(kWorkerGroup, time_count);
+      w_->finish(kWorkerGroup, time_count+1);
+
+      // init weight
+      w_->waitInMsg(kWorkerGroup, time_push_key);
+      int chl = fea_grp_[i];
+      w_->keyFilter(chl).clear();
+      w_->value(chl).resize(w_->key(chl).size());
+      w_->value(chl).setValue(conf_.init_w());
+
+      // dump to Ocean
+      ocean_.dump(w_->key(chl), chl, Ocean::DataType::PARAMETER_KEY);
+      ocean_.dump(w_->value(chl), chl, Ocean::DataType::PARAMETER_VALUE);
+      // reset
+      w_->key(chl).clear();
+      w_->value(chl).clear();
+
+      // let PULL requests (for init weight) go
+      w_->finish(kWorkerGroup, time_push_key+1);
+    }
+  }
+
+  if (IamWorker()) {
+    std::vector<int> pull_time(grp_size);
+    for (int i = 0; i < grp_size; ++i, time += kPace) {
+      if (hit_cache) continue;
+      int grp = fea_grp_[i];
+
       // Time 0: send all unique keys with their count to servers
       SArray<Key> uniq_key;
       SArray<uint32> key_cnt;

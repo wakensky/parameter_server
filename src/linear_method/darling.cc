@@ -110,10 +110,16 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
   }
   for (int grp : fea_grp_) {
-    size_t n = w_->key(grp).size();
+    size_t n = ocean_.groupKeyCount(grp);
     active_set_[grp].resize(n, true);
     delta_[grp].resize(n);
     delta_[grp].setValue(conf_.darling().delta_init_value());
+
+    // dump delta_[grp] to Ocean
+    ocean_.dump(delta_[grp], grp, Ocean::DataType::DELTA);
+
+    // reset delta_[grp]
+    delta_[grp].clear();
   }
 
   // memory usage in y_, w_ and dual_ (features in training data)
