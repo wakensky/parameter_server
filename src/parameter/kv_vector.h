@@ -96,9 +96,10 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
 
   // get range
   Range<K> key_range(msg->task.key_range());
+  auto dest_key = ocean_.getParameterKey(chl, key_range);
   SizeR range;
-  if (!key_[chl].empty() && !recv_key.empty()) {
-    range = key_[chl].findRange(key_range);
+  if (!dest_key.empty() && !recv_key.empty()) {
+    range = dest_key.findRange(key_range);
   }
 
   // merge values, and store them in recved_val
@@ -112,7 +113,6 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
       size_t n = 0;
 
       if (recved_val_[t].size() <= i) {
-
         // construct SArray<V>
         auto aligned = std::make_pair(range, SArray<V>());
         if (!range.empty()) {
@@ -122,12 +122,12 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
         recved_val_[t].push_back(aligned);
 
         // match
-        match(range, key_[chl], aligned.second, recv_key, recv_data, &n,
+        match(range, dest_key, aligned.second, recv_key, recv_data, &n,
           MatchOperation::ASSIGN);
       } else {
         CHECK_EQ(range, recved_val_[t][i].first);
         // match
-        match(recved_val_[t][i].first, key_[chl], recved_val_[t][i].second,
+        match(recved_val_[t][i].first, dest_key, recved_val_[t][i].second,
           recv_key, recv_data, &n, MatchOperation::ADD);
       }
 
@@ -140,15 +140,18 @@ template <typename K, typename V>
 void KVVector<K,V>::parallelGetValue(const MessagePtr& msg) {
   SArray<K> recv_key(msg->key);
   if (recv_key.empty()) return;
+
   int ch = msg->task.key_channel();
-  CHECK_EQ(key_[ch].size(), val_[ch].size());
+  Range<K> g_key_range(msg->task.key_range());
+  auto src_key = ocean_.getParameterKey(ch, g_key_range);
+  auto src_value = ocean_.getParameterValue(ch, g_key_range);
+  CHECK_EQ(src_key.size(), src_value.size());
 
   size_t n = 0;
-  Range<Key> union_range = recv_key.range().setUnion(key_[ch].range());
-
+  Range<Key> union_range = recv_key.range().setUnion(src_key.range());
   // get range
   SizeR range;
-  if (!recv_key.empty() && !key_[ch].empty()) {
+  if (!recv_key.empty() && !src_key.empty()) {
     range = recv_key.findRange(union_range);
   }
 
@@ -157,10 +160,10 @@ void KVVector<K,V>::parallelGetValue(const MessagePtr& msg) {
   if (!range.empty()) {
     new_value = SArray<V>(range.size());
   }
-  CHECK_EQ(new_value.size(), recv_key.size()) << recv_key << "\n" << key_[ch];
+  CHECK_EQ(new_value.size(), recv_key.size()) << recv_key << "\n" << src_key;
 
   // match
-  match(range, recv_key, new_value, key_[ch], val_[ch],
+  match(range, recv_key, new_value, src_key, src_value,
     &n, MatchOperation::ASSIGN);
   CHECK_GE(new_value.size(), n);
 
@@ -187,7 +190,8 @@ void KVVector<K,V>::serialSetValue(const MessagePtr& msg) {
     CHECK_EQ(recv_data.size(), recv_key.size());
     size_t n = 0;
     Range<K> key_range(msg->task.key_range());
-    auto aligned = oldMatch(key_[chl], recv_key, recv_data.data(), key_range, &n);
+    auto dest_key = ocean_.getParameterKey(chl, key_range);
+    auto aligned = oldMatch(dest_key, recv_key, recv_data.data(), key_range, &n);
     CHECK_GE(aligned.second.size(), recv_key.size()) << recv_key;
     CHECK_EQ(recv_key.size(), n);
     {
@@ -216,12 +220,17 @@ template <typename K, typename V>
 void KVVector<K,V>::serialGetValue(const MessagePtr& msg) {
   SArray<K> recv_key(msg->key);
   if (recv_key.empty()) return;
+
   int ch = msg->task.key_channel();
-  CHECK_EQ(key_[ch].size(), val_[ch].size());
+  Range<K> g_key_range(msg->task.key_range());
+  auto src_key = ocean_.getParameterKey(ch, g_key_range);
+  auto src_value = ocean_.getParameterValue(ch, g_key_range);
+  CHECK_EQ(src_key.size(), src_value.size());
+
   size_t n = 0;
-  Range<Key> range = recv_key.range().setUnion(key_[ch].range());
-  auto aligned = oldMatch(recv_key, key_[ch], val_[ch].data(), range, &n);
-  CHECK_EQ(aligned.second.size(), recv_key.size()) << recv_key << "\n" << key_[ch];
+  Range<Key> range = recv_key.range().setUnion(src_key.range());
+  auto aligned = oldMatch(recv_key, src_key, src_value.data(), range, &n);
+  CHECK_EQ(aligned.second.size(), recv_key.size()) << recv_key << "\n" << src_key;
   CHECK_GE(aligned.second.size(), n);
   msg->addValue(aligned.second);
 }
