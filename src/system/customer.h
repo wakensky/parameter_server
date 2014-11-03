@@ -44,6 +44,8 @@ class Customer {
   RNodePtr taskpool(const NodeID& k) { return exec_.rnode(k); }
   // all child customer names
   const StringList& children() const { return child_customers_; }
+  // return the ocean
+  Ocean& ocean() { return ocean_; }
 
   // void showMem() { LL << myNodeID() << " is using " << ResUsage::myPhyMem() << " Mbytes memory"; }
  protected:

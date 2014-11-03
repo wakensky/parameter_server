@@ -138,12 +138,12 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
   } else {
     if ((push && req) || (pull && !req)) {
       setValue(msg);
-      push_pull_count[JobID(chl, g_key_range)]++;
+      push_pull_count[Ocean::JobID(chl, g_key_range)]++;
     } else if (pull && req) {
       getValue(reply);
-      push_pull_count[JobID(chl, g_key_range)]--;
-      if (push_pull_count[JobID(chl, g_key_range)] <= 0) {
-        ocean_.drop(JobID(chl, g_key_range));
+      push_pull_count[Ocean::JobID(chl, g_key_range)]--;
+      if (push_pull_count[Ocean::JobID(chl, g_key_range)] <= 0) {
+        ocean().drop(chl, g_key_range);
       }
     }
   }

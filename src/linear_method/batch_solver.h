@@ -28,6 +28,9 @@ class BatchSolver : public LinearMethod {
   bool saveCache(const string& name) { return dataCache(name, false); }
   bool dataCache(const string& name, bool load);
 
+  // whether training data for grp_id is in binary format
+  bool binary(const int grp_id) const;
+
   typedef shared_ptr<KVVector<Key, double>> KVVectorPtr;
   KVVectorPtr w_;
 
@@ -41,14 +44,12 @@ class BatchSolver : public LinearMethod {
   // global data information, only available at the scheduler
   ExampleInfo g_train_info_;
 
-  // training data, available at the workers
-  std::map<int, MatrixPtr<double>> X_;
+  // matrix for training data, available at the workers
+  std::map<int, MatrixInfo> matrix_info_;
   MatrixPtr<double> y_;
   SlotReader slot_reader_;
   // dual_ = X * w
   SArray<double> dual_;
-  FeatureStation feature_station_;
-
 
   std::mutex mu_;
 };

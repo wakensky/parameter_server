@@ -96,7 +96,7 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
 
   // get range
   Range<K> key_range(msg->task.key_range());
-  auto dest_key = ocean_.getParameterKey(chl, key_range);
+  auto dest_key = this->ocean().getParameterKey(chl, key_range);
   SizeR range;
   if (!dest_key.empty() && !recv_key.empty()) {
     range = dest_key.findRange(key_range);
@@ -143,8 +143,8 @@ void KVVector<K,V>::parallelGetValue(const MessagePtr& msg) {
 
   int ch = msg->task.key_channel();
   Range<K> g_key_range(msg->task.key_range());
-  auto src_key = ocean_.getParameterKey(ch, g_key_range);
-  auto src_value = ocean_.getParameterValue(ch, g_key_range);
+  auto src_key = this->ocean().getParameterKey(ch, g_key_range);
+  auto src_value = this->ocean().getParameterValue(ch, g_key_range);
   CHECK_EQ(src_key.size(), src_value.size());
 
   size_t n = 0;
@@ -190,7 +190,7 @@ void KVVector<K,V>::serialSetValue(const MessagePtr& msg) {
     CHECK_EQ(recv_data.size(), recv_key.size());
     size_t n = 0;
     Range<K> key_range(msg->task.key_range());
-    auto dest_key = ocean_.getParameterKey(chl, key_range);
+    auto dest_key = this->ocean().getParameterKey(chl, key_range);
     auto aligned = oldMatch(dest_key, recv_key, recv_data.data(), key_range, &n);
     CHECK_GE(aligned.second.size(), recv_key.size()) << recv_key;
     CHECK_EQ(recv_key.size(), n);
@@ -223,8 +223,8 @@ void KVVector<K,V>::serialGetValue(const MessagePtr& msg) {
 
   int ch = msg->task.key_channel();
   Range<K> g_key_range(msg->task.key_range());
-  auto src_key = ocean_.getParameterKey(ch, g_key_range);
-  auto src_value = ocean_.getParameterValue(ch, g_key_range);
+  auto src_key = this->ocean().getParameterKey(ch, g_key_range);
+  auto src_value = this->ocean().getParameterValue(ch, g_key_range);
   CHECK_EQ(src_key.size(), src_value.size());
 
   size_t n = 0;

@@ -17,7 +17,8 @@ DECLARE_bool(less_memory);
 
 class Ocean {
   public:
-    typedef uint32 KeyType;
+    typedef uint64 FullKeyType;
+    typedef uint32 ShortKeyType;
     typedef size_t OffsetType;
     typedef double ValueType;
     typedef int GrpID;
@@ -34,7 +35,7 @@ class Ocean {
 
     struct JobID {
       GrpID grp_id;
-      Range<KeyType> range;
+      Range<FullKeyType> range;
 
       JobID():
         grp_id(0),
@@ -42,7 +43,7 @@ class Ocean {
         // do nothing
       }
 
-      JobID(const int in_grp_id, const Range<KeyType>& in_range) :
+      JobID(const int in_grp_id, const Range<FullKeyType>& in_range) :
         grp_id(in_grp_id),
         range(in_range) {
         // do nothing
@@ -75,7 +76,7 @@ class Ocean {
         return grp_id == rhs.grp_id && range == rhs.range;
       }
 
-      string toString() {
+      string toString() const {
         std::stringstream ss;
         ss << "grp: " << grp_id << ", range: " << range.toString();
         return ss.str();
@@ -88,9 +89,9 @@ class Ocean {
         std::size_t hash = 512927377;
         hash ^= std::hash<int>()(job_id.grp_id) +
           magic_num + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<KeyType>()(job_id.range.begin()) +
+        hash ^= std::hash<FullKeyType>()(job_id.range.begin()) +
           magic_num + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<KeyType>()(job_id.range.end()) +
+        hash ^= std::hash<FullKeyType>()(job_id.range.end()) +
           magic_num + (hash << 6) + (hash >> 2);
         return hash;
       }
@@ -109,28 +110,32 @@ class Ocean {
     // return false on failure
     //  ex: disk is full
     //  ex: {grp_id, type} exists
-    bool dump(SArray<char>& input, const GrpID grp_id, const Ocean::DataType type);
+    bool dump(SArray<char> input, const GrpID grp_id, const Ocean::DataType type);
 
     // add prefetch job
     // prefetch may not start immediately if prefetch_job_limit reached
-    void prefetch(const GrpID grp_id, const Range<KeyType>& key_range);
+    void prefetch(const GrpID grp_id, const Range<FullKeyType>& key_range);
 
     // get needed SArray from memory pool
-    SArray<KeyType> getParameterKey(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<ValueType> getParameterValue(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<ValueType> getDelta(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<KeyType> getFeatureKey(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<OffsetType> getFeatureOffset(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<ValueType> getFeatureValue(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<FullKeyType> getParameterKey(const GrpID grp_id, const Range<FullKeyType>& range);
+    SArray<ValueType> getParameterValue(const GrpID grp_id, const Range<FullKeyType>& range);
+    SArray<ValueType> getDelta(const GrpID grp_id, const Range<FullKeyType>& range);
+    SArray<ShortKeyType> getFeatureKey(const GrpID grp_id, const Range<FullKeyType>& range);
+    SArray<OffsetType> getFeatureOffset(const GrpID grp_id, const Range<FullKeyType>& range);
+    SArray<ValueType> getFeatureValue(const GrpID grp_id, const Range<FullKeyType>& range);
 
     // notify Ocean that corresponding memory block could be released if its reference count
     //   decreases to zero
-    void drop(const GrpID grp_id, const Range<KeyType>& range);
+    void drop(const GrpID grp_id, const Range<FullKeyType>& range);
 
-    SizeR getBaseRange(const GrpID grp_id, const Range<KeyType>& range);
+    SizeR getBaseRange(const GrpID grp_id, const Range<FullKeyType>& range);
 
     // length of prefetch pending queue
     size_t pendingPrefetchCount();
+
+    // how many keys resides in specific group
+    // return 0 if grp_id not found
+    size_t groupKeyCount(const GrpID grp_id);
 
   private: // internal types
     enum class JobStatus: unsigned char {
@@ -181,10 +186,10 @@ class Ocean {
     };
 
     struct LoadedData {
-      SArray<KeyType> parameter_key;
+      SArray<FullKeyType> parameter_key;
       SArray<ValueType> parameter_value;
       SArray<ValueType> delta;
-      SArray<KeyType> feature_key;
+      SArray<ShortKeyType> feature_key;
       SArray<OffsetType> feature_offset;
       SArray<ValueType> feature_value;
 
@@ -290,7 +295,7 @@ class Ocean {
     bool dumpSarraySegment(
       SArray<char>& input,
       const GrpID grp_id,
-      const Range<KeyType>& global_range,
+      const Range<FullKeyType>& global_range,
       const DataType type);
 
     // read data from disk
@@ -312,7 +317,8 @@ class Ocean {
   private: // attributes
     string identity_;
     // all block partitions
-    std::unordered_map<GrpID, std::vector<Range<KeyType>>> partition_info_;
+    std::unordered_map<GrpID, std::vector<Range<FullKeyType>>> partition_info_;
+    std::unordered_map<GrpID, size_t> group_key_counts_;
     // maintaining all dumped file paths
     std::array<
       ThreadsafeMap<JobID, string>,
