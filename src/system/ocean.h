@@ -62,6 +62,8 @@ class Ocean {
     //   decreases to zero
     void drop(const GrpID grp_id, const Range<KeyType>& range);
 
+    SizeR getBaseRange(const GrpID grp_id, const Range<KeyType>& range);
+
   private: // internal types
     enum class JobStatus: unsigned char {
       PENDING = 0,
@@ -293,7 +295,6 @@ class Ocean {
   private: // attributes
     string identity_;
     // all block partitions
-    //  includes group ID and key range within that group
     std::unordered_map<GrpID, std::vector<Range<KeyType>>> partition_info_;
     // maintaining all dumped file paths
     std::array<

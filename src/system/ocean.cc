@@ -171,7 +171,9 @@ bool Ocean::dumpSarraySegment(
         memory_data.feature_key = SArray<KeyType>(input).segment(column_range);
         break;
       case Ocean::DataType::FEATURE_OFFSET:
-        memory_data.feature_offset = SArray<OffsetType>(input).segment(column_range);
+        SizeR offset_column_range(column_range.begin(), column_range.end() + 1);
+        memory_data.feature_offset =
+          SArray<OffsetType>(input).segment(offset_column_range);
         break;
       case Ocean::DataType::FEATURE_VALUE:
         memory_data.feature_value = SArray<ValueType>(input).segment(column_range);
@@ -210,7 +212,8 @@ bool Ocean::dumpSarraySegment(
       }
     } else if (Ocean::DataType::FEATURE_OFFSET == type) {
       SArray<OffsetType> array(input);
-      if (!array.segment(column_range).writeToFile(full_path)) {
+      SizeR offset_column_range(column_range.begin(), column_range.end() + 1);
+      if (!array.segment(offset_column_range).writeToFile(full_path)) {
         throw std::runtime_error("OffsetType");
       }
     }
@@ -445,5 +448,13 @@ string Ocean::dataTypeToString(const Ocean::DataType type) {
     default:
       return "UNKNOWN_DATATYPE";
   };
+}
+
+SizeR Ocean::getBaseRange(const GrpID grp_id, const Range<KeyType>& range) {
+  SizeR ret;
+  if (!column_ranges_.tryGet(JobID(grp_id, range), ret)) {
+    ret = SizeR();
+  }
+  return ret;
 }
 }; // namespace PS

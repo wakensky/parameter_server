@@ -15,7 +15,7 @@ class Darling : public BatchSolver {
   virtual void preprocessData(const MessageCPtr& msg);
   virtual void updateModel(const MessagePtr& msg);
 
-  SArrayList<double> computeGradients(int task_id, int grp, SizeR col_range);
+  SArrayList<double> computeGradients(int task_id, int grp, Range<Key> g_key_range);
   void updateDual(int task_id, int grp, SizeR col_range, SArray<double> new_weight);
   void updateWeight(int grp, SizeR col_range, SArray<double> G, SArray<double> U);
 

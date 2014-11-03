@@ -170,7 +170,6 @@ void Darling::updateModel(const MessagePtr& msg) {
   CHECK_EQ(call.fea_grp_size(), 1);
   int grp = call.fea_grp(0);
   Range<Key> g_key_range(call.key());
-  auto seg_pos = w_->find(grp, g_key_range);
 
   auto prefetch_handle = [&](MessagePtr& another) {
     const int max_processed_task_id =
@@ -202,18 +201,16 @@ void Darling::updateModel(const MessagePtr& msg) {
 
     // compute local gradients
     mu_.lock();
-
     this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
     busy_timer_.start();
-    auto local_gradients = computeGradients(msg->task.time(), grp, seg_pos);
+    auto local_gradients = computeGradients(msg->task.time(), grp, g_key_range);
     busy_timer_.stop();
     this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-
     mu_.unlock();
 
     // time 0: push local gradients
     MessagePtr push_msg(new Message(kServerGroup, time));
-    auto local_keys = w_->key(grp).segment(seg_pos);
+    auto local_keys = ocean_.getParameterKey(grp, g_key_range);
     push_msg->addKV(local_keys, local_gradients);
     g_key_range.to(push_msg->task.mutable_key_range());
     push_msg->task.set_key_channel(grp);
@@ -227,24 +224,23 @@ void Darling::updateModel(const MessagePtr& msg) {
     g_key_range.to(pull_msg->task.mutable_key_range());
     pull_msg->task.set_key_channel(grp);
     // the callback for updating the local dual variable
-    pull_msg->fin_handle = [this, grp, seg_pos, time, msg] () {
-      if (!seg_pos.empty()) {
+    pull_msg->fin_handle = [this, grp, g_key_range, time, msg] () {
+      SizeR base_range = ocean_.getBaseRange(grp, g_key_range);
+      if (!base_range.empty()) {
         auto data = w_->received(time+2);
-        CHECK_EQ(data.size(), 1); CHECK_EQ(seg_pos, data[0].first);
-        mu_.lock();
+        CHECK_EQ(data.size(), 1); CHECK_EQ(base_range, data[0].first);
 
+        mu_.lock();
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
         busy_timer_.start();
-        updateDual(msg->task.time(), grp, seg_pos, data[0].second);
+        updateDual(msg->task.time(), grp, g_key_range, data[0].second);
         busy_timer_.stop();
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-
         mu_.unlock();
       }
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
       sys_.reply(msg->sender, msg->task);
-      // release feature
       feature_station_.dropFeature(msg->task.time());
     };
     CHECK_EQ(time+2, w_->pull(pull_msg));
@@ -256,14 +252,15 @@ void Darling::updateModel(const MessagePtr& msg) {
     w_->waitInMsg(kWorkerGroup, time);
 
     // time 1: update model
-    if (!seg_pos.empty()) {
+    SizeR base_range = ocean_.getBaseRange(grp, g_key_range);
+    if (!base_range.empty()) {
       auto data = w_->received(time);
       CHECK_EQ(data.size(), 2);
-      CHECK_EQ(seg_pos, data[0].first);
-      CHECK_EQ(seg_pos, data[1].first);
+      CHECK_EQ(base_range, data[0].first);
+      CHECK_EQ(base_range, data[1].first);
 
       this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-      updateWeight(grp, seg_pos, data[0].second, data[1].second);
+      updateWeight(grp, g_key_range, base_range, data[0].second, data[1].second);
       this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
     }
     w_->finish(kWorkerGroup, time+1);
@@ -272,31 +269,44 @@ void Darling::updateModel(const MessagePtr& msg) {
   }
 }
 
-SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_range) {
+SArrayList<double> Darling::computeGradients(
+  int task_id, int grp, Range<Key> g_key_range) {
+  // load feature
+  SArray<Key> feature_index = ocean_.getFeatureKey(grp, g_key_range);
+  SArray<size_t> feature_offset = ocean_.getFeatureOffset(grp, g_key_range);
+  SArray<double> feature_value = ocean_.getFeatureValue(grp, g_key_range);
+  SArray<double> delta = ocean_.getDelta(grp, g_key_range);
+  CHECK(!feature_index.empty());
+  CHECK(!feature_offset.empty());
+  CHECK_EQ(
+    feature_offset.back() - feature_offset.front(),
+    feature_index.size());
+  if (binary()) {
+    CHECK(!feature_value.empty());
+  }
+  CHECK(!delta.empty());
+
+  // allocate grads
+  SizeR col_range(0, feature_offset.size() - 1);
   SArrayList<double> grads(2);
   for (int i : {0, 1} ) {
     grads[i].resize(col_range.size());
     grads[i].setZero();
   }
 
-  // load SparseMatrix
-  auto X = std::static_pointer_cast<SparseMatrix<uint32, double>>(
-    feature_station_.getFeature(task_id, grp, col_range));
-  if (!X) return grads;
-  CHECK(!X->empty());
-  CHECK(X->colMajor());
-
   // TODO partition by rows for small col_range size
+  SizeR base_range = ocean_.getBaseRange(grp, g_key_range);
+  CHECK(!base_range.empty());
   int num_threads = col_range.size() < 64 ? 1 : FLAGS_num_threads;
   ThreadPool pool(num_threads);
   int npart = num_threads * 1;  // could use a larger partition number
   for (int i = 0; i < npart; ++i) {
     auto thr_range = col_range.evenDivide(npart, i);
     if (thr_range.empty()) continue;
-    auto gr = thr_range - col_range.begin();
-    pool.add([this, grp, thr_range, gr, &grads, &X, &col_range]() {
-      computeGradients(X, grp, thr_range - col_range.begin(), col_range.begin(),
-        grads[0].segment(gr), grads[1].segment(gr));
+    pool.add([this, grp, thr_range, &grads, &X, &col_range, &base_range]() {
+      computeGradients(feature_index, feature_offset,
+        feature_value, delta, grp, thr_range, base_range.begin(),
+        grads[0].segment(thr_range), grads[1].segment(thr_range));
     });
   }
   pool.startWorkers();
@@ -304,43 +314,41 @@ SArrayList<double> Darling::computeGradients(int task_id, int grp, SizeR col_ran
 }
 
 void Darling::computeGradients(
-  const SparseMatrixPtr<uint32, double>& X, int grp, SizeR col_range,
-  size_t starting_line, SArray<double> G, SArray<double> U) {
+  const SArray<Key>& feature_index,
+  const SArray<size_t>& feature_offset,
+  const SArray<double>& feature_value,
+  const SArray<double>& delta,
+  int grp, SizeR col_range,
+  size_t base_range_begin,
+  SArray<double> G, SArray<double> U) {
   CHECK_EQ(G.size(), col_range.size());
   CHECK_EQ(U.size(), col_range.size());
 
   const auto& active_set = active_set_[grp];
-  const auto& delta = delta_[grp];
   const double* y = y_->value().data();
-  const size_t* offset = X->offset().data();
+  const size_t* offset = feature_offset.data() + col_range.begin();
 
-  size_t shift = 0;
-  if (FLAGS_mmap_training_data) {
-    shift = offset[0];
-  }
-
-  uint32* index = X->index().data() + (offset[col_range.begin()] - shift);
-  double* value = X->value().data() + (offset[col_range.begin()] - shift);
-  offset = X->offset().data() + col_range.begin();
-  bool binary = X->binary();
+  uint32* index = feature_index.data() + (offset[0] - feature_offset[0]);
+  double* value = feature_value.data() + (offset[0] - feature_offset[0]);
+  double* delta_ptr = delta.data() + col_range.begin();
 
   // j: column id, i: row id
   for (size_t j = 0; j < col_range.size(); ++j) {
-    size_t k = j + col_range.begin() + starting_line;
+    size_t k = j + base_range_begin + col_range.begin();
     size_t n = offset[j+1] - offset[j];
     if (!active_set.test(k)) {
       index += n;
-      if (!binary) value += n;
+      if (!binary()) value += n;
       G[j] = U[j] = kInactiveValue_;
       continue;
     }
     double g = 0, u = 0;
-    double d = binary ? exp(delta[k]) : delta[k];
+    double d = binary() ? exp(delta_ptr[j]) : delta_ptr[j];
     // TODO unroll loop
     for (size_t o = 0; o < n; ++o) {
       auto i = *(index ++);
       double tau = 1 / ( 1 + dual_[i] );
-      if (binary) {
+      if (binary()) {
         g -= y[i] * tau;
         u += std::min(tau*(1-tau)*d, .25);
         // u += tau * (1-tau);
@@ -355,15 +363,31 @@ void Darling::computeGradients(
   }
 }
 
-void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> new_w) {
+void Darling::updateDual(
+  int grp, Range<Key> g_key_range, SArray<double> new_w) {
   SArray<double> delta_w(new_w.size());
-  auto& cur_w = w_->value(grp);
+  auto& cur_w = ocean_.getParameterValue(grp, g_key_range);
   auto& active_set = active_set_[grp];
-  auto& delta = delta_[grp];
+  auto& delta = ocean_.getDelta(grp, g_key_range);
+  auto& feature_index = ocean_.getFeatureKey(grp, g_key_range);
+  auto& feature_offset = ocean_.getFeatureOffset(grp, g_key_range);
+  auto& feature_value = ocean_.getFeatureValue(grp, g_key_range);
+  CHECK(!feature_index.empty());
+  CHECK(!feature_offset.empty());
+  CHECK_EQ(
+    feature_offset.back() - feature_offset.front(),
+    feature_index.size());
+  if (binary()) {
+    CHECK(!feature_value.empty());
+  }
+  CHECK(!delta.empty());
 
+  SizeR col_range(0, cur_w.size());
+  SizeR base_range = ocean_.getBaseRange(grp, g_key_range);
+  CHECK(!base_range.empty());
   for (size_t i = 0; i < new_w.size(); ++i) {
-    size_t j = col_range.begin() + i;
-    double& cw = cur_w[j];
+    size_t j = base_range.begin() + i;
+    double& cw = cur_w[i];
     double& nw = new_w[i];
     if (inactive(nw)) {
       // marked as inactive
@@ -373,52 +397,45 @@ void Darling::updateDual(int task_id, int grp, SizeR col_range, SArray<double> n
       continue;
     }
     delta_w[i] = nw - cw;
-    delta[j] = newDelta(delta_w[i]);
+    delta[i] = newDelta(delta_w[i]);
     cw = nw;
   }
 
-  // load SparseMatrix
-  auto X = std::static_pointer_cast<
-    SparseMatrix<uint32, double>>(feature_station_.getFeature(task_id, grp, col_range));
-  if (!X) return;
-  CHECK(X->colMajor());
-
-  MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
-  SizeR row_range(0, matrix_info.row().end() - matrix_info.row().begin());
-
+  SizeR row_range(0, matrix_info_[grp].row().size());
   ThreadPool pool(FLAGS_num_threads);
   int npart = FLAGS_num_threads;
   for (int i = 0; i < npart; ++i) {
     auto thr_range = row_range.evenDivide(npart, i);
     if (thr_range.empty()) continue;
     pool.add([this, grp, thr_range, col_range, delta_w, &X]() {
-      updateDual(X, grp, thr_range, col_range, delta_w);
+      updateDual(feature_index, feature_offset, feature_value,
+        delta, grp, thr_range, col_range, base_range.begin(), delta_w);
     });
   }
   pool.startWorkers();
 }
 
 void Darling::updateDual(
-  const SparseMatrixPtr<uint32, double>& X, int grp,
-  SizeR row_range, SizeR col_range, SArray<double> w_delta) {
+  const SArray<Key>& feature_index,
+  const SArray<size_t>& feature_offset,
+  const SArray<double>& feature_value,
+  const SArray<double>& delta,
+  int grp,
+  SizeR row_range, SizeR col_range,
+  size_t base_range_begin,
+  SArray<double> w_delta) {
   CHECK_EQ(w_delta.size(), col_range.size());
 
   const auto& active_set = active_set_[grp];
   double* y = y_->value().data();
-  size_t* offset = X->offset().data();
+  size_t* offset = feature_offset.data() + (col_range.begin());
 
-  size_t shift = 0;
-  if (FLAGS_mmap_training_data) {
-    shift = offset[0];
-  }
-
-  uint32* index = X->index().data() + (offset[0] - shift);
-  double* value = X->value().data();
-  bool binary = X->binary();
+  uint32* index = feature_index.data() + (offset[0] - feature_offset[0]);
+  double* value = feature_value.data() + (offset[0] - feature_offset[0]);
 
   // j: column id, i: row id
   for (size_t j = 0; j < col_range.size(); ++j) {
-    size_t k  = j + col_range.begin();
+    size_t k  = j + base_range_begin + col_range.begin();
     size_t n = offset[j+1] - offset[j];
     double wd = w_delta[j];
     if (wd == 0 || !active_set.test(k)) {
@@ -429,27 +446,31 @@ void Darling::updateDual(
     for (size_t o = offset[j]; o < offset[j+1]; ++o) {
       auto i = *(index++);
       if (!row_range.contains(i)) continue;
-      dual_[i] *= binary ? exp(y[i] * wd) : exp(y[i] * wd * value[o - shift]);
+      dual_[i] *= binary() ?
+        exp(y[i] * wd) :
+        exp(y[i] * wd * value[o - base_range_begin]);
     }
   }
 }
 
 void Darling::updateWeight(
-    int grp, SizeR range, SArray<double> G, SArray<double> U) {
-  CHECK_EQ(G.size(), range.size());
-  CHECK_EQ(U.size(), range.size());
+  int grp, Range<Key> g_key_range, SizeR base_range,
+  SArray<double> G, SArray<double> U) {
+  CHECK_EQ(G.size(), base_range.size());
+  CHECK_EQ(U.size(), base_range.size());
 
   double eta = conf_.learning_rate().eta();
   double lambda = conf_.penalty().lambda(0);
-  auto& value = w_->value(grp);
+  auto& value = ocean_.getParameterValue(grp, g_key_range);
   auto& active_set = active_set_[grp];
-  auto& delta = delta_[grp];
-  for (size_t i = 0; i < range.size(); ++i) {
-    size_t k = i + range.begin();
+  auto& delta = ocean_.getDelta(grp, g_key_range);
+
+  for (size_t i = 0; i < base_range.size(); ++i) {
+    size_t k = i + base_range.begin();
     if (!active_set.test(k)) continue;
     double g = G[i], u = U[i] / eta + 1e-10;
     double g_pos = g + lambda, g_neg = g - lambda;
-    double& w = value[k];
+    double& w = value[i];
     double d = - w, vio = 0;
 
     if (w == 0) {
@@ -470,8 +491,8 @@ void Darling::updateWeight(
     } else if (g_neg >= u * w) {
       d = - g_neg / u;
     }
-    d = std::min(delta[k], std::max(-delta[k], d));
-    delta[k] = newDelta(d);
+    d = std::min(delta[i], std::max(-delta[i], d));
+    delta[i] = newDelta(d);
     w += d;
   }
 }

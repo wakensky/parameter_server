@@ -3,12 +3,13 @@
 #include "system/message.h"
 #include "system/postoffice.h"
 #include "system/executor.h"
+#include "system/ocean.h"
 namespace PS {
 
 // An object shared across multiple nodes.
 class Customer {
  public:
-  Customer() : sys_(Postoffice::instance()), exec_(*this) {
+  Customer() : sys_(Postoffice::instance()), ocean_(Ocean::instance()), exec_(*this) {
     exec_thread_ = unique_ptr<std::thread>(new std::thread(&Executor::run, &exec_));
   }
   // process a message received from a remote node
@@ -49,6 +50,7 @@ class Customer {
   string name_;
   StringList child_customers_;
   Postoffice& sys_;
+  Ocean& ocean_;
   Executor exec_;
   unique_ptr<std::thread> exec_thread_;
  private:

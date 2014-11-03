@@ -17,7 +17,6 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
-  feature_station_.init(myNodeID(), conf_);
 }
 
 void BatchSolver::run() {
@@ -232,6 +231,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   bool hit_cache = get(msg).hit_cache();
 
   int max_parallel = std::max(1, conf_.solver().max_num_parallel_groups_in_preprocessing());
+  ocean_.init(myNodeID(), conf_, msg->task);
 
   if (IamWorker()) {
     std::vector<int> pull_time(grp_size);
