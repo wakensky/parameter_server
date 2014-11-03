@@ -354,6 +354,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           // reset
           w_->key(grp).clear();
           w_->value(grp).clear();
+
+          // tcmalloc force return memory to kernel
+          MallocExtension::instance()->ReleaseFreeMemory();
         };
         CHECK_EQ(time_pull_val, w_->pull(pull_val));
 
@@ -402,6 +405,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // reset
       w_->key(chl).clear();
       w_->value(chl).clear();
+
+      // tcmalloc force return memory to kernel
+      MallocExtension::instance()->ReleaseFreeMemory();
 
       // let PULL requests (for init weight) go
       w_->finish(kWorkerGroup, time_push_key+1);

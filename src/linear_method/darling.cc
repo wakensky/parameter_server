@@ -1,3 +1,4 @@
+#include <gperftools/malloc_extension.h>
 #include "linear_method/darling.h"
 #include "base/matrix_io.h"
 #include "base/sparse_matrix.h"
@@ -120,6 +121,9 @@ void Darling::preprocessData(const MessageCPtr& msg) {
 
     // reset delta_[grp]
     delta_[grp].clear();
+
+    // tcmalloc force return memory to kernel
+    MallocExtension::instance()->ReleaseFreeMemory();
   }
 
   // memory usage in y_, w_ and dual_ (features in training data)

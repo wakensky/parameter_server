@@ -428,6 +428,8 @@ void Ocean::drop(const GrpID grp_id, const Range<Ocean::FullKeyType>& range) {
       loaded_data_.erase(job_id);
       // remove from job_info_table_
       job_info_table_.erase(job_id);
+      // tcmalloc force return memory to kernel
+      MallocExtension::instance()->ReleaseFreeMemory();
     }
   }
 
