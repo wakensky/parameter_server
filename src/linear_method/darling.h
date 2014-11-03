@@ -42,6 +42,10 @@ class Darling : public BatchSolver {
   double violation_;
 
   DarlingConfig darling_conf_;
+
+  // all tasks been prefetched
+  // identify with msg->task.time()
+  std::unordered_set<int> prefetched_task_;
 };
 
 } // namespace LM

@@ -21,6 +21,7 @@ class Ocean {
     typedef size_t OffsetType;
     typedef double ValueType;
     typedef int GrpID;
+
     enum class DataType: unsigned char {
       FEATURE_KEY = 0,
       FEATURE_OFFSET,
@@ -28,48 +29,6 @@ class Ocean {
       PARAMETER_KEY,
       PARAMETER_VALUE,
       DELTA,
-      NUM
-    };
-
-  public:
-    SINGLETON(Ocean);
-    ~Ocean();
-    Ocean(const Ocean& other) = delete;
-    Ocean& operator= (const Ocean& rhs) = delete;
-
-    // initialization
-    void init(const string& identity, const LM::Config& conf, const Task& task);
-
-    // dump specific SArray data to disk or memory pool
-    // return false on failure
-    //  ex: disk is full
-    //  ex: {grp_id, type} exists
-    bool dump(SArray<char>& input, const GrpID grp_id, const Ocean::DataType type);
-
-    // add prefetch job
-    // prefetch may not start immediately if prefetch_job_limit reached
-    void prefetch(const GrpID grp_id, const Range<KeyType>& key_range);
-
-    // get needed SArray from memory pool
-    SArray<KeyType> getParameterKey(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<ValueType> getParameterValue(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<ValueType> getDelta(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<KeyType> getFeatureKey(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<OffsetType> getFeatureOffset(const GrpID grp_id, const Range<KeyType>& range);
-    SArray<ValueType> getFeatureValue(const GrpID grp_id, const Range<KeyType>& range);
-
-    // notify Ocean that corresponding memory block could be released if its reference count
-    //   decreases to zero
-    void drop(const GrpID grp_id, const Range<KeyType>& range);
-
-    SizeR getBaseRange(const GrpID grp_id, const Range<KeyType>& range);
-
-  private: // internal types
-    enum class JobStatus: unsigned char {
-      PENDING = 0,
-      LOADING = 1,
-      FAILED,
-      LOADED,
       NUM
     };
 
@@ -129,6 +88,52 @@ class Ocean {
           magic_num + (hash << 6) + (hash >> 2);
         return hash;
       }
+    };
+
+
+  public:
+    SINGLETON(Ocean);
+    ~Ocean();
+    Ocean(const Ocean& other) = delete;
+    Ocean& operator= (const Ocean& rhs) = delete;
+
+    // initialization
+    void init(const string& identity, const LM::Config& conf, const Task& task);
+
+    // dump specific SArray data to disk or memory pool
+    // return false on failure
+    //  ex: disk is full
+    //  ex: {grp_id, type} exists
+    bool dump(SArray<char>& input, const GrpID grp_id, const Ocean::DataType type);
+
+    // add prefetch job
+    // prefetch may not start immediately if prefetch_job_limit reached
+    void prefetch(const GrpID grp_id, const Range<KeyType>& key_range);
+
+    // get needed SArray from memory pool
+    SArray<KeyType> getParameterKey(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<ValueType> getParameterValue(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<ValueType> getDelta(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<KeyType> getFeatureKey(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<OffsetType> getFeatureOffset(const GrpID grp_id, const Range<KeyType>& range);
+    SArray<ValueType> getFeatureValue(const GrpID grp_id, const Range<KeyType>& range);
+
+    // notify Ocean that corresponding memory block could be released if its reference count
+    //   decreases to zero
+    void drop(const GrpID grp_id, const Range<KeyType>& range);
+
+    SizeR getBaseRange(const GrpID grp_id, const Range<KeyType>& range);
+
+    // length of prefetch pending queue
+    size_t pendingPrefetchCount();
+
+  private: // internal types
+    enum class JobStatus: unsigned char {
+      PENDING = 0,
+      LOADING = 1,
+      FAILED,
+      LOADED,
+      NUM
     };
 
     struct JobInfo {

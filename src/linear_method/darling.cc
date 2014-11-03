@@ -177,34 +177,27 @@ void Darling::updateModel(const MessagePtr& msg) {
   int grp = call.fea_grp(0);
   Range<Key> g_key_range(call.key());
 
+  // prefetch
   auto prefetch_handle = [&](MessagePtr& another) {
-    const int max_processed_task_id =
-      feature_station_.maxTaskID() > msg->task.time() ?
-      feature_station_.maxTaskID() : msg->task.time();
     if (Call::UPDATE_MODEL == get(another).cmd() &&
-        !feature_station_.taskIDUsed(another->task.time()) &&
+        0 == prefetched_task_.count(another->task.time()) &&
         another->task.time() <=
-          max_processed_task_id + 4 * conf_.solver().max_block_delay()) {
-      // column range
-      Range<Key> key_range(get(another).key());
-      SizeR range = w_->find(get(another).fea_grp(0), key_range);
-
+          msg->task.time() + 4 * conf_.solver().max_block_delay()) {
       // prefetch
-      feature_station_.prefetch(
-        another->task.time(),
+      ocean_.prefetch(
         get(another).fea_grp(0),
-        range);
+        Range<Key>(get(another).key()));
+      // record
+      prefetched_task_.insert(another->task.time());
     }
     return;
   };
+  if (ocean_.pendingPrefetchCount() <
+      conf_.solver().max_block_delay() + 8) {
+    exec().forEach(prefetch_handle);
+  }
 
   if (IamWorker()) {
-    // prefetch
-    if (feature_station_.pendingPrefetchJobCount() <
-      conf_.solver().max_block_delay() + 8) {
-      exec().forEach(prefetch_handle);
-    }
-
     // compute local gradients
     mu_.lock();
     this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
@@ -247,7 +240,7 @@ void Darling::updateModel(const MessagePtr& msg) {
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
       sys_.reply(msg->sender, msg->task);
-      feature_station_.dropFeature(msg->task.time());
+      ocean_.drop(grp, g_key_range);
     };
     CHECK_EQ(time+2, w_->pull(pull_msg));
   } else if (IamServer()) {

@@ -457,4 +457,8 @@ SizeR Ocean::getBaseRange(const GrpID grp_id, const Range<KeyType>& range) {
   }
   return ret;
 }
+
+size_t Ocean::pendingPrefetchCount() {
+  return pending_jobs_.size();
+}
 }; // namespace PS

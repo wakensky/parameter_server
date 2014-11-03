@@ -82,15 +82,19 @@ class SharedParameter : public Customer {
   std::unordered_map<int, FreqencyFilter<K>> key_filter_;
   bool key_filter_ignore_chl_ = false;
 
-
   // add key_range in the future, it is not necessary now
   std::unordered_map<NodeID, std::vector<int> > clock_replica_;
+
+  // increase when push request finished
+  // decrease when pull request finished
+  std::map<Ocean::JobID, int> push_pull_count;
 };
 
 template <typename K>
 void SharedParameter<K>::process(const MessagePtr& msg) {
   bool req = msg->task.request();
   int chl = msg->task.key_channel();
+  Range<K> g_key_range(msg->task.key_range());
   auto call = get(msg);
   bool push = call.cmd() == CallSharedPara::PUSH;
   bool pull = call.cmd() == CallSharedPara::PULL;
@@ -134,8 +138,13 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
   } else {
     if ((push && req) || (pull && !req)) {
       setValue(msg);
+      push_pull_count[JobID(chl, g_key_range)]++;
     } else if (pull && req) {
       getValue(reply);
+      push_pull_count[JobID(chl, g_key_range)]--;
+      if (push_pull_count[JobID(chl, g_key_range)] <= 0) {
+        ocean_.drop(JobID(chl, g_key_range));
+      }
     }
   }
   this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
