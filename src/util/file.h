@@ -58,6 +58,8 @@ class File {
   size_t writeString(const std::string& line);
   // flush the buffer
   bool flush();
+  // sync the buffer to hard drive
+  bool sync();
   // Closes the file.
   bool close();
   // Returns file size.

@@ -144,11 +144,13 @@ template<typename V> class SArray {
   bool readFromFile(SizeR range, const DataConfig& file);
 
   // write all values into a binary file
-  bool writeToFile(const string& file_name) const {
-    return writeToFile(SizeR(0, size_), file_name);
+  bool writeToFile(
+    const string& file_name, const bool sync_to_device = false) const {
+    return writeToFile(SizeR(0, size_), file_name, sync_to_device);
   }
   // write the segment [range.begin(), range.end()) into a binary file
-  bool writeToFile(SizeR range, const string& file_name) const;
+  bool writeToFile(
+    SizeR range, const string& file_name, const bool sync_to_device = false) const;
 
   // append all values into a binary file
   bool appendToFile(const string& file_name) const {

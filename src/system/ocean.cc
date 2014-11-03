@@ -404,10 +404,24 @@ void Ocean::drop(const GrpID grp_id, const Range<Ocean::KeyType>& range) {
   job_info_table_.decreaseRef(job_id);
 
   if (job_info_table_.getRef(job_id) <= 0) {
-    // release LoadedData
-    loaded_data_.erase(job_id);
-    // remove from job_info_table_
-    job_info_table_.erase(job_id);
+    // write mutable data back to disk
+    LoadedData memory_data;
+    if (loaded_data_.tryGet(job_id, memory_data)) {
+      if (!memory_data.parameter_value.empty()) {
+        writeToDisk(memory_data.parameter_value, job_id, DataType::PARAMETER_VALUE);
+      }
+      if (!memory_data.delta.empty()) {
+        writeToDisk(memory_data.delta, job_id, DataType::DELTA);
+      }
+    }
+
+    // release
+    if (job_info_table_.getRef(job_id) <= 0) {
+      // release LoadedData
+      loaded_data_.erase(job_id);
+      // remove from job_info_table_
+      job_info_table_.erase(job_id);
+    }
   }
 
   return;
@@ -460,5 +474,22 @@ SizeR Ocean::getBaseRange(const GrpID grp_id, const Range<KeyType>& range) {
 
 size_t Ocean::pendingPrefetchCount() {
   return pending_jobs_.size();
+}
+
+bool Ocean::writeToDisk(
+  SArray<char> input,
+  const JobID& job_id,
+  const Ocean::DataType type) {
+  if (input.empty()) {
+    return true;
+  }
+
+  const string full_path;
+  if (lakes_[static_cast<size_t>(type)].tryGet(job_id, full_path)) {
+    return input.writeToFile(full_path, true);
+  } else {
+    LL << "cannot not find full_path in lakes_; job_id: " << job_id.toString();
+    return false;
+  }
 }
 }; // namespace PS

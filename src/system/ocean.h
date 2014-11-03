@@ -74,6 +74,12 @@ class Ocean {
       bool operator== (const JobID& rhs) const {
         return grp_id == rhs.grp_id && range == rhs.range;
       }
+
+      string toString() {
+        std::stringstream ss;
+        ss << "grp: " << grp_id << ", range: " << range.toString();
+        return ss.str();
+      }
     };
 
     struct JobIDHash {
@@ -89,7 +95,6 @@ class Ocean {
         return hash;
       }
     };
-
 
   public:
     SINGLETON(Ocean);
@@ -296,6 +301,13 @@ class Ocean {
     void makeMemoryDataReady(const JobID job_id);
 
     string dataTypeToString(const Ocean::DataType type);
+
+    // write SArray back to disk
+    // if return true, the data has been flushed to hard drive
+    bool writeToDisk(
+      SArray<char> input,
+      const JobID& job_id,
+      const Ocean::DataType type);
 
   private: // attributes
     string identity_;
