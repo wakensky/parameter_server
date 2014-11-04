@@ -476,6 +476,10 @@ void Darling::updateWeight(
   CHECK_EQ(G.size(), base_range.size());
   CHECK_EQ(U.size(), base_range.size());
 
+  // statistic
+  size_t nnz_w = 0;
+  size_t objv = 0;
+
   double eta = conf_.learning_rate().eta();
   double lambda = conf_.penalty().lambda(0);
   auto value = ocean_.getParameterValue(grp, g_key_range);
@@ -511,7 +515,11 @@ void Darling::updateWeight(
     d = std::min(delta[i], std::max(-delta[i], d));
     delta[i] = newDelta(d);
     w += d;
+
+    if (w != 0) { nnz_w++; objv += fabs(w); }
   }
+
+  weight_stat_[Ocean::JobID(grp, g_key_range)] = std::make_pair(nnz_w, objv);
 }
 
 
@@ -578,13 +586,19 @@ Progress Darling::evaluateProgress() {
     size_t nnz_as = 0;
     double objv = 0;
     for (int grp : fea_grp_) {
+#if 0
       const auto& value = w_->value(grp);
       for (double w : value) {
         if (inactive(w) || w == 0) continue;
         ++ nnz_w;
         objv += fabs(w);
       }
+#endif
       nnz_as += active_set_[grp].nnz();
+    }
+    for (const auto& block : weight_stat_) {
+      nnz_w += block.second.first;
+      objv += block.second.second;
     }
     prog.set_objv(objv * conf_.penalty().lambda(0));
     prog.set_nnz_w(nnz_w);

@@ -59,6 +59,13 @@ class Darling : public BatchSolver {
   // all tasks been prefetched
   // identify with msg->task.time()
   std::unordered_set<int> prefetched_task_;
+
+  // statistic for weight (on server)
+  //   JobID -> {nnz_w, objv}
+  std::unordered_map<
+    Ocean::JobID,
+    std::pair<size_t, double>,
+    Ocean::JobIDHash> weight_stat_;
 };
 
 } // namespace LM
