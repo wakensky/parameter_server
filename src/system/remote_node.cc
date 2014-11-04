@@ -41,14 +41,6 @@ int RNode::submit(const MessagePtr& msg) {
   auto msgs = exec_.obj().slice(msg, key_partition);
   CHECK_EQ(msgs.size(), key_partition.size()-1);
 
-  // wakensky
-  size_t idx = 0;
-  for (const auto& msg : msgs) {
-    LI << __FUNCTION__ << " idx " << idx <<
-      " msg " << msg->shortDebugString();
-    idx++;
-  }
-
   // sent partitioned messages one-by-one
   int i = 0;
   for (auto w : exec_.group(id())) {

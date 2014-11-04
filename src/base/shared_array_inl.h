@@ -213,7 +213,7 @@ bool SArray<V>::writeToFile(
 
   File* file = File::open(file_name, "w");
   size_t length = range.size() * sizeof(V);
-  bool succ = file->write(ptr_.get(), length) == length;
+  bool succ = file->write(data_, length) == length;
   if (succ) {
     if (sync_to_device) {
       return file->sync() && file->close();
