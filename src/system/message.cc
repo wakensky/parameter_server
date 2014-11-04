@@ -13,6 +13,7 @@ std::string Message::shortDebugString() const {
   if (task.request()) ss << "REQ"; else ss << "RLY";
 
   ss << " " << task.time() << " ";
+  ss << "valid " << valid << " ";
   if (task.wait_time() >= 0) ss << "(wait " << task.wait_time() << ") ";
   ss << sender << "=>" << recver << " ";
   if (!original_recver.empty()) ss << "(" << original_recver << ") ";

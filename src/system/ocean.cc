@@ -146,9 +146,9 @@ bool Ocean::dump(
   if (partition_info_.end() != partition_info_.find(grp_id)) {
     for (const auto& partition_range : partition_info_.at(grp_id)) {
       // column range for offset
-      SizeR offset_column_range;
+      SizeR column_range;
       if (!locateColumnRange(
-        offset_column_range, grp_id, partition_range,
+        column_range, grp_id, partition_range,
         DataType::FEATURE_OFFSET, SArray<char>(X->offset()))) {
         LL << log_prefix_ << __FUNCTION__ <<
           " could not find column range for grp [" << grp_id <<
@@ -158,6 +158,7 @@ bool Ocean::dump(
       }
 
       // dump feature_offset
+      SizeR offset_column_range(column_range.begin(), column_range.end() + 1);
       if (!dumpSArraySegment(
           SArray<char>(X->offset()), JobID(grp_id, partition_range),
           offset_column_range, DataType::FEATURE_OFFSET)) {
@@ -169,7 +170,7 @@ bool Ocean::dump(
 
       SizeR feature_key_range(
         X->offset()[offset_column_range.begin()],
-        X->offset()[offset_column_range.end()]);
+        X->offset()[offset_column_range.end() - 1]);
       // dump feature_key
       if (!dumpSArraySegment(
           SArray<char>(X->index()), JobID(grp_id, partition_range),
@@ -189,6 +190,12 @@ bool Ocean::dump(
           dataTypeToString(DataType::FEATURE_VALUE) << "]";
         return false;
       }
+
+      CHECK_EQ(
+        X->offset().segment(offset_column_range).back() -
+          X->offset().segment(offset_column_range).front(),
+        X->index().segment(feature_key_range).size()) <<
+          " dumping job failed " << JobID(grp_id, partition_range).toString();
     }
   } else {
     LL << log_prefix_ << __FUNCTION__ << " unknown; group [" <<
@@ -228,11 +235,7 @@ bool Ocean::dumpSArraySegment(
         memory_data.feature_key = SArray<ShortKeyType>(input).segment(column_range);
         break;
       case Ocean::DataType::FEATURE_OFFSET:
-        {
-          SizeR offset_column_range(column_range.begin(), column_range.end() + 1);
-          memory_data.feature_offset =
-            SArray<OffsetType>(input).segment(offset_column_range);
-        }
+        memory_data.feature_offset = SArray<OffsetType>(input).segment(column_range);
         break;
       case Ocean::DataType::FEATURE_VALUE:
         memory_data.feature_value = SArray<ValueType>(input).segment(column_range);
@@ -243,7 +246,6 @@ bool Ocean::dumpSArraySegment(
         break;
     };
     loaded_data_.addAndModify(job_id, memory_data);
-
     return true;
   }
 
@@ -275,14 +277,13 @@ bool Ocean::dumpSArraySegment(
       }
     } else if (Ocean::DataType::FEATURE_OFFSET == type) {
       SArray<OffsetType> array(input);
-      SizeR offset_column_range(column_range.begin(), column_range.end() + 1);
-      if (!array.segment(offset_column_range).writeToFile(full_path)) {
+      if (!array.segment(column_range).writeToFile(full_path)) {
         throw std::runtime_error("OffsetType");
       }
     }
   } catch (std::exception& e) {
     LL << log_prefix_ << __FUNCTION__ <<
-      "SArray writeToFile failed on path [" << full_path << "] column_range " <<
+      " SArray writeToFile failed on path [" << full_path << "] column_range " <<
       column_range.toString() << " data type [" << dataTypeToString(type) << "]";
     return false;
   }
@@ -340,6 +341,18 @@ void Ocean::prefetchThreadFunc() {
     LoadedData loaded = loadFromDiskSynchronously(job_id);
     loaded_data_.addWithoutModify(job_id, loaded);
     job_info_table_.setStatus(job_id, JobStatus::LOADED);
+
+    // wakensky
+    LI << __FUNCTION__ << " DataType::PARAMETER_KEY " <<
+      " size " << loaded.parameter_key.size() <<
+      " first " << loaded.parameter_key[0] <<
+      " job " << job_id.toString();
+    LoadedData found;
+    CHECK(loaded_data_.tryGet(job_id, found));
+    LI << __FUNCTION__ << " DataType::PARAMETER_KEY " <<
+      " size " << found.parameter_key.size() <<
+      " first " << found.parameter_key[0] <<
+      " job " << job_id.toString();
   };
 }
 
@@ -349,32 +362,50 @@ Ocean::LoadedData Ocean::loadFromDiskSynchronously(const JobID job_id) {
   // load parameter_key
   string full_path;
   if (lakes_[static_cast<size_t>(DataType::PARAMETER_KEY)].tryGet(job_id, full_path)) {
-    memory_data.parameter_key.readFromFile(full_path);
+    SArray<char> stash;
+    stash.readFromFile(full_path);
+    memory_data.parameter_key = stash;
+
+    // wakensky
+    LI << __FUNCTION__ << " DataType::PARAMETER_KEY " <<
+      " size " << memory_data.parameter_key.size() <<
+      " first " << memory_data.parameter_key[0] <<
+      " job " << job_id.toString();
   }
 
   // load parameter_value
   if (lakes_[static_cast<size_t>(DataType::PARAMETER_VALUE)].tryGet(job_id, full_path)) {
-    memory_data.parameter_value.readFromFile(full_path);
+    SArray<char> stash;
+    stash.readFromFile(full_path);
+    memory_data.parameter_value = stash;
   }
 
   // load delta
   if (lakes_[static_cast<size_t>(DataType::DELTA)].tryGet(job_id, full_path)) {
-    memory_data.delta.readFromFile(full_path);
+    SArray<char> stash;
+    stash.readFromFile(full_path);
+    memory_data.delta = stash;
   }
 
   // load feature key
   if (lakes_[static_cast<size_t>(DataType::FEATURE_KEY)].tryGet(job_id, full_path)) {
-    memory_data.feature_key.readFromFile(full_path);
+    SArray<char> stash;
+    stash.readFromFile(full_path);
+    memory_data.feature_key = stash;
   }
 
   // load feature offset
   if (lakes_[static_cast<size_t>(DataType::FEATURE_OFFSET)].tryGet(job_id, full_path)) {
-    memory_data.feature_offset.readFromFile(full_path);
+    SArray<char> stash;
+    stash.readFromFile(full_path);
+    memory_data.feature_offset = stash;
   }
 
   // load feature value
   if (lakes_[static_cast<size_t>(DataType::FEATURE_VALUE)].tryGet(job_id, full_path)) {
-    memory_data.feature_value.readFromFile(full_path);
+    SArray<char> stash;
+    stash.readFromFile(full_path);
+    memory_data.feature_value = stash;
   }
 
   return memory_data;
@@ -388,6 +419,12 @@ SArray<Ocean::FullKeyType> Ocean::getParameterKey(
 
   LoadedData memory_data;
   if (loaded_data_.tryGet(job_id, memory_data)) {
+    // wakensky
+    LI << __FUNCTION__ << " DataType::PARAMETER_KEY " <<
+      " size " << memory_data.parameter_key.size() <<
+      " first " << memory_data.parameter_key[0] <<
+      " job " << job_id.toString();
+
     return memory_data.parameter_key;
   }
   return SArray<FullKeyType>();

@@ -117,7 +117,7 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     delta_[grp].setValue(conf_.darling().delta_init_value());
 
     // dump delta_[grp] to Ocean
-    ocean_.dump(SArray<char>(delta_[grp]), grp, Ocean::DataType::DELTA);
+    CHECK(ocean_.dump(SArray<char>(delta_[grp]), grp, Ocean::DataType::DELTA));
 
     // reset delta_[grp]
     delta_[grp].clear();
@@ -201,6 +201,14 @@ void Darling::updateModel(const MessagePtr& msg) {
 
   if (IamWorker()) {
     // compute local gradients
+    //
+    // wakensky
+    auto local_keys_0 = ocean_.getParameterKey(grp, g_key_range);
+    LI << "local_keys_0.size " << local_keys_0.size() <<
+      " local_keys_0[0] " << local_keys_0[0] <<
+      " grp " << grp <<
+      " global_range " << g_key_range;
+
     mu_.lock();
     this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
     busy_timer_.start();
@@ -212,9 +220,22 @@ void Darling::updateModel(const MessagePtr& msg) {
     // time 0: push local gradients
     MessagePtr push_msg(new Message(kServerGroup, time));
     auto local_keys = ocean_.getParameterKey(grp, g_key_range);
+
+    // wakensky
+    LI << "local_keys.size " << local_keys.size() <<
+      " local_keys[0] " << local_keys[0] <<
+      " G.size " << local_gradients[0].size() <<
+      " U.size " << local_gradients[1].size() <<
+      " grp " << grp <<
+      " global_range " << g_key_range;
+
     push_msg->addKV(local_keys, local_gradients);
     g_key_range.to(push_msg->task.mutable_key_range());
     push_msg->task.set_key_channel(grp);
+
+    // wakensky
+    LI << "worker push_msg " << push_msg->shortDebugString();
+
     CHECK_EQ(time, w_->push(push_msg));
 
     // time 1: servers do update, none of my business
@@ -290,6 +311,10 @@ SArrayList<double> Darling::computeGradients(
 
   // allocate grads
   SizeR col_range(0, feature_offset.size() - 1);
+
+  // wakensky
+  LI << __FUNCTION__ << " col_range " << col_range;
+
   SArrayList<double> grads(2);
   for (int i : {0, 1} ) {
     grads[i].resize(col_range.size());

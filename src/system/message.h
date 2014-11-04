@@ -92,10 +92,21 @@ MessagePtrList sliceKeyOrderedMsg(const MessagePtr& msg, const KeyList& sep) {
   size_t n = sep.size();
   std::vector<size_t> pos; pos.reserve(n-1);
   SArray<K> key(msg->key);
+
+  // wakensky
+  if (2600 == msg->task.time()) {
+    for (int i = 0; i < key.size(); ++i) {
+      LI << __FUNCTION__ << " key[" << i << "] " << key[i];
+    }
+  }
+
   Range<K> msg_key_range(msg->task.key_range());
   for (auto p : sep) {
     K k = std::max(msg_key_range.begin(), std::min(msg_key_range.end(), (K)p));
     pos.push_back(std::lower_bound(key.begin(), key.end(), k) - key.begin());
+    LI << __FUNCTION__ << " p " << p << " k " << k << " pos " << pos.back() <<
+      " msg_key_range.begin " << msg_key_range.begin() <<
+      " msg_key_range.end " << msg_key_range.end();
   }
 
   // split the message according to *pos*
@@ -107,6 +118,15 @@ MessagePtrList sliceKeyOrderedMsg(const MessagePtr& msg, const KeyList& sep) {
       // valid, which will be not actually sent
       piece->valid = false;
     } else {
+      // wakensky
+      LI << __FUNCTION__ << " msg " << msg->shortDebugString() <<
+        " lr " << SizeR(pos[i], pos[i+1]).toString() <<
+        " msg->key.size " << key.size() <<
+        " msg->key_range " << msg_key_range.toString();
+      for (const auto& key : sep) {
+        LI << __FUNCTION__ << " sep_key " << key;
+      }
+
       piece->valid = true;  // must set true, otherwise this piece might not be sent
       piece->clearKV();
       if (!key.empty()) {  // void be divided by 0
@@ -116,6 +136,9 @@ MessagePtrList sliceKeyOrderedMsg(const MessagePtr& msg, const KeyList& sep) {
           piece->addValue(val.segment(lr*(val.size()/key.size())));
         }
       }
+
+      // wakensky
+      LI << __FUNCTION__ << " piece " << piece->shortDebugString();
     }
     ret[i] = piece;
   }

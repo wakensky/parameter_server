@@ -332,10 +332,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           matrix_info_[grp] = X->info();
 
           // dump to Ocean
-          ocean_.dump(SArray<char>(w_->key(grp)), grp, Ocean::DataType::PARAMETER_KEY);
-          ocean_.dump(SArray<char>(w_->value(grp)), grp, Ocean::DataType::PARAMETER_VALUE);
+          CHECK(ocean_.dump(SArray<char>(w_->key(grp)), grp, Ocean::DataType::PARAMETER_KEY));
+          CHECK(ocean_.dump(SArray<char>(w_->value(grp)), grp, Ocean::DataType::PARAMETER_VALUE));
           auto sparse_x = std::static_pointer_cast<SparseMatrix<uint32, double>>(X);
-          ocean_.dump(sparse_x, grp);
+          CHECK(ocean_.dump(sparse_x, grp));
 
           // release original parameter memory
           w_->key(grp).clear();
@@ -385,8 +385,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->value(chl).setValue(ParameterInitConfig::ZERO);
 
       // dump to Ocean
-      ocean_.dump(SArray<char>(w_->key(chl)), chl, Ocean::DataType::PARAMETER_KEY);
-      ocean_.dump(SArray<char>(w_->value(chl)), chl, Ocean::DataType::PARAMETER_VALUE);
+      CHECK(ocean_.dump(SArray<char>(w_->key(chl)), chl, Ocean::DataType::PARAMETER_KEY));
+      CHECK(ocean_.dump(SArray<char>(w_->value(chl)), chl, Ocean::DataType::PARAMETER_VALUE));
       // reset
       w_->key(chl).clear();
       w_->value(chl).clear();

@@ -86,9 +86,18 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
   // TODO review this logic. if received an empty message at time t, then call
   // received(t) will get an error
   int chl = msg->task.key_channel();
+
+  // wakensky
+  LI << "setValue before check recv_key " << __FUNCTION__ << " " <<
+    msg->shortDebugString() << " recv_key.size " <<
+    SArray<K>(msg->key).size();
+
   // only keys, insert them
   SArray<K> recv_key(msg->key); if (recv_key.empty()) return;
   if (msg->value.empty()) {
+    // wakensky
+    LI << "setValue msg->value.empty() " << __FUNCTION__ << " " <<
+      msg->shortDebugString();
     key_[chl] = key_[chl].setUnion(recv_key);
     val_[chl].clear();
     return;
@@ -101,6 +110,12 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
   if (!dest_key.empty() && !recv_key.empty()) {
     range = dest_key.findRange(key_range);
   }
+
+  // wakensky
+  LI << "setValue get range " << __FUNCTION__ << " " <<
+    msg->shortDebugString() << " task_key_range " << key_range.toString() <<
+    " dest_key.size() " << dest_key.size() << " found_range " <<
+    range.toString();
 
   // merge values, and store them in recved_val
   int t = msg->task.time();
