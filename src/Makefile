@@ -1,7 +1,7 @@
 CC = g++
 
-OPT = -O3 -ggdb -g -gdwarf-2
-# OPT = -O0 -ggdb -g -gdwarf-2
+# OPT = -O3 -ggdb -g -gdwarf-2
+OPT = -O0 -ggdb -g -gdwarf-2
 
 BIN = ../bin
 LIB = ../lib
@@ -24,7 +24,7 @@ else
     CFLAGS = -std=c++0x $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
 endif
 
-LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ -ltcmalloc \
+LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ -ltcmalloc_debug \
 	-Wl,-rpath centos_lib -Wl,-dynamic-linker=./centos_lib/ld-linux-x86-64.so.2
 GTEST = -lgtest_main -lgtest
 

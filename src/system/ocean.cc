@@ -110,15 +110,25 @@ bool Ocean::dump(
 
   // traverse all blocks corresponding to grp_id
   if (partition_info_.end() != partition_info_.find(grp_id)) {
-    for (const auto& partition_range : partition_info_[grp_id]) {
-      if (!dumpSarraySegment(input, grp_id, partition_range, type)) {
-        LL << "failed; group [" << grp_id << "] while dumping; " <<
+    for (const auto& partition_range : partition_info_.at(grp_id)) {
+      SizeR column_range;
+      if (!locateColumnRange(column_range, grp_id, partition_range, type, input)) {
+        LL << log_prefix_ << __FUNCTION__ <<
+          " could not find column range for grp [" << grp_id <<
+          "], global_range " << partition_range.toString() <<
+          " DataType [" << dataTypeToString(type) << "]";
+        return false;
+      }
+      if (!dumpSArraySegment(
+            input, JobID(grp_id, partition_range),
+            column_range, type)) {
+        LL << log_prefix_ << __FUNCTION__ << " failed; group [" << grp_id << "] while dumping; " <<
           "data type [" << dataTypeToString(type) << "]";
         return false;
       }
     }
   } else {
-    LL << "unknown; group [" << grp_id << "] while dumping; " <<
+    LL << log_prefix_ << __FUNCTION__ << " unknown; group [" << grp_id << "] while dumping; " <<
       "data type [" << dataTypeToString(type) << "]";
     return false;
   }
@@ -126,31 +136,77 @@ bool Ocean::dump(
   return true;
 }
 
-bool Ocean::dumpSarraySegment(
-  SArray<char>& input,
-  const GrpID grp_id,
-  const Range<FullKeyType>& global_range,
-  const DataType type) {
-  // make job id
-  JobID job_id(grp_id, global_range);
+bool Ocean::dump(
+  SparseMatrixPtr<ShortKeyType, ValueType> X,
+  const GrpID grp_id) {
+  if (!X) { return true; }
+  CHECK(!identity_.empty());
 
-  // get column range
-  SizeR column_range;
-  if (Ocean::DataType::PARAMETER_KEY == type) {
-    // locate column range
-    SArray<FullKeyType> keys(input);
-    column_range = keys.findRange(global_range);
-    column_ranges_.addWithoutModify(job_id, column_range);
-    group_key_counts_[grp_id] += column_range.size();
-  } else {
-    // find column range
-    if (!column_ranges_.tryGet(job_id, column_range)) {
-      LL << log_prefix_ << __PRETTY_FUNCTION__ <<
-        "could not find column range for grp [" << grp_id <<
-        "], global_range " << global_range.toString();
-      return false;
+  //traverse all blocks corresponding to grp_id
+  if (partition_info_.end() != partition_info_.find(grp_id)) {
+    for (const auto& partition_range : partition_info_.at(grp_id)) {
+      // column range for offset
+      SizeR offset_column_range;
+      if (!locateColumnRange(
+        offset_column_range, grp_id, partition_range,
+        DataType::FEATURE_OFFSET, SArray<char>(X->offset()))) {
+        LL << log_prefix_ << __FUNCTION__ <<
+          " could not find column range for grp [" << grp_id <<
+          "], global_range " << partition_range.toString() <<
+          " DataType [" << dataTypeToString(DataType::FEATURE_OFFSET) << "]";
+        return false;
+      }
+
+      // dump feature_offset
+      if (!dumpSArraySegment(
+          SArray<char>(X->offset()), JobID(grp_id, partition_range),
+          offset_column_range, DataType::FEATURE_OFFSET)) {
+        LL << log_prefix_ << __FUNCTION__ << " failed; group [" <<
+          grp_id << "] while dumping; data type [" <<
+          dataTypeToString(DataType::FEATURE_OFFSET) << "]";
+        return false;
+      }
+
+      SizeR feature_key_range(
+        X->offset()[offset_column_range.begin()],
+        X->offset()[offset_column_range.end()]);
+      // dump feature_key
+      if (!dumpSArraySegment(
+          SArray<char>(X->index()), JobID(grp_id, partition_range),
+          feature_key_range, DataType::FEATURE_KEY)) {
+        LL << log_prefix_ << __FUNCTION__ << " failed; group [" <<
+          grp_id << "] while dumping; data type [" <<
+          dataTypeToString(DataType::FEATURE_KEY) << "]";
+        return false;
+      }
+
+      // dump feature_value
+      if (!dumpSArraySegment(
+          SArray<char>(X->value()), JobID(grp_id, partition_range),
+          feature_key_range, DataType::FEATURE_VALUE)) {
+        LL << log_prefix_ << __FUNCTION__ << " failed; group [" <<
+          grp_id << "] while dumping; data type [" <<
+          dataTypeToString(DataType::FEATURE_VALUE) << "]";
+        return false;
+      }
     }
+  } else {
+    LL << log_prefix_ << __FUNCTION__ << " unknown; group [" <<
+      grp_id << "] while dumping SparseMatrix";
+    return false;
   }
+  return true;
+}
+
+bool Ocean::dumpSArraySegment(
+  SArray<char> input,
+  const JobID& job_id,
+  const SizeR& column_range,
+  const DataType type) {
+  if (input.empty()) { return true; }
+
+  LI << "wakensky dumpSArraySegment " << dataTypeToString(type) <<
+    " jobID " << job_id.toString();
 
   if (!FLAGS_less_memory) {
     // on memory mode
@@ -182,7 +238,7 @@ bool Ocean::dumpSarraySegment(
         memory_data.feature_value = SArray<ValueType>(input).segment(column_range);
         break;
       default:
-        LL << __PRETTY_FUNCTION__ << "; invalid datatype [" <<
+        LL << __FUNCTION__ << "; invalid datatype [" <<
           static_cast<size_t>(type) << "]";
         break;
     };
@@ -194,8 +250,8 @@ bool Ocean::dumpSarraySegment(
   // full path
   std::stringstream ss;
   ss << pickDirRandomly() << "/" << identity_ <<
-    "." << dataTypeToString(type) << "." << grp_id <<
-    "." << global_range.begin() << "-" << global_range.end();
+    "." << dataTypeToString(type) << "." << job_id.grp_id <<
+    "." << job_id.range.begin() << "-" << job_id.range.end();
   string full_path = ss.str();
 
   // dump
@@ -225,7 +281,7 @@ bool Ocean::dumpSarraySegment(
       }
     }
   } catch (std::exception& e) {
-    LL << log_prefix_ << __PRETTY_FUNCTION__ <<
+    LL << log_prefix_ << __FUNCTION__ <<
       "SArray writeToFile failed on path [" << full_path << "] column_range " <<
       column_range.toString() << " data type [" << dataTypeToString(type) << "]";
     return false;
@@ -504,5 +560,38 @@ bool Ocean::writeToDisk(
 
 size_t Ocean::groupKeyCount(const GrpID grp_id) {
   return group_key_counts_[grp_id];
+}
+
+std::vector<Range<Ocean::FullKeyType>> Ocean::getPartitionInfo(const GrpID grp_id) {
+  auto iter = partition_info_.find(grp_id);
+  if (partition_info_.end() != iter) {
+    return iter->second;
+  }
+  return std::vector<Range<FullKeyType>>();
+}
+
+bool Ocean::locateColumnRange(
+  SizeR& output_range,
+  const GrpID grp_id,
+  const Range<FullKeyType>& partition_range,
+  const Ocean::DataType type,
+  SArray<char> input) {
+  if (Ocean::DataType::PARAMETER_KEY == type) {
+    // binary search
+    SArray<FullKeyType> keys(input);
+    output_range = keys.findRange(partition_range);
+    column_ranges_.addWithoutModify(JobID(grp_id, partition_range), output_range);
+    group_key_counts_[grp_id] += output_range.size();
+  } else {
+    // locate calculated column range
+    if (!column_ranges_.tryGet(JobID(grp_id, partition_range), output_range)) {
+      LL << log_prefix_ << __FUNCTION__ <<
+        " could not find column range for grp [" << grp_id <<
+        "], global_range " << partition_range.toString() <<
+        " DataType [" << dataTypeToString(type) << "]";
+      return false;
+    }
+  }
+  return true;
 }
 }; // namespace PS

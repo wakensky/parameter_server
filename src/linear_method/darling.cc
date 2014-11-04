@@ -229,7 +229,8 @@ void Darling::updateModel(const MessagePtr& msg) {
       SizeR base_range = ocean_.getBaseRange(grp, g_key_range);
       if (!base_range.empty()) {
         auto data = w_->received(time+2);
-        CHECK_EQ(data.size(), 1); CHECK_EQ(base_range, data[0].first);
+        CHECK_EQ(data.size(), 1);
+        CHECK_EQ(base_range.size(), data[0].first.size());
 
         mu_.lock();
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
@@ -257,8 +258,8 @@ void Darling::updateModel(const MessagePtr& msg) {
     if (!base_range.empty()) {
       auto data = w_->received(time);
       CHECK_EQ(data.size(), 2);
-      CHECK_EQ(base_range, data[0].first);
-      CHECK_EQ(base_range, data[1].first);
+      CHECK_EQ(base_range.size(), data[0].first.size());
+      CHECK_EQ(base_range.size(), data[1].first.size());
 
       this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
       updateWeight(grp, g_key_range, base_range, data[0].second, data[1].second);
@@ -282,7 +283,7 @@ SArrayList<double> Darling::computeGradients(
   CHECK_EQ(
     feature_offset.back() - feature_offset.front(),
     feature_index.size());
-  if (binary(grp)) {
+  if (!binary(grp)) {
     CHECK(!feature_value.empty());
   }
   CHECK(!delta.empty());
@@ -369,7 +370,7 @@ void Darling::updateDual(
   int grp, Range<Key> g_key_range, SArray<double> new_w) {
   SArray<double> delta_w(new_w.size());
   auto cur_w = ocean_.getParameterValue(grp, g_key_range);
-  auto active_set = active_set_[grp];
+  auto& active_set = active_set_[grp];
   auto delta = ocean_.getDelta(grp, g_key_range);
   auto feature_index = ocean_.getFeatureKey(grp, g_key_range);
   auto feature_offset = ocean_.getFeatureOffset(grp, g_key_range);
@@ -379,7 +380,7 @@ void Darling::updateDual(
   CHECK_EQ(
     feature_offset.back() - feature_offset.front(),
     feature_index.size());
-  if (binary(grp)) {
+  if (!binary(grp)) {
     CHECK(!feature_value.empty());
   }
   CHECK(!delta.empty());
@@ -391,6 +392,9 @@ void Darling::updateDual(
     size_t j = base_range.begin() + i;
     double& cw = cur_w[i];
     double& nw = new_w[i];
+    // wakensky
+    CHECK(i < cur_w.size());
+
     if (inactive(nw)) {
       // marked as inactive
       active_set.clear(j);
@@ -400,6 +404,9 @@ void Darling::updateDual(
     }
     delta_w[i] = nw - cw;
     delta[i] = newDelta(delta_w[i]);
+    // wakensky
+    CHECK(i < delta.size());
+
     cw = nw;
   }
 
@@ -441,7 +448,13 @@ void Darling::updateDual(
   for (size_t j = 0; j < col_range.size(); ++j) {
     size_t k  = j + base_range_begin + col_range.begin();
     size_t n = offset[j+1] - offset[j];
+    // wakensky
+    CHECK_LE(j + 1, feature_offset.size());
+
     double wd = w_delta[j];
+    // wakensky
+    CHECK_LE(j, w_delta.size());
+
     if (wd == 0 || !active_set.test(k)) {
       index += n;
       continue;
@@ -466,7 +479,7 @@ void Darling::updateWeight(
   double eta = conf_.learning_rate().eta();
   double lambda = conf_.penalty().lambda(0);
   auto value = ocean_.getParameterValue(grp, g_key_range);
-  auto active_set = active_set_[grp];
+  auto& active_set = active_set_[grp];
   auto delta = ocean_.getDelta(grp, g_key_range);
 
   for (size_t i = 0; i < base_range.size(); ++i) {

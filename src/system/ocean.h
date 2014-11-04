@@ -3,11 +3,12 @@
 #include <cinttypes>
 #include <atomic>
 #include <array>
+#include "proto/task.pb.h"
 #include "util/common.h"
 #include "util/threadsafe_queue.h"
 #include "util/threadsafe_map.h"
 #include "util/threadpool.h"
-#include "proto/task.pb.h"
+#include "base/sparse_matrix.h"
 
 namespace PS {
 
@@ -62,18 +63,16 @@ class Ocean {
       }
 
       bool operator< (const JobID& rhs) const {
-        if (grp_id < rhs.grp_id) {
-          return true;
-        } else if (range.begin() < rhs.range.begin()) {
-          return true;
-        } else if (range.end() < rhs.range.end()) {
-          return true;
-        }
-        return false;
+        return (grp_id < rhs.grp_id ||
+                (grp_id == rhs.grp_id && range.begin() < rhs.range.begin()) ||
+                (grp_id == rhs.grp_id && range.begin() == rhs.range.begin() &&
+                 range.end() < rhs.range.end()));
       }
 
       bool operator== (const JobID& rhs) const {
-        return grp_id == rhs.grp_id && range == rhs.range;
+        return (grp_id == rhs.grp_id &&
+                range.begin() == rhs.range.begin() &&
+                range.end() == rhs.range.end());
       }
 
       string toString() const {
@@ -112,6 +111,12 @@ class Ocean {
     //  ex: {grp_id, type} exists
     bool dump(SArray<char> input, const GrpID grp_id, const Ocean::DataType type);
 
+    // dump Sparsematrixptr to disk or memory pool
+    // return false on failure
+    //  ex: disk is full
+    //  ex: {grp_id, type} exists
+    bool dump(SparseMatrixPtr<ShortKeyType, ValueType> X, const GrpID grp_id);
+
     // add prefetch job
     // prefetch may not start immediately if prefetch_job_limit reached
     void prefetch(const GrpID grp_id, const Range<FullKeyType>& key_range);
@@ -136,6 +141,10 @@ class Ocean {
     // how many keys resides in specific group
     // return 0 if grp_id not found
     size_t groupKeyCount(const GrpID grp_id);
+
+    // fetch all block ranges within a group
+    // return empty vector if grp_id not found
+    std::vector<Range<FullKeyType>> getPartitionInfo(const GrpID grp_id);
 
   private: // internal types
     enum class JobStatus: unsigned char {
@@ -292,10 +301,10 @@ class Ocean {
 
     // dump an range of input into Ocean
     // true on success
-    bool dumpSarraySegment(
-      SArray<char>& input,
-      const GrpID grp_id,
-      const Range<FullKeyType>& global_range,
+    bool dumpSArraySegment(
+      SArray<char> input,
+      const JobID& job_id,
+      const SizeR& column_range,
       const DataType type);
 
     // read data from disk
@@ -313,6 +322,16 @@ class Ocean {
       SArray<char> input,
       const JobID& job_id,
       const Ocean::DataType type);
+
+    // find column range for specific {grp, partition}
+    // if datatype is PARAMETER_KEY,
+    //   new column range will be inserted into column_ranges_
+    bool locateColumnRange(
+      SizeR& output_range,
+      const GrpID grp_id,
+      const Range<FullKeyType>& partition_range,
+      const Ocean::DataType type,
+      SArray<char> input);
 
   private: // attributes
     string identity_;

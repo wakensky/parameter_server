@@ -236,7 +236,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   ocean_.init(myNodeID(), conf_, msg->task);
 
   if (IamWorker()) {
-    std::vector<int> pull_time(grp_size);
+    std::vector<int> sync_time(grp_size);
     for (int i = 0; i < grp_size; ++i, time += kPace) {
       if (hit_cache) continue;
       int grp = fea_grp_[i];
@@ -245,8 +245,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       int time_count = time;
       int time_filter = time_count + 2;
       int time_push_key = time_filter + 2;
-      int time_pull_val = time_push_key + 2;
-      pull_time[i] = time_pull_val;
+      sync_time[i] = time_push_key;
 
       SArray<Key> uniq_key;
       SArray<uint32> key_cnt;
@@ -280,7 +279,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       filter->task.set_erase_key_cache(true);
       w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
       filter->fin_handle =
-        [this, grp, localizer, i, grp_size, time_push_key, time_pull_val]() mutable {
+        [this, grp, localizer, i, grp_size, time_push_key]() mutable {
         // localize the training matrix
         if (FLAGS_verbose) {
           LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
@@ -310,21 +309,11 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         MessagePtr push_key(new Message(kServerGroup, time_push_key));
         push_key->key = w_->key(grp);
         push_key->task.set_key_channel(grp);
-        CHECK_EQ(time_push_key, w_->push(push_key));
-
-        // time 6: fetch initial value of w_
-        MessagePtr pull_val(new Message(kServerGroup, time_pull_val, time_pull_val-1));
-        pull_val->key = w_->key(grp);
-        pull_val->task.set_key_channel(grp);
-        pull_val->task.set_erase_key_cache(true);
-        pull_val->fin_handle = [this, &pull_val, time_pull_val, grp, &X]() mutable {
-          if (pull_val->key.empty()) return;
-
+        push_key->fin_handle =
+          [this, grp, X, time_push_key]() mutable {
           // set parameter value
-          auto init_w = w_->received(time_pull_val);
-          CHECK_EQ(init_w.size(), 1);
-          CHECK_EQ(w_->key(grp).size(), init_w[0].first.size());
-          w_->value(grp) = init_w[0].second;
+          w_->value(grp).resize(w_->key(grp).size());
+          w_->value(grp).setValue(ParameterInitConfig::ZERO);
 
           // set dual
           if (X) {
@@ -334,7 +323,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
             } else {
               CHECK_EQ(dual_.size(), X->rows());
             }
-
             if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
               dual_.eigenVector() = *X * w_->value(grp).eigenVector();
             }
@@ -347,25 +335,22 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           ocean_.dump(SArray<char>(w_->key(grp)), grp, Ocean::DataType::PARAMETER_KEY);
           ocean_.dump(SArray<char>(w_->value(grp)), grp, Ocean::DataType::PARAMETER_VALUE);
           auto sparse_x = std::static_pointer_cast<SparseMatrix<uint32, double>>(X);
-          ocean_.dump(SArray<char>(sparse_x->index()), grp, Ocean::DataType::FEATURE_KEY);
-          ocean_.dump(SArray<char>(sparse_x->offset()), grp, Ocean::DataType::FEATURE_OFFSET);
-          ocean_.dump(SArray<char>(sparse_x->value()), grp, Ocean::DataType::FEATURE_VALUE);
+          ocean_.dump(sparse_x, grp);
 
-          // reset
+          // release original parameter memory
           w_->key(grp).clear();
           w_->value(grp).clear();
 
           // tcmalloc force return memory to kernel
           MallocExtension::instance()->ReleaseFreeMemory();
         };
-        CHECK_EQ(time_pull_val, w_->pull(pull_val));
-
+        CHECK_EQ(time_push_key, w_->push(push_key));
       };
       CHECK_EQ(time+2, w_->pull(filter));
 
       // sync
       if (!hit_cache && i >= max_parallel) {
-        w_->waitOutMsg(kServerGroup, pull_time[i-max_parallel]);
+        w_->waitOutMsg(kServerGroup, sync_time[i-max_parallel]);
       }
     }
 
@@ -375,9 +360,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
       // CHECK_EQ(y_->value().size(), info->num_ex());
     }
-    // wait until all weight pull finished
+    // wait until all sync time point finished
     for (int i = 0; i < grp_size; ++i) {
-      w_->waitOutMsg(kServerGroup, pull_time[i]);
+      w_->waitOutMsg(kServerGroup, sync_time[i]);
     }
     saveCache("train");
   } else {
@@ -397,7 +382,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       int chl = fea_grp_[i];
       w_->keyFilter(chl).clear();
       w_->value(chl).resize(w_->key(chl).size());
-      w_->value(chl).setValue(conf_.init_w());
+      w_->value(chl).setValue(ParameterInitConfig::ZERO);
 
       // dump to Ocean
       ocean_.dump(SArray<char>(w_->key(chl)), chl, Ocean::DataType::PARAMETER_KEY);
@@ -408,9 +393,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // tcmalloc force return memory to kernel
       MallocExtension::instance()->ReleaseFreeMemory();
-
-      // let PULL requests (for init weight) go
-      w_->finish(kWorkerGroup, time_push_key+1);
     }
   }
 }
