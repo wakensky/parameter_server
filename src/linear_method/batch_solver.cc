@@ -279,7 +279,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       filter->task.set_erase_key_cache(true);
       w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
       filter->fin_handle =
-        [this, grp, localizer, i, grp_size, time_push_key]() mutable {
+        [this, grp, localizer, i, grp_size, time_push_key]() {
         // localize the training matrix
         if (FLAGS_verbose) {
           LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
@@ -309,8 +309,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         MessagePtr push_key(new Message(kServerGroup, time_push_key));
         push_key->key = w_->key(grp);
         push_key->task.set_key_channel(grp);
+        push_key->task.set_erase_key_cache(true);
         push_key->fin_handle =
-          [this, grp, X, time_push_key]() mutable {
+          [this, grp, X, time_push_key]() {
           // set parameter value
           w_->value(grp).resize(w_->key(grp).size());
           w_->value(grp).setValue(ParameterInitConfig::ZERO);

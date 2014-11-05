@@ -193,7 +193,10 @@ void Executor::run() {
         {
           Lock lk(o_recver->mu_);
           auto a = o_recver->msg_finish_handle_.find(t);
-          if (a != o_recver->msg_finish_handle_.end()) h = a->second;
+          if (a != o_recver->msg_finish_handle_.end()) {
+            h = a->second;
+            o_recver->msg_finish_handle_.erase(t);
+          }
         }
         if (h) h();
       } else if (FLAGS_verbose) {
