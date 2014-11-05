@@ -1,7 +1,7 @@
 CC = g++
 
-OPT = -O3 -ggdb -g -gdwarf-2
-# OPT = -O0 -ggdb -g -gdwarf-2
+# OPT = -O3 -ggdb -g -gdwarf-2
+OPT = -O0 -ggdb -g -gdwarf-2
 
 BIN = ../bin
 LIB = ../lib
@@ -54,8 +54,7 @@ SRCS = $(PROTOS_CC) \
 	linear_method/linear_method.cc \
 	linear_method/batch_solver.cc \
 	linear_method/darling.cc \
-	linear_method/ftrl.cc \
-	linear_method/feature_station.cc
+	linear_method/ftrl.cc 
 
 
 TESTS = \

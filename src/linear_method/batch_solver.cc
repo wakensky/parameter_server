@@ -443,15 +443,19 @@ void BatchSolver::saveModel(const MessageCPtr& msg) {
                 [](const BlockedArray& a, const BlockedArray& b) -> bool {
                   return a.first < b.first; });
 
+      SArray<Key> key_array;
+      SArray<double> val_array;
       for (size_t i = 0; i < parameter_key_vec.size(); ++i) {
         CHECK(parameter_key_vec.at(i).first == parameter_val_vec.at(i).first);
         CHECK_EQ(
           parameter_key_vec.at(i).second.size(),
           parameter_val_vec.at(i).second.size());
 
-        for (size_t j = 0; j < parameter_key_vec.at(i).second.size(); ++j) {
-          auto key = parameter_key_vec.at(i).second[j];
-          auto val = parameter_val_vec.at(i).second[j];
+        key_array = parameter_key_vec.at(i).second;
+        val_array = parameter_val_vec.at(i).second;
+        for (size_t j = 0; j < key_array.size(); ++j) {
+          auto key = key_array[j];
+          auto val = val_array[j];
           if (val != 0 && !(val != val)) {
             out << key << "\t" << val << "\n";
           }
