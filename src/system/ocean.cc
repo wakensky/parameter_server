@@ -315,10 +315,19 @@ void Ocean::prefetchThreadFunc() {
     JobID job_id;
     pending_jobs_.wait_and_pop(job_id);
 
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "prefetchThreadFunc ready to prefetch [" <<
+        job_id.toString() << "]";
+    }
+
     // check job status
     JobStatus job_status = job_info_table_.getStatus(job_id);
     if (JobStatus::LOADING == job_status ||
         JobStatus::LOADED == job_status) {
+      if (FLAGS_verbose) {
+        LI << log_prefix_ << "prefetchThreadFunc finish prefetching [" <<
+          job_id.toString() << "] since already LOADING/LOADED";
+      }
       // already been prefetched
       continue;
     }
@@ -330,6 +339,11 @@ void Ocean::prefetchThreadFunc() {
         l, [this]{ return loaded_data_.size() <= FLAGS_prefetch_job_limit; });
     }
 
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "prefetchThreadFunc start prefetching [" <<
+        job_id.toString() << "]";
+    }
+
     // change job status
     job_info_table_.setStatus(job_id, JobStatus::LOADING);
 
@@ -337,6 +351,11 @@ void Ocean::prefetchThreadFunc() {
     LoadedData loaded = loadFromDiskSynchronously(job_id);
     loaded_data_.addWithoutModify(job_id, loaded);
     job_info_table_.setStatus(job_id, JobStatus::LOADED);
+
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "prefetchThreadFunc finish prefetching [" <<
+        job_id.toString() << "] since succ";
+    }
   };
 }
 
@@ -480,6 +499,11 @@ void Ocean::drop(const GrpID grp_id, const Range<Ocean::FullKeyType>& range) {
   JobID job_id(grp_id, range);
   job_info_table_.decreaseRef(job_id);
 
+  if (FLAGS_verbose) {
+    LI << log_prefix_ << "dropped [" << job_id.toString() <<
+      "]; remaining ref_count: " << job_info_table_.getRef(job_id);
+  }
+
   if (job_info_table_.getRef(job_id) <= 0) {
     // write mutable data back to disk
     LoadedData memory_data;
@@ -492,14 +516,23 @@ void Ocean::drop(const GrpID grp_id, const Range<Ocean::FullKeyType>& range) {
       }
     }
 
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "written to disk [" << job_id.toString() << "]";
+    }
+
     // release
     if (job_info_table_.getRef(job_id) <= 0) {
       // release LoadedData
       loaded_data_.erase(job_id);
       // remove from job_info_table_
       job_info_table_.erase(job_id);
+      prefetch_limit_cond_.notify_all();
       // tcmalloc force return memory to kernel
       MallocExtension::instance()->ReleaseFreeMemory();
+
+      if (FLAGS_verbose) {
+        LI << log_prefix_ << "released [" << job_id.toString() << "]";
+      }
     }
   }
 
@@ -520,6 +553,10 @@ void Ocean::makeMemoryDataReady(const JobID job_id) {
     LoadedData memory_data = loadFromDiskSynchronously(job_id);
     loaded_data_.addWithoutModify(job_id, memory_data);
     job_info_table_.setStatus(job_id, JobStatus::LOADED);
+
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "loaded synchronously [" << job_id.toString() << "]";
+    }
   }
   return;
 }
@@ -607,5 +644,48 @@ bool Ocean::locateColumnRange(
     }
   }
   return true;
+}
+
+std::vector<std::pair<Ocean::JobID, string>> Ocean::getAllDumpedPath(
+  const Ocean::DataType type) {
+  CHECK_LT(static_cast<size_t>(type), static_cast<size_t>(Ocean::DataType::NUM));
+  return lakes_.at(static_cast<size_t>(type)).all();
+}
+
+std::vector<std::pair<Ocean::JobID, SArray<char>>> Ocean::getAllLoadedArray(
+  const Ocean::DataType type) {
+  CHECK_LT(static_cast<size_t>(type), static_cast<size_t>(Ocean::DataType::NUM));
+
+  std::vector<std::pair<Ocean::JobID, SArray<char>>> vec;
+  auto all_loaded = loaded_data_.all();
+  for (const auto& item : all_loaded) {
+    SArray<char> array;
+    switch (type) {
+      case Ocean::DataType::PARAMETER_KEY:
+        array = item.second.parameter_key;
+        break;
+      case Ocean::DataType::PARAMETER_VALUE:
+        array = item.second.parameter_value;
+        break;
+      case Ocean::DataType::DELTA:
+        array = item.second.delta;
+        break;
+      case Ocean::DataType::FEATURE_KEY:
+        array = item.second.feature_key;
+        break;
+      case Ocean::DataType::FEATURE_OFFSET:
+        array = item.second.feature_offset;
+        break;
+      case Ocean::DataType::FEATURE_VALUE:
+        array = item.second.feature_value;
+        break;
+      default:
+        CHECK(false) << "UNKNOWN_DATATYPE " << static_cast<size_t>(type);
+        return vec;
+    };
+
+    vec.push_back(std::make_pair(item.first, array));
+  }
+  return vec;
 }
 }; // namespace PS

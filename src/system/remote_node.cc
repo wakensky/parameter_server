@@ -95,8 +95,6 @@ void RNode::finishIncomingTask(int time) {
 
 void RNode::cacheKeySender(const MessagePtr& msg) {
   if (!FLAGS_key_cache || !msg->task.has_key_range()) return;
-  // wakensky
-  return;
   auto cache_k = std::make_pair(
       msg->task.key_channel(), Range<Key>(msg->task.key_range()));
 
@@ -131,7 +129,7 @@ void RNode::cacheKeySender(const MessagePtr& msg) {
     }
   }
 
-  if (msg->task.erase_key_cache()) key_cache_.erase(cache_k);
+  if (msg->task.erase_key_cache() && !msg->task.request()) key_cache_.erase(cache_k);
 }
 
 void RNode::cacheKeyRecver(const MessagePtr& msg) {

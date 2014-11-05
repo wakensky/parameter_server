@@ -146,6 +146,12 @@ class Ocean {
     // return empty vector if grp_id not found
     std::vector<Range<FullKeyType>> getPartitionInfo(const GrpID grp_id);
 
+    std::vector<std::pair<JobID, string>> getAllDumpedPath(
+      const Ocean::DataType type);
+
+    std::vector<std::pair<JobID, SArray<char>>> getAllLoadedArray(
+      const Ocean::DataType type);
+
   private: // internal types
     enum class JobStatus: unsigned char {
       PENDING = 0,

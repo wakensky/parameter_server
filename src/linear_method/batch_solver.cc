@@ -424,14 +424,75 @@ void BatchSolver::saveModel(const MessageCPtr& msg) {
     CHECK(output.file_size());
     std::string file = output.file(0) + "_" + myNodeID();
     std::ofstream out(file); CHECK(out.good());
-    for (int grp : fea_grp_) {
-      auto key = w_->key(grp);
-      auto value = w_->value(grp);
-      CHECK_EQ(key.size(), value.size());
-      // TODO use the model_file in msg
-      for (size_t i = 0; i < key.size(); ++i) {
-        double v = value[i];
-        if (v != 0 && !(v != v)) out << key[i] << "\t" << v << "\n";
+
+    if (!FLAGS_less_memory) {
+      typedef std::pair<Ocean::JobID, SArray<char>> BlockedArray;
+      std::vector<BlockedArray> parameter_key_vec =
+        ocean_.getAllLoadedArray(Ocean::DataType::PARAMETER_KEY);
+      CHECK(!parameter_key_vec.empty());
+      std::vector<BlockedArray> parameter_val_vec =
+        ocean_.getAllLoadedArray(Ocean::DataType::PARAMETER_VALUE);
+      CHECK(!parameter_val_vec.empty());
+      CHECK_EQ(parameter_key_vec.size(), parameter_val_vec.size());
+
+      // sort with JobID
+      std::sort(parameter_key_vec.begin(), parameter_key_vec.end(),
+                [](const BlockedArray& a, const BlockedArray& b) -> bool {
+                  return a.first < b.first; });
+      std::sort(parameter_val_vec.begin(), parameter_val_vec.end(),
+                [](const BlockedArray& a, const BlockedArray& b) -> bool {
+                  return a.first < b.first; });
+
+      for (size_t i = 0; i < parameter_key_vec.size(); ++i) {
+        CHECK(parameter_key_vec.at(i).first == parameter_val_vec.at(i).first);
+        CHECK_EQ(
+          parameter_key_vec.at(i).second.size(),
+          parameter_val_vec.at(i).second.size());
+
+        for (size_t j = 0; j < parameter_key_vec.at(i).second.size(); ++j) {
+          auto key = parameter_key_vec.at(i).second[j];
+          auto val = parameter_val_vec.at(i).second[j];
+          if (val != 0 && !(val != val)) {
+            out << key << "\t" << val << "\n";
+          }
+        }
+      }
+    } else {
+      typedef std::pair<Ocean::JobID, string> BlockedPath;
+      std::vector<BlockedPath> parameter_key_vec =
+        ocean_.getAllDumpedPath(Ocean::DataType::PARAMETER_KEY);
+      CHECK(!parameter_key_vec.empty());
+      std::vector<BlockedPath> parameter_val_vec =
+        ocean_.getAllDumpedPath(Ocean::DataType::PARAMETER_VALUE);
+      CHECK(!parameter_val_vec.empty());
+      CHECK_EQ(parameter_key_vec.size(), parameter_val_vec.size());
+
+      // sort with JobID
+      std::sort(parameter_key_vec.begin(), parameter_key_vec.end(),
+                [](const BlockedPath& a, const BlockedPath& b) -> bool {
+                  return a.first < b.first; });
+      std::sort(parameter_val_vec.begin(), parameter_val_vec.end(),
+                [](const BlockedPath& a, const BlockedPath& b) -> bool {
+                  return a.first < b.first; });
+
+      for (size_t i = 0; i < parameter_key_vec.size(); ++i) {
+        CHECK(parameter_key_vec.at(i).first == parameter_val_vec.at(i).first);
+
+        SArray<char> key_stash;
+        CHECK(key_stash.readFromFile(parameter_key_vec.at(i).second));
+        SArray<Key> key_array(key_stash);
+        SArray<char> val_stash;
+        CHECK(val_stash.readFromFile(parameter_val_vec.at(i).second));
+        SArray<double> val_array(val_stash);
+        CHECK_EQ(key_array.size(), key_array.size());
+
+        for (size_t j = 0; j < key_array.size(); ++j) {
+          auto key = key_array[j];
+          auto val = val_array[j];
+          if (val != 0 && !(val != val)) {
+            out << key << "\t" << val << "\n";
+          }
+        }
       }
     }
     LI << myNodeID() << " writes model to " << file;

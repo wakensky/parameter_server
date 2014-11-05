@@ -46,6 +46,9 @@ public:
 
   size_t size();
 
+  // return all keys and values
+  std::vector<std::pair<K, V>> all();
+
 private: // attributes
   std::map<K, V, Cmp> map_;
   mutable std::mutex mu_;
@@ -150,6 +153,17 @@ template <typename K, typename V, typename Cmp>
 size_t ThreadsafeMap<K, V, Cmp>::size() {
   Lock l(mu_);
   return map_.size();
+}
+
+template <typename K, typename V, typename Cmp>
+std::vector<std::pair<K, V>> ThreadsafeMap<K, V, Cmp>::all() {
+  Lock l(mu_);
+
+  std::vector<std::pair<K, V>> vec;
+  for (const auto& item : map_) {
+    vec.push_back(std::make_pair(item.first, item.second));
+  }
+  return vec;
 }
 
 }; // namespace PS
