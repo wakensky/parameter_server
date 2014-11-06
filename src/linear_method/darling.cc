@@ -122,8 +122,10 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     // reset delta_[grp]
     delta_[grp].clear();
 
+#ifdef TCMALLOC
     // tcmalloc force return memory to kernel
     MallocExtension::instance()->ReleaseFreeMemory();
+#endif
   }
 
   // memory usage in y_, w_ and dual_ (features in training data)

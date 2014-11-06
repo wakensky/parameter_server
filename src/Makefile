@@ -16,16 +16,23 @@ THIRD_LIB=$(THIRD)/lib
 #-Wconversion -fPIC
 WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare
 INCPATH = -I. -I${THIRD_INC}
+DEFINE = 
+ifeq (${TCMALLOC}, 1)
+  DEFINE += -DTCMALLOC
+endif
 
 ifeq (${STATIC}, 1)
 # TODO a lot of warning on mac with llvm
-    CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
+    CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(DEFINE) $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
 else
-    CFLAGS = -std=c++0x $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
+    CFLAGS = -std=c++0x $(DEFINE) $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
 endif
 
-LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ -ltcmalloc \
+LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ \
 	-Wl,-rpath centos_lib -Wl,-dynamic-linker=./centos_lib/ld-linux-x86-64.so.2
+ifeq (${TCMALLOC}, 1)
+  LDFLAGS += -ltcmalloc
+endif
 GTEST = -lgtest_main -lgtest
 
 OBJS = $(SRCS:.cc=.o)

@@ -236,7 +236,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   ocean_.init(myNodeID(), conf_, msg->task);
 
   if (IamWorker()) {
-    std::vector<int> sync_time(grp_size);
+    std::vector<int> sync_time(grp_size); // concurrency control
+    std::vector<std::promise<void>> wait_dual(grp_size); // wait for dual_
     for (int i = 0; i < grp_size; ++i, time += kPace) {
       if (hit_cache) continue;
       int grp = fea_grp_[i];
@@ -279,7 +280,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       filter->task.set_erase_key_cache(true);
       w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
       filter->fin_handle =
-        [this, grp, localizer, i, grp_size, time_push_key]() {
+        [this, grp, localizer, i, grp_size, time_push_key, &wait_dual]() {
         // localize the training matrix
         if (FLAGS_verbose) {
           LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
@@ -311,7 +312,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         push_key->task.set_key_channel(grp);
         push_key->task.set_erase_key_cache(true);
         push_key->fin_handle =
-          [this, grp, X, time_push_key]() {
+          [this, grp, X, time_push_key, i, &wait_dual]() {
           // set parameter value
           w_->value(grp).resize(w_->key(grp).size());
           w_->value(grp).setValue(ParameterInitConfig::ZERO);
@@ -342,8 +343,12 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           w_->key(grp).clear();
           w_->value(grp).clear();
 
+          wait_dual[i].set_value();
+
+#ifdef TCMALLOC
           // tcmalloc force return memory to kernel
           MallocExtension::instance()->ReleaseFreeMemory();
+#endif
         };
         CHECK_EQ(time_push_key, w_->push(push_key));
       };
@@ -361,9 +366,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
       // CHECK_EQ(y_->value().size(), info->num_ex());
     }
-    // wait until all sync time point finished
+    // wait until all key pushes finished
     for (int i = 0; i < grp_size; ++i) {
-      w_->waitOutMsg(kServerGroup, sync_time[i]);
+      wait_dual[i].get_future().wait();
     }
     saveCache("train");
   } else {
@@ -392,8 +397,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->key(chl).clear();
       w_->value(chl).clear();
 
+#ifdef TCMALLOC
       // tcmalloc force return memory to kernel
       MallocExtension::instance()->ReleaseFreeMemory();
+#endif
     }
   }
 }

@@ -527,8 +527,10 @@ void Ocean::drop(const GrpID grp_id, const Range<Ocean::FullKeyType>& range) {
       // remove from job_info_table_
       job_info_table_.erase(job_id);
       prefetch_limit_cond_.notify_all();
+#ifdef TCMALLOC
       // tcmalloc force return memory to kernel
       MallocExtension::instance()->ReleaseFreeMemory();
+#endif
 
       if (FLAGS_verbose) {
         LI << log_prefix_ << "released [" << job_id.toString() << "]";

@@ -449,8 +449,10 @@ void FeatureStation::dropFeature(const int task_id) {
     LI << log_prefix_ << "dropped task_id [" << task_id << "]";
   }
 
+#ifdef TCMALLOC
   // wakensky; tcmalloc force return memory to kernel
   MallocExtension::instance()->ReleaseFreeMemory();
+#endif
 #if 0
   int trim = malloc_trim(0);
   // wakensky

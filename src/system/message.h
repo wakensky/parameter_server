@@ -159,6 +159,7 @@ static void match(
         // partition dst_key_pos_range evenly
         SizeR my_dst_key_pos_range = dst_key_pos_range.evenDivide(
           FLAGS_num_threads, thread_idx);
+        if (my_dst_key_pos_range.empty()) { return; }
         // take the remainder if dst_key_range is indivisible by threads number
         if (FLAGS_num_threads - 1 == thread_idx) {
           my_dst_key_pos_range.set(

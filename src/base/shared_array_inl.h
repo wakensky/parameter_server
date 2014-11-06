@@ -197,11 +197,23 @@ bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
   if (range.empty()) { clear(); return true; }
 
   File* file = File::open(data, "r");
-  if (file == NULL || !file->open()) return false;
-  resize(range.size());
-  if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
-  size_t length = range.size() * sizeof(V);
-  return (file->read(ptr_.get(), length) == length && file->close());
+  try {
+    if (file == NULL || !file->open()) {
+      throw std::runtime_error("");
+    }
+    resize(range.size());
+    if (range.begin() > 0) file->seek(range.begin() * sizeof(V));
+    size_t length = range.size() * sizeof(V);
+    if (file->read(ptr_.get(), length) != length) {
+      throw std::runtime_error("");
+    }
+  } catch (std::exception e) {
+    if (file) { file->close(); }
+    return false;
+  }
+
+  if (file) { file->close(); }
+  return true;
 }
 
 template <typename V>

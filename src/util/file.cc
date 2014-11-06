@@ -195,6 +195,7 @@ bool readFileToProto(const DataConfig& name, GProto* proto) {
   size_t size = 100000;
   if (!name.has_hdfs()) size = f->size();
   std::string str; f->readToString(&str, size*100);
+  f->close();
 
   // Attempt to decode ASCII before deciding binary. Do it in this order because
   // it is much harder for a binary encoding to happen to be a valid ASCII

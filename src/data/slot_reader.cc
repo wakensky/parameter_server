@@ -303,6 +303,7 @@ bool SlotReader::assemblePartitions(
       std::stoull(vec[0], nullptr),
       std::stoull(vec[1], nullptr)));
   }
+  partition_file->close();
   CHECK(!partitions.empty());
 
   // decompress each partition, merge into output
