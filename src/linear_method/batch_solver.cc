@@ -315,7 +315,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           [this, grp, X, time_push_key, i, &wait_dual]() {
           // set parameter value
           w_->value(grp).resize(w_->key(grp).size());
-          w_->value(grp).setValue(ParameterInitConfig::ZERO);
+          w_->value(grp).setValue(0);
 
           // set dual
           if (X) {
@@ -388,7 +388,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       int chl = fea_grp_[i];
       w_->keyFilter(chl).clear();
       w_->value(chl).resize(w_->key(chl).size());
-      w_->value(chl).setValue(ParameterInitConfig::ZERO);
+      w_->value(chl).setValue(0);
 
       // dump to Ocean
       CHECK(ocean_.dump(SArray<char>(w_->key(chl)), chl, Ocean::DataType::PARAMETER_KEY));
