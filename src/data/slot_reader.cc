@@ -1,3 +1,5 @@
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "data/slot_reader.h"
 #include "data/example_parser.h"
 #include "util/threadpool.h"
@@ -14,13 +16,15 @@ DECLARE_bool(verbose);
 void SlotReader::init(const DataConfig& data, const DataConfig& cache) {
   CHECK(data.format() == DataConfig::TEXT);
   if (cache.file_size()) dump_to_disk_ = true;
-  cache_ = cache.file(0);
   data_ = data;
+  addDirectories(cache);
+  CHECK(!directories_.empty());
+  rng_.seed(time(0));
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
   CHECK_GT(data.file_size(), 0);
-  return cache_ + std::to_string(DJBHash32(data.file(0))) + "-" + \
+  return std::to_string(DJBHash32(data.file(0))) + "-" + \
     getFilename(data.file(0)) + "_slot_" + std::to_string(slot_id);
 }
 
@@ -67,8 +71,9 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       loaded_file_count_ << "/" << data_.file_size() << "]";
   }
 
-  string info_name = cache_ + std::to_string(DJBHash32(data.file(0))) + "-" + \
-                     getFilename(data.file(0)) + ".info";
+  string info_name = fullPath(
+    std::to_string(DJBHash32(data.file(0))) +
+    "-" + getFilename(data.file(0)) + ".info");
   ExampleInfo info;
   if (readFileToProto(info_name, &info)) {
     // the data is already in cache_dir
@@ -106,35 +111,36 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     size_t memSize() {
       return val.memSize() + col_idx.memSize() + row_siz.memSize();
     }
-    bool appendToFile(const string& name) {
+    bool appendToFile(SlotReader* reader, const string& name) {
+      CHECK(nullptr != reader);
       // lambda: append "start\tsize\n" to the file that contains partition info
       //   We named a compressed block "partition" here
       auto appendPartitionInfo = [] (
-        const size_t start, const size_t size, const string& file_name_prefix) {
+        const size_t start, const size_t size, const string& partition_file_path) {
         std::stringstream ss;
         ss << start << "\t" << size << "\n";
-        File *file = File::open(file_name_prefix + ".partition", "a+");
+        File *file = File::open(partition_file_path, "a+");
         file->writeString(ss.str());
         file->close();
       };
 
-      string file_name = name + ".value";
+      string file_name = reader->fullPath(name + ".value");
       size_t start = File::size(file_name);
       auto val_compressed = val.compressTo();
       CHECK(val_compressed.appendToFile(file_name));
-      appendPartitionInfo(start, val_compressed.dataMemSize(), file_name);
+      appendPartitionInfo(start, val_compressed.dataMemSize(), file_name + ".partition");
 
-      file_name = name + ".colidx";
+      file_name = reader->fullPath(name + ".colidx");
       start = File::size(file_name);
       auto col_compressed = col_idx.compressTo();
       CHECK(col_compressed.appendToFile(file_name));
-      appendPartitionInfo(start, col_compressed.dataMemSize(), file_name);
+      appendPartitionInfo(start, col_compressed.dataMemSize(), file_name + ".partition");
 
-      file_name = name + ".rowsiz";
+      file_name = reader->fullPath(name + ".rowsiz");
       start = File::size(file_name);
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(file_name));
-      appendPartitionInfo(start, row_compressed.dataMemSize(), file_name);
+      appendPartitionInfo(start, row_compressed.dataMemSize(), file_name + ".partition");
 
       return true;
     }
@@ -190,7 +196,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         continue;
       }
 
-      CHECK(slot.appendToFile(cacheName(data, i)));
+      CHECK(slot.appendToFile(this, cacheName(data, i)));
       slot.clear();
     }
 
@@ -216,7 +222,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       vslot.row_siz.pushBack(0);
       ++vslot.row_siz_total_size;
     }
-    CHECK(vslot.appendToFile(cacheName(data, i)));
+    CHECK(vslot.appendToFile(this, cacheName(data, i)));
   }
   {
     Lock l(mu_);
@@ -237,7 +243,7 @@ SArray<uint64> SlotReader::index(int slot_id) {
   SArray<uint64> idx = index_cache_[slot_id];
   if (idx.size() == nnz) return idx;
   for (int i = 0; i < data_.file_size(); ++i) {
-    string file = cacheName(ithFile(data_, i), slot_id) + ".colidx";
+    string file = fullPath(cacheName(ithFile(data_, i), slot_id) + ".colidx");
     SArray<char> comp; CHECK(comp.readFromFile(file));
     SArray<uint64> uncomp;
     {
@@ -259,7 +265,7 @@ SArray<size_t> SlotReader::offset(int slot_id) {
   SArray<size_t> os(1); os[0] = 0;
   if (nnzEle(slot_id) == 0) return os;
   for (int i = 0; i < data_.file_size(); ++i) {
-    string file = cacheName(ithFile(data_, i), slot_id) + ".rowsiz";
+    string file = fullPath(cacheName(ithFile(data_, i), slot_id) + ".rowsiz");
     SArray<char> comp; CHECK(comp.readFromFile(file));
     SArray<uint16> uncomp;
     {
@@ -318,4 +324,51 @@ bool SlotReader::assemblePartitions(
   return true;
 }
 
+void SlotReader::addDirectories(const DataConfig& cache) {
+  CHECK(cache.file_size() > 0);
+
+  for (size_t i = 0; i < cache.file_size(); ++i) {
+    // check permission
+    struct stat st;
+    if (-1 == stat(cache.file(i).c_str(), &st)) {
+      LL << "dir [" << cache.file(i) << "] cannot be added since error [" <<
+        strerror(errno) << "]";
+      continue;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+      LL << "dir [" << cache.file(i) << "] is not a regular directory";
+      continue;
+    }
+    if (0 != access(cache.file(i).c_str(), R_OK | W_OK)) {
+      LL << "I donnot have read&write permission on dir [" <<
+        cache.file(i) << "]";
+      continue;
+    }
+
+    // add
+    directories_.push_back(cache.file(i));
+  }
+}
+
+string SlotReader::fullPath(const string& file_name) {
+  CHECK(!directories_.empty());
+
+  struct stat st;
+  string dir_path;
+  for (const auto& dir : directories_) {
+    if (-1 != stat((dir + "/" + file_name).c_str(), &st)) {
+      dir_path = dir;
+      break;
+    }
+  }
+
+  if (!dir_path.empty()) {
+    return dir_path + "/" + file_name;
+  } else {
+    std::uniform_int_distribution<size_t> dist(0, directories_.size() - 1);
+    const size_t random_idx = dist(rng_);
+    return directories_.at(random_idx) + "/" + file_name;
+  }
+
+}
 } // namespace PS

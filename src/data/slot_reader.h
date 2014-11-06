@@ -25,7 +25,7 @@ class SlotReader {
   // load a slot from cache
   SArray<size_t> offset(int slot_id);
   SArray<uint64> index(int slot_id);
-  template<typename V> SArray<V> value(int slot_id) const;
+  template<typename V> SArray<V> value(int slot_id);
 
   void clear(int slot_id) {
     offset_cache_.erase(slot_id);
@@ -34,11 +34,16 @@ class SlotReader {
 
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
+  void addDirectories(const DataConfig& cache);
+  // return the full path according to file_name
+  //    if file exists among directories_, return the corresponding full path
+  //    if not found, randomly pick a new directory
+  string fullPath(const string& file_name);
+  std::default_random_engine rng_;
   size_t nnzEle(int slot_id) const;
   bool readOneFile(const DataConfig& data);
   bool assemblePartitions(
     SArray<char>& out, SArray<char>& in, const string& partition_file_name) const;
-  string cache_;
   DataConfig data_;
   bool dump_to_disk_;
   ExampleInfo info_;
@@ -47,14 +52,16 @@ class SlotReader {
   size_t loaded_file_count_;
   std::unordered_map<int, SArray<size_t>> offset_cache_;
   std::unordered_map<int, SArray<uint64>> index_cache_;
+  // available directories
+  std::vector<string> directories_;
 };
 
-template<typename V> SArray<V> SlotReader::value(int slot_id) const {
+template<typename V> SArray<V> SlotReader::value(int slot_id) {
   // TODO support cache (but this is a template function...)
   SArray<V> val;
   if (nnzEle(slot_id) == 0) return val;
   for (int i = 0; i < data_.file_size(); ++i) {
-    string file = cacheName(ithFile(data_, i), slot_id) + ".value";
+    string file = fullPath(cacheName(ithFile(data_, i), slot_id) + ".value");
     SArray<char> comp; CHECK(comp.readFromFile(file));
     SArray<float> uncomp;
     {

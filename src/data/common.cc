@@ -123,7 +123,7 @@ DataConfig searchFiles(const DataConfig& config) {
     for (auto& f : files) {
       if (std::regex_match(getFilename(f), pattern)) {
         auto l = config.format() == DataConfig::TEXT ? f : removeExtension(f);
-        matched_files.push_back(dir.file(0) + "/" + getFilename(l));
+        matched_files.push_back(getPath(l) + "/" + getFilename(l));
       }
     }
 
