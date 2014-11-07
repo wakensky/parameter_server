@@ -9,7 +9,11 @@ namespace PS {
 template<typename I, typename V>
 class Localizer {
  public:
-  Localizer() { }
+  Localizer(const NodeID& node_id, const int grp_id) :
+    node_id_(node_id),
+    grp_id_(grp_id) {
+    // do nothing
+  }
   // find the unique indeces with their number of occrus in *idx*
   void countUniqIndex(
       const SArray<I>& idx, SArray<I>* uniq_idx, SArray<uint32>* idx_frq = nullptr);
@@ -35,6 +39,8 @@ class Localizer {
   };
   SArray<Pair> pair_;
   SparseMatrixPtr<I,V> mat_;
+  const NodeID node_id_;
+  const int grp_id_;
 };
 
 template<typename I, typename V>
@@ -93,6 +99,107 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(const SArray<I>& idx_dict) {
 }
 
 template<typename I, typename V>
+MatrixPtr<V> Localizer<I,V>::remapIndex(
+  int grp_id, const SArray<I>& idx_dict, SlotReader* reader) const {
+  if (idx_dict.empty()) {
+    return MatrixPtr<V>(new SparseMatrix<uint32, V>());
+  }
+  CHECK(nullptr != reader);
+
+  auto info = reader->info<V>(grp_id);
+  CHECK_NE(info.type(), MatrixInfo::DENSE)
+      << "dense matrix already have compact indeces\n" << info.DebugString();
+
+  // traverse all partitions
+  // generate segmented remapped_idx
+  std::vector<string> remapped_idx_path_vec;
+  SlotReader::DataPack dp;
+  while (!(dp = reader->nextPartition(grp_id_, SlotReader::COLIDX)).is_ok) {
+    // sorted pair
+    SArray<Pair> pair;
+    pair.resize(dp.colidx.size());
+    for (size_t i = 0; i < dp.colidx.size(); ++i) {
+      pair[i].k = dp.colidx[i];
+      pair[i].i = i;
+    }
+    parallelSort(&pair, FLAGS_num_threads, [](const Pair& a, const Pair& b) {
+      return a.k < b.k; });
+
+    // generate remapped_idx
+    size_t matched = 0;
+    size_t order = 0;
+    SArray<uint32> remapped_idx;
+    remapped_idx.resize(pair.size(), 0);
+    const I* cur_dict = idx_dict.begin();
+    const Pair* cur_pair = pair.begin();
+    while (cur_dict != idx_dict.end() && cur_pair != pair.end()) {
+      if (*cur_dict < cur_pair->k) {
+        ++cur_dict;
+      } else {
+        if (*cur_dict == cur_pair->k) {
+          remapped_idx[cur_pair->i] = (uint32)(cur_dict - idx_dict.begin()) + 1;
+          ++matched;
+        }
+        ++cur_pair;
+      }
+    }
+
+    // dump remmaped_idx
+    string path = reader->fullPath(
+      node_id_ + ".segmented_remapped_idx." + std::to_string(order++));
+    CHECK(remapped_idx.writeToFile(path));
+    remapped_idx_path_vec.push_back(path);
+  }
+
+  reader->returnToFirstPartition();
+  // construct new SparseMatrix
+  //   containing localizered feature ids
+  SArray<uint32> new_index(matched);
+  SArray<size_t> new_offset(reader->info(grp_id_).row() + 1);
+  new_offset[0] = 0;
+  size_t k = 0;
+  while (!(dp = reader->nextPartition(grp_id_, SlotReader::ROWSIZ)).is_ok) {
+    // load remapped_idx from disk
+    CHECK(!remapped_idx_path_vec.empty());
+    string remapped_idx_path = remapped_idx_path_vec.pop_front();
+    SArray<char> stash;
+    CHECK(stash.readFromFile(remapped_idx_path));
+    SArray<uint32> remapped_idx(stash);
+
+    // skip empty partition
+    if (dp.rowsiz.empty()) { break; }
+
+    // fill new_index
+    size_t start = dp.rowsiz[0];
+    for (size_t i = 0; i < dp.rowsiz.size() - 1; ++i) {
+      size_t n = 0;
+      for (size_t j = dp.rowsiz[i]; j < dp.rowsiz[i + 1]; ++j) {
+        if (0 == remapped_idx[j - start]) { continue; }
+        ++n;
+        new_index[k++] = remapped_idx[j - start] - 1;
+      }
+      new_offset[i + 1] = new_offset[i] + n;
+    }
+  }
+  CHECK_EQ(k, matched);
+
+  // establish new info
+  auto new_info = info;
+  new_info.set_sizeof_index(sizeof(uint32));
+  new_info.set_nnz(new_index.size());
+  new_info.clear_ins_info();
+  SizeR local(0, idx_dict.size());
+  if (new_info.row_major())  {
+    local.to(new_info.mutable_col());
+  } else {
+    local.to(new_info.mutable_row());
+  }
+  return MatrixPtr<V>(new SparseMatrix<uint32, V>(
+    new_info, new_offset, new_index, SArray<V>()));
+}
+
+#if 0
+template<typename I, typename V>
 MatrixPtr<V> Localizer<I, V>::remapIndex(
     int grp_id, const SArray<I>& idx_dict, SlotReader* reader) const {
   if (idx_dict.empty()) {
@@ -105,6 +212,7 @@ MatrixPtr<V> Localizer<I, V>::remapIndex(
   if (info.type() == MatrixInfo::SPARSE) val = reader->value<V>(grp_id);
   return remapIndex(info, reader->offset(grp_id), reader->index(grp_id), val, idx_dict);
 }
+#endif
 
 template<typename I, typename V>
 MatrixPtr<V> Localizer<I, V>::remapIndex(

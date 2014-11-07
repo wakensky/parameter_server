@@ -27,6 +27,68 @@ class SlotReader {
   SArray<uint64> index(int slot_id);
   template<typename V> SArray<V> value(int slot_id);
 
+  // return the full path according to file_name
+  //    if file exists among directories_, return the corresponding full path
+  //    if not found, randomly pick a new directory
+  string fullPath(const string& file_name);
+
+  struct DataPack {
+    SArray<uint64> colidx;
+    SArray<uint64> uniq_colidx;
+    SArray<uint16> rowsiz;
+    SArray<float> val;
+    bool is_ok;
+
+    DataPack() :
+      is_ok(false) {
+      // do nothing
+    }
+  };
+
+  enum LoadMode {
+    COLIDX = 1L << 0,
+    UNIQ_COLIDX = 1L << 1,
+    ROWSIZ = 1L << 2,
+    VALUE = 1L << 3,
+    END = 1L << 16
+  };
+
+  // which partition I am loading
+  struct PartitionLocator {
+    int file_idx;
+    size_t partition_idx;
+    size_t partition_count;
+
+    PartitionLocator() :
+      file_idx(-1),
+      partition_idx(0),
+      partition_count(0) {
+      // do nothing
+    }
+
+    PartitionLocator(const PartitionLocator& other) :
+      file_idx(other.file_idx),
+      partition_idx(other.partition_idx),
+      partition_count(other.partition_count) {
+      // do nothing
+    }
+
+    PartitionLocator& operator= (const PartitionLocator& rhs) {
+      file_idx = rhs.file_idx;
+      partition_idx = rhs.partition_idx;
+      partition_count = rhs.partition_count;
+      return *this;
+    }
+  };
+
+  // load partitions one by one
+  //   return invalid DataPack on failure
+  DataPack nextPartition(const int slot_id, const LoadMode load_mode);
+
+  // return to the first partition
+  //   nextPartition will bring us to the first partition again
+  void returnToFirstPartition(const int slot_id);
+
   void clear(int slot_id) {
     offset_cache_.erase(slot_id);
     index_cache_.erase(slot_id);
@@ -35,10 +97,6 @@ class SlotReader {
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
   void addDirectories(const DataConfig& cache);
-  // return the full path according to file_name
-  //    if file exists among directories_, return the corresponding full path
-  //    if not found, randomly pick a new directory
-  string fullPath(const string& file_name);
   std::default_random_engine rng_;
   size_t nnzEle(int slot_id) const;
   bool readOneFile(const DataConfig& data);
@@ -54,6 +112,15 @@ class SlotReader {
   std::unordered_map<int, SArray<uint64>> index_cache_;
   // available directories
   std::vector<string> directories_;
+  // partition ranges for each file
+  // file_name -> range
+  std::unordered_map<string, std::vector<SizeR>> partition_ranges_;
+  // where the current partition is
+  //    std::array<int, 3> <=>
+  //    {i-th file, current partition idx, partition numbers of i-th file}
+  std::unordered_map<int, PartitionLocator> partition_locator_;
+  // all partition ranges of i-th file under specified slot
+  std::vector<SizeR> filePartitions(const int slot_id, const size_t file_idx);
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) {

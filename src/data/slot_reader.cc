@@ -129,18 +129,38 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       auto val_compressed = val.compressTo();
       CHECK(val_compressed.appendToFile(file_name));
       appendPartitionInfo(start, val_compressed.dataMemSize(), file_name + ".partition");
+      partition_ranges_[file_name + ".partition"].push_back(
+        SizeR(start, val_compressed.dataMemSize()));
 
       file_name = reader->fullPath(name + ".colidx");
       start = File::size(file_name);
       auto col_compressed = col_idx.compressTo();
       CHECK(col_compressed.appendToFile(file_name));
       appendPartitionInfo(start, col_compressed.dataMemSize(), file_name + ".partition");
+      partition_ranges_[file_name + ".partition"].push_back(
+        SizeR(start, val_compressed.dataMemSize()));
 
       file_name = reader->fullPath(name + ".rowsiz");
       start = File::size(file_name);
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(file_name));
       appendPartitionInfo(start, row_compressed.dataMemSize(), file_name + ".partition");
+      partition_ranges_[file_name + ".partition"].push_back(
+        SizeR(start, val_compressed.dataMemSize()));
+
+      // sort and unique
+      parallelSort(&col_idx, FLAGS_num_threads, [](const uint64& a, const uint64& b) {
+        return a < b; });
+      uint64* new_end = std::unique(col_idx.begin(), col_idx.end());
+      file_name = reader->fullPath(name + ".colidx_sorted_uniq");
+      start = File::size(file_name);
+      auto uniq_compressed =
+        col_idx.segment(0, new_end - col_idx.begin()).compressTo();
+      CHECK(uniq_compressed.appendToFile(file_name));
+      appendPartitionInfo(
+        start, uniq_compressed.dataMemSize(), file_name + ".partition");
+      partition_ranges_[file_name + ".partition"].push_back(
+        SizeR(start, val_compressed.dataMemSize()));
 
       return true;
     }
@@ -370,5 +390,78 @@ string SlotReader::fullPath(const string& file_name) {
     return directories_.at(random_idx) + "/" + file_name;
   }
 
+}
+
+DataPack SlotReader::nextPartition(
+  const int slot_id, const LoadMode load_mode) {
+  CHECK_LT(slot_id, kSlotIDmax);
+  DataPack dp;
+
+  auto& locator = partition_locator_[slot_id];
+  locator.partition_idx++;
+
+  if (locator.partition_idx >= locator.partition_count) {
+    locator.file_idx++;
+    if (locator.file_idx < data_.file_size()) {
+      locator.partition_idx = 0;
+      locator.partition_count = partition_ranges_[cacheName(
+        ithFile(data_, locator.file_idx), slot_id) + ".colidx.partition"].size();
+    } else {
+      // all partitions exhausted
+      return dp;
+    }
+  }
+
+  dp.is_ok = true;
+  // load current partition
+  if (load_mode & LoadMode::COLIDX) {
+    string file = fullPath(
+      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx");
+    SArray<char> compressed;
+    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    compressed.readFromFile(my_range, file);
+    dp.colidx.uncompressFrom(compressed);
+  }
+  if (load_mode & LoadMode::UNIQ_COLIDX) {
+    string file = fullPath(
+      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".uniq_colidx");
+    SArray<char> compressed;
+    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    compressed.readFromFile(my_range, file);
+    dp.uniq_colidx.uncompressFrom(compressed);
+  }
+  if (load_mode & LoadMode::ROWSIZ) {
+    string file = fullPath(
+      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".rowsiz");
+    SArray<char> compressed;
+    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    compressed.readFromFile(my_range, file);
+    dp.rowsiz.uncompressFrom(compressed);
+  }
+  if (load_mode & LoadMode::VALUE) {
+    string file = fullPath(
+      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".val");
+    SArray<char> compressed;
+    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    compressed.readFromFile(my_range, file);
+    dp.val.uncompressFrom(compressed);
+  }
+
+  return dp;
+}
+
+void SlotReader::returnToFirstPartition(const int slot_id) {
+  CHECK_LT(slot_id, kSlotIDmax);
+  partition_locator_[slot_id].file_idx = -1;
+  partition_locator_[slot_id].partition_idx = 0;
+  partition_locator_[slot_id].partition_count = 0;
+}
+
+std::vector<SizeR> SlotReader::filePartitions(
+  const int slot_id, const size_t file_idx) {
+  CHECK_LT(slot_id, kSlotIDmax);
+  CHECK_LT(file_idx, data_.file_size());
+
+  std::vector<SizeR> ret_vec;
 }
 } // namespace PS

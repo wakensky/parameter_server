@@ -248,19 +248,33 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       int time_push_key = time_filter + 2;
       sync_time[i] = time_push_key;
 
-      SArray<Key> uniq_key;
-      SArray<uint32> key_cnt;
-      Localizer<Key, double> *localizer = new Localizer<Key, double>();
+      SlotReader::DataPack dp;
+      while (!(dp = slot_reader_.nextPartition(grp, SlotReader::UNIQ_COLIDX)).is_ok) {
+        MessagePtr count(new Message(kServerGroup, time_count)); // wakensky time should be changed
+        count->key = dp.uniq_colidx;
+        count->task.set_key_channel(grp);
+        auto arg = w_->set(count);
+        arg->set_insert_key_freq(true);
+        arg->set_countmin_k(conf_.solver().countmin_k());
+        arg->set_countmin_n(static_cast<int>(
+          dp.uniq_colidx * 1000 * conf_.solver().countmin_n_ratio()));
+        CHECK_EQ(time, w_->push(count));
 
-      // counting
-      if (FLAGS_verbose) {
-        LI << "counting unique key [" << i + 1 << "/" << grp_size << "]";
+        MessagePtr filter(new Message(KServerGroup, time_filter, time_filter-1)); // wakensky time should be changed
+        filter->key = dp.uniq_colidx;
+        filter->task.set_key_channel(grp);
+        filter->task.set_erase_key_cache(true);
+        w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
+        CHECK_EQ(time+2, w_->pull(filter));
+
+        // some kind sync here
       }
-      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-      localizer->countUniqIndex(slot_reader_.index(grp), &uniq_key, &key_cnt);
-      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-      if (FLAGS_verbose) {
-        LI << "counted unique key [" << i + 1 << "/" << grp_size << "]";
+
+      // sync finished; key_[chl] contains all filtered keys
+      // async recall
+      slot_reader_.returnToFirstPartition();
+      {
+        ;
       }
 
       // Time 0: send all unique keys with their count to servers
