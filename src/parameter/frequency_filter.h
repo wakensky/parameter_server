@@ -36,9 +36,15 @@ SArray<K> FreqencyFilter<K>::queryKeys(const SArray<K>& key, int freqency) {
 
 template<typename K>
 void FreqencyFilter<K>::insertKeys(const SArray<K>& key, const SArray<uint32>& count) {
-  CHECK_EQ(key.size(), count.size());
-  for (size_t i = 0; i < key.size(); ++i) {
-    count_.insert(key[i], count[i]);
+  if (count.empty()) {
+    for (size_t i = 0; i < key.size(); ++i) {
+      count_.insert(key[i], 1);
+    }
+  } else {
+    CHECK_EQ(key.size(), count.size());
+    for (size_t i = 0; i < key.size(); ++i) {
+      count_.insert(key[i], count[i]);
+    }
   }
 }
 

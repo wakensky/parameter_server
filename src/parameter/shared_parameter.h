@@ -118,14 +118,18 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
   } else if (call.insert_key_freq() || call.has_query_key_freq()) {
     // deal with tail features
     if (key_filter_ignore_chl_) chl = 0;
-    if (call.insert_key_freq() && req && !msg->value.empty()) {
+    if (call.insert_key_freq() && req) {
       auto& filter = key_filter_[chl];
       if (filter.empty()) {
         double w = (double)FLAGS_num_workers;
         filter.resize(
             std::max((int)(w*call.countmin_n()/log(w+1)), 64), call.countmin_k());
       }
-      filter.insertKeys(SArray<K>(msg->key), SArray<uint32>(msg->value[0]));
+      if (msg->value.empty()) {
+        filter.insertKeys(SArray<K>(msg->key), SArray<uint32>());
+      } else {
+        filter.insertKeys(SArray<K>(msg->key), SArray<uint32>(msg->value[0]));
+      }
     }
     if (call.has_query_key_freq()) {
       if (req) {

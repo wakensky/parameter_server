@@ -248,7 +248,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         fea_grp_.at(i),
         time + i * kFilterPace,
         time + i * kFilterPace + kFilterPace / 2,
-        time + i * kFilterPace + kFilterPace / 2 + 1));
+        time + i * kFilterPace + kFilterPace / 2 + 2,
+        time + i * kFilterPace + kFilterPace - 1));
     }
 
     const int max_parallel = std::max(
@@ -328,7 +329,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           }
 
           // push initial keys to servers
-          MessagePtr push_initial_key(new Message(kServerGroup));
+          const int time_push_initial_key =
+            time + i * kFilterPace + kFilterPace - 1;
+          MessagePtr push_initial_key(
+            new Message(kServerGroup, time_push_initial_key));
           push_initial_key->key = w_->key(grp);
           push_initial_key->task.set_key_channel(grp);
           push_initial_key->set_erase_key_cache(true);
@@ -370,7 +374,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
             MallocExtension::instance()->ReleaseFreeMemory();
 #endif
           };
-          w_->push(push_initial_key);
+          CHECK_EQ(time_push_initial_key, w_->push(push_initial_key));
 
           // set group finished
           // but push_initial_key may not finish yet,
@@ -396,175 +400,20 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       wait_dual[i].get_future().wait();
     }
     saveCache("train");
-  }
-
-  if (IamWorker()) {
-    std::vector<int> sync_time(grp_size); // concurrency control
-    std::vector<std::promise<void>> wait_dual(grp_size); // wait for dual_
-    // Task IDs
-    const int kTimeCountStart = time;
-    const int kTimeCountFinish = kTimeCountStart + kFilterPace / 2;
-    const int kTimeFilterStart = kTimeCountFinish + 1;
-    for (int i = 0; i < grp_size; ++i, time += kFilterPace) {
-      if (hit_cache) continue;
-      int grp = fea_grp_[i];
-      size_t partition_count = 0;
-      SlotReader::DataPack dp;
-      int time_count = time_count_start;
-      int time_filter = time_filter_start;
-
-      while (!(dp = slot_reader_.nextPartition(grp, SlotReader::UNIQ_COLIDX)).is_ok) {
-        ++partition_count;
-
-        MessagePtr count(new Message(kServerGroup, time_count++));
-        count->key = dp.uniq_colidx;
-        count->task.set_key_channel(grp);
-        auto arg = w_->set(count);
-        arg->set_insert_key_freq(true);
-        arg->set_countmin_k(conf_.solver().countmin_k());
-        arg->set_countmin_n(static_cast<int>( // wakensky; 1000 was chosen casually
-          dp.uniq_colidx.size() * 1000 * conf_.solver().countmin_n_ratio()));
-        CHECK_EQ(time, w_->push(count));
-
-        MessagePtr filter(new Message(KServerGroup, time_filter++, kTimeCountFinish));
-        filter->key = dp.uniq_colidx;
-        filter->task.set_key_channel(grp);
-        filter->task.set_erase_key_cache(true);
-        w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
-        CHECK_EQ(time+2, w_->pull(filter));
-
-        // some kind sync here
-      }
-
-      // sync finished; key_[chl] contains all filtered keys
-      // async recall
-      slot_reader_.returnToFirstPartition();
-      {
-        ;
-      }
-
-      // Time 0: send all unique keys with their count to servers
-      MessagePtr count(new Message(kServerGroup, time_count));
-      count->addKV(uniq_key, {key_cnt});
-      count->task.set_key_channel(grp);
-      auto arg = w_->set(count);
-      arg->set_insert_key_freq(true);
-      arg->set_countmin_k(conf_.solver().countmin_k());
-      arg->set_countmin_n((int)(uniq_key.size()*conf_.solver().countmin_n_ratio()));
-      CHECK_EQ(time, w_->push(count));
-
-      // Time 2: pull filtered keys
-      MessagePtr filter(new Message(kServerGroup, time_filter, time_filter-1));
-      filter->key = uniq_key;
-      filter->task.set_key_channel(grp);
-      filter->task.set_erase_key_cache(true);
-      w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
-      filter->fin_handle =
-        [this, grp, localizer, i, grp_size, time_push_key, &wait_dual]() {
-        // localize the training matrix
-        if (FLAGS_verbose) {
-          LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
-        }
-        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_);
-        delete localizer;
-        slot_reader_.clear(grp);
-        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-        if (!X) return;
-
-        // to colMajor
-        if (FLAGS_verbose) {
-          LI << "finished remapIndex [" << i + 1 << "/" << grp_size << "]";
-          LI << "started toColMajor [" << i + 1 << "/" << grp_size << "]";
-        }
-        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        if (conf_.solver().has_feature_block_ratio() && !X->empty()) {
-          X = X->toColMajor();
-        }
-        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-        if (FLAGS_verbose) {
-          LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
-        }
-
-        // time 4: push the filtered keys to servers
-        MessagePtr push_key(new Message(kServerGroup, time_push_key));
-        push_key->key = w_->key(grp);
-        push_key->task.set_key_channel(grp);
-        push_key->task.set_erase_key_cache(true);
-        push_key->fin_handle =
-          [this, grp, X, time_push_key, i, &wait_dual]() {
-          // set parameter value
-          w_->value(grp).resize(w_->key(grp).size());
-          w_->value(grp).setValue(0);
-
-          // set dual
-          if (X) {
-            if (dual_.empty()) {
-              dual_.resize(X->rows());
-              dual_.setZero();
-            } else {
-              CHECK_EQ(dual_.size(), X->rows());
-            }
-            if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
-              dual_.eigenVector() = *X * w_->value(grp).eigenVector();
-            }
-          }
-
-          // save Matrixinfo
-          matrix_info_[grp] = X->info();
-
-          // dump to Ocean
-          CHECK(ocean_.dump(SArray<char>(w_->key(grp)), grp, Ocean::DataType::PARAMETER_KEY));
-          CHECK(ocean_.dump(SArray<char>(w_->value(grp)), grp, Ocean::DataType::PARAMETER_VALUE));
-          auto sparse_x = std::static_pointer_cast<SparseMatrix<uint32, double>>(X);
-          CHECK(ocean_.dump(sparse_x, grp));
-
-          // release original parameter memory
-          w_->key(grp).clear();
-          w_->value(grp).clear();
-
-          wait_dual[i].set_value();
-
-#ifdef TCMALLOC
-          // tcmalloc force return memory to kernel
-          MallocExtension::instance()->ReleaseFreeMemory();
-#endif
-        };
-        CHECK_EQ(time_push_key, w_->push(push_key));
-      };
-      CHECK_EQ(time+2, w_->pull(filter));
-
-      // sync
-      if (!hit_cache && i >= max_parallel) {
-        w_->waitOutMsg(kServerGroup, sync_time[i-max_parallel]);
-      }
-    }
-
-    // the label
-    if (!hit_cache) {
-      y_ = MatrixPtr<double>(new DenseMatrix<double>(
-        slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
-      // CHECK_EQ(y_->value().size(), info->num_ex());
-    }
-    // wait until all key pushes finished
-    for (int i = 0; i < grp_size; ++i) {
-      wait_dual[i].get_future().wait();
-    }
-    saveCache("train");
   } else {
     for (int i = 0; i < grp_size; ++i, time += kPace) {
       if (hit_cache) continue;
 
       // Task IDs
-      int time_count = time;
-      int time_push_key = time_count + 4;
+      int time_boundary = time + i * kFilterPace + kFilterPace / 2;
+      int time_push_initial_key = time + i * kFilterPace + kFilterPace - 1;
 
       // filter
-      w_->waitInMsg(kWorkerGroup, time_count);
-      w_->finish(kWorkerGroup, time_count+1);
+      w_->waitInMsg(kWorkerGroup, time_boundary);
+      w_->finish(kWorkerGroup, time_boundary + 1);
 
       // init weight
-      w_->waitInMsg(kWorkerGroup, time_push_key);
+      w_->waitInMsg(kWorkerGroup, time_push_initial_key);
       int chl = fea_grp_[i];
       w_->keyFilter(chl).clear();
       w_->value(chl).resize(w_->key(chl).size());

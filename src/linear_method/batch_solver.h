@@ -116,7 +116,7 @@ class BatchSolver : public LinearMethod {
           arg->set_countmin_k(conf_.solver().countmin_k());
           arg->set_countmin_n(static_cast<int>( // wakensky; 1000 was chosen casually
             dp.uniq_colidx.size() * 1000 * conf_.solver().countmin_n_ratio()));
-          CHECK_EQ(time_count_, w_->push(time_count_));
+          CHECK_EQ(time_count_, w_->push(count));
 
           waiting_counts_.push_back(time_count_++);
           return true;
@@ -142,12 +142,12 @@ class BatchSolver : public LinearMethod {
           grp_id_, SlotReader::UNIQ_COLIDX);
         if (dp.is_ok) {
           MessagePtr filter(
-            new Message(KServerGroup, time_filter++, time_boundary_));
+            new Message(KServerGroup, time_filter++, time_boundary_ + 1));
           filter->key = dp.uniq_colidx;
           filter->task.set_key_channel(grp_id_);
           filter->task.set_erase_key_cache(true);
           w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
-          CHECK_EQ(time_filter_, w_->pull(time_filter_));
+          CHECK_EQ(time_filter_, w_->pull(filter));
 
           waiting_filters_.push_back(time_filter_++);
           return true;
@@ -170,7 +170,7 @@ class BatchSolver : public LinearMethod {
         // send boundary message
         MessagePtr boundary(new Message(kServerGroup, time_boundary_));
         boundary->task.set_key_channel(grp_id_);
-        CHECK_EQ(time_boundary_, w_->push(time_boundary_));
+        CHECK_EQ(time_boundary_, w_->push(boundary));
 
         return (count_finished_ = true);
       }
