@@ -1,4 +1,5 @@
 #pragma once
+#include "system/executor.h"
 #include "linear_method/linear_method.h"
 #include "data/slot_reader.h"
 
@@ -69,17 +70,22 @@ class BatchSolver : public LinearMethod {
 
     public:
       PreprocessStatus(
-        const int grp_id,
+        KVVectorPtr w, SlotReader* slot_reader,
+        const Config& conf, const int grp_id,
         const int time_count_start, const int time_boundary,
         const int time_filter_start) :
+        w_(w),
+        slot_reader_(slot_reader),
+        conf_(conf),
+        grp_id_(grp_id),
+        time_count_(time_count_start),
+        time_boundary_(time_boundary),
+        time_filter_(time_filter_start),
         prog_(Progress::PENDING),
         count_finished_(false),
         filter_finished_(false),
-        grp_id_(grp_id),
-        slot_reader_(slot_reader),
-        time_count_(time_count_start),
-        time_filter_(time_filter_start),
-        time_boundary_(time_boundary) {
+        all_count_sent_(false),
+        all_filter_sent_(false) {
         // do nothing
       }
       PreprocessStatus(const PreprocessStatus& other) = delete;
@@ -105,7 +111,7 @@ class BatchSolver : public LinearMethod {
           }
         }
 
-        DataPack dp = slot_reader_.nextPartition(
+        SlotReader::DataPack dp = slot_reader_->nextPartition(
           grp_id_, SlotReader::UNIQ_COLIDX);
         if (dp.is_ok) {
           MessagePtr count(new Message(kServerGroup, time_count_));
@@ -118,7 +124,7 @@ class BatchSolver : public LinearMethod {
             dp.uniq_colidx.size() * 1000 * conf_.solver().countmin_n_ratio()));
           CHECK_EQ(time_count_, w_->push(count));
 
-          waiting_counts_.push_back(time_count_++);
+          pushed_counts_.push_back(time_count_++);
           return true;
         }
         all_count_sent_ = true;
@@ -138,18 +144,18 @@ class BatchSolver : public LinearMethod {
           }
         }
 
-        DataPack dp = slot_reader_.nextPartition(
+        SlotReader::DataPack dp = slot_reader_->nextPartition(
           grp_id_, SlotReader::UNIQ_COLIDX);
         if (dp.is_ok) {
           MessagePtr filter(
-            new Message(KServerGroup, time_filter++, time_boundary_ + 1));
+            new Message(kServerGroup, time_filter_++, time_boundary_ + 1));
           filter->key = dp.uniq_colidx;
           filter->task.set_key_channel(grp_id_);
           filter->task.set_erase_key_cache(true);
           w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
           CHECK_EQ(time_filter_, w_->pull(filter));
 
-          waiting_filters_.push_back(time_filter_++);
+          pulled_filters_.push_back(time_filter_++);
           return true;
         }
         all_filter_sent_ = true;
@@ -191,19 +197,25 @@ class BatchSolver : public LinearMethod {
       void start() { prog_ = Progress::GOING; }
 
     private:
+      KVVectorPtr w_;
+      SlotReader* slot_reader_;
+      Config conf_;
+      int grp_id_;
+      int time_count_;
+      int time_boundary_;
+      int time_filter_;
       Progress prog_;
       bool count_finished_;
       bool filter_finished_;
+      // all count messages been sent to servers
+      bool all_count_sent_;
+      // all filter messages been sent to servers
+      bool all_filter_sent_;
       std::vector<int> pushed_counts_;
       std::vector<int> pulled_filters_;
-      SlotReader* slot_reader_;
-      int grp_id_;
-      int time_count_;
-      int time_filter_;
-      int time_boundary_;
-  };
+  }; // end of PreprocessStatus
 
-  std::vector<PreprocessStatus> preprocess_status_;
+  std::vector<std::shared_ptr<PreprocessStatus>> preprocess_status_;
 };
 
 

@@ -27,9 +27,16 @@ class SharedParameter : public Customer {
   void waitInMsg(const NodeID& node, int time) {
     taskpool(node)->waitIncomingTask(time);
   }
+  bool tryWaitInMsg(const NodeID& node, int time) {
+    return taskpool(node)->tryWaitIncomingTask(time);
+  }
 
   void waitOutMsg(const NodeID& node, int time) {
     taskpool(node)->waitOutgoingTask(time);
+  }
+
+  bool tryWaitOutMsg(const NodeID& node, int time) {
+    return taskpool(node)->tryWaitOutgoingTask(time);
   }
 
   void finish(const NodeID& node, int time) {

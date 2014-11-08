@@ -92,7 +92,7 @@ void FTRL::updateModel(const MessagePtr& msg) {
 
     SArray<Key> uniq_key;
     SArray<uint32> key_cnt;
-    Localizer<Key, Real> localizer;
+    Localizer<Key, Real> localizer(myNodeID());
     localizer.countUniqIndex(X[1], &uniq_key, &key_cnt);
 
     // pull the working set

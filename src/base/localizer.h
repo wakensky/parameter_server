@@ -9,7 +9,7 @@ namespace PS {
 template<typename I, typename V>
 class Localizer {
  public:
-  Localizer(const NodeID& node_id, const int grp_id) :
+  Localizer(const NodeID& node_id, const int grp_id = 0) :
     node_id_(node_id),
     grp_id_(grp_id) {
     // do nothing
@@ -112,8 +112,9 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
 
   // traverse all partitions
   // generate segmented remapped_idx
-  std::vector<string> remapped_idx_path_vec;
+  std::queue<string> remapped_idx_path_queue;
   SlotReader::DataPack dp;
+  size_t matched = 0;
   while (!(dp = reader->nextPartition(grp_id_, SlotReader::COLIDX)).is_ok) {
     // sorted pair
     SArray<Pair> pair;
@@ -126,10 +127,8 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       return a.k < b.k; });
 
     // generate remapped_idx
-    size_t matched = 0;
     size_t order = 0;
-    SArray<uint32> remapped_idx;
-    remapped_idx.resize(pair.size(), 0);
+    SArray<uint32> remapped_idx(pair.size(), 0);
     const I* cur_dict = idx_dict.begin();
     const Pair* cur_pair = pair.begin();
     while (cur_dict != idx_dict.end() && cur_pair != pair.end()) {
@@ -148,20 +147,23 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     string path = reader->fullPath(
       node_id_ + ".segmented_remapped_idx." + std::to_string(order++));
     CHECK(remapped_idx.writeToFile(path));
-    remapped_idx_path_vec.push_back(path);
+    remapped_idx_path_queue.push(path);
   }
 
-  reader->returnToFirstPartition();
+  reader->returnToFirstPartition(grp_id);
   // construct new SparseMatrix
   //   containing localizered feature ids
   SArray<uint32> new_index(matched);
-  SArray<size_t> new_offset(reader->info(grp_id_).row() + 1);
+  SArray<size_t> new_offset(
+    SizeR(reader->info<V>(grp_id_).row()).size() + 1);
   new_offset[0] = 0;
   size_t k = 0;
   while (!(dp = reader->nextPartition(grp_id_, SlotReader::ROWSIZ)).is_ok) {
     // load remapped_idx from disk
-    CHECK(!remapped_idx_path_vec.empty());
-    string remapped_idx_path = remapped_idx_path_vec.pop_front();
+    CHECK(!remapped_idx_path_queue.empty());
+    string remapped_idx_path = remapped_idx_path_queue.front();
+    remapped_idx_path_queue.pop();
+
     SArray<char> stash;
     CHECK(stash.readFromFile(remapped_idx_path));
     SArray<uint32> remapped_idx(stash);

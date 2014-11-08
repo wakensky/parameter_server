@@ -235,8 +235,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
   bool hit_cache = get(msg).hit_cache();
-
-  int max_parallel = std::max(1, conf_.solver().max_num_parallel_groups_in_preprocessing());
   ocean_.init(myNodeID(), conf_, msg->task);
 
   if (IamWorker()) {
@@ -244,40 +242,41 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
     // initialize preprocess status
     for (int i = 0; i < grp_size; ++i) {
-      preprocess_status_.push_back(PreprocessStatus(
-        fea_grp_.at(i),
-        time + i * kFilterPace,
-        time + i * kFilterPace + kFilterPace / 2,
-        time + i * kFilterPace + kFilterPace / 2 + 2,
-        time + i * kFilterPace + kFilterPace - 1));
+      preprocess_status_.push_back(
+        std::shared_ptr<PreprocessStatus>(new PreprocessStatus(
+          w_, &slot_reader_,
+          conf_, fea_grp_.at(i),
+          time + i * kFilterPace,
+          time + i * kFilterPace + kFilterPace / 2,
+          time + i * kFilterPace + kFilterPace / 2 + 2)));
     }
 
     const int max_parallel = std::max(
       1, conf_.solver().max_num_parallel_groups_in_preprocessing());
     auto groupCouldGo =
-      [&preprocess_status_, &max_parallel](const int grp_order) -> bool {
-      PreprocessStatus& preprocess = preprocess_status_.at(grp_order);
-      if (PreprocessStatus::Progress::GOING == preprocess.getProgress()) {
+      [this, &max_parallel](const int grp_order) -> bool {
+      std::shared_ptr<PreprocessStatus> preprocess = preprocess_status_.at(grp_order);
+      if (PreprocessStatus::Progress::GOING == preprocess->getProgress()) {
         return true;
-      } else if (PreprocessStatus::Progress::FINISHED == preprocess.getProgress()) {
+      } else if (PreprocessStatus::Progress::FINISHED == preprocess->getProgress()) {
         return false;
       } else {
         if (grp_order >= max_parallel) {
           // concurrency control
           for (int i = 0; i <= grp_order - max_parallel; ++i) {
             if (PreprocessStatus::Progress::FINISHED !=
-                preprocess_status_.at(i).getProgress()) {
+                preprocess_status_.at(i)->getProgress()) {
               return false;
             }
           }
         }
-        preprocess.start();
+        preprocess->start();
         return true;
       }
     };
-    auto allGroupFinished = [&preprocess_status_]() -> bool {
-      for (const auto& preprocess : preprocess_status_) {
-        if (PreprocessStatus::Progress::FINISHED != preprocess.getProgress()) {
+    auto allGroupFinished = [this]() -> bool {
+      for (auto& preprocess : preprocess_status_) {
+        if (PreprocessStatus::Progress::FINISHED != preprocess->getProgress()) {
           return false;
         }
       }
@@ -288,19 +287,19 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       for (int i = 0; i < grp_size; ++i) {
         int grp = fea_grp_.at(i);
 
-        PreprocessStatus& preprocess = preprocess_status_.at(i);
+        std::shared_ptr<PreprocessStatus> preprocess = preprocess_status_.at(i);
         if (!groupCouldGo(i)) {
           continue;
         }
 
-        while (preprocess.pushNextCount());
-        if (preprocess.allCountFinished() && !preprocess.allFilterFinished()) {
-          while (preprocess.pullNextFilter());
+        while (preprocess->pushNextCount());
+        if (preprocess->allCountFinished() && !preprocess->allFilterFinished()) {
+          while (preprocess->pullNextFilter());
         }
 
-        if (preprocess.allFilterFinished()) {
+        if (preprocess->allFilterFinished()) {
           // remapIndex
-          Localizer<Key, double> *localizer = new Localizer<Key, double>();
+          Localizer<Key, double> *localizer = new Localizer<Key, double>(myNodeID(), grp);
           if (FLAGS_verbose) {
             LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
           }
@@ -335,9 +334,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
             new Message(kServerGroup, time_push_initial_key));
           push_initial_key->key = w_->key(grp);
           push_initial_key->task.set_key_channel(grp);
-          push_initial_key->set_erase_key_cache(true);
+          push_initial_key->task.set_erase_key_cache(true);
           push_initial_key->fin_handle =
-            [this, i, X, &wait_dual]() {
+            [this, i, grp, X, &wait_dual]() {
             // set parameter value
             w_->value(grp).resize(w_->key(grp).size());
             w_->value(grp).setValue(0);
@@ -379,8 +378,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           // set group finished
           // but push_initial_key may not finish yet,
           //   so that wait_dual could help
-          preprocess.finish();
-        } // end of: if (preprocess.allFilterFinished())
+          preprocess->finish();
+        } // end of: if (preprocess->allFilterFinished())
       } // end of group loop
 
       if (allGroupFinished()) {

@@ -5,6 +5,7 @@
 #include "util/threadpool.h"
 #include "util/filelinereader.h"
 #include "util/split.h"
+#include "util/parallel_sort.h"
 namespace PS {
 
 DEFINE_int32(load_data_max_mb_per_thread,
@@ -129,7 +130,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       auto val_compressed = val.compressTo();
       CHECK(val_compressed.appendToFile(file_name));
       appendPartitionInfo(start, val_compressed.dataMemSize(), file_name + ".partition");
-      partition_ranges_[file_name + ".partition"].push_back(
+      reader->keepPartitionRange(
+        file_name + ".partition",
         SizeR(start, val_compressed.dataMemSize()));
 
       file_name = reader->fullPath(name + ".colidx");
@@ -137,7 +139,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       auto col_compressed = col_idx.compressTo();
       CHECK(col_compressed.appendToFile(file_name));
       appendPartitionInfo(start, col_compressed.dataMemSize(), file_name + ".partition");
-      partition_ranges_[file_name + ".partition"].push_back(
+      reader->keepPartitionRange(
+        file_name + ".partition",
         SizeR(start, val_compressed.dataMemSize()));
 
       file_name = reader->fullPath(name + ".rowsiz");
@@ -145,7 +148,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(file_name));
       appendPartitionInfo(start, row_compressed.dataMemSize(), file_name + ".partition");
-      partition_ranges_[file_name + ".partition"].push_back(
+      reader->keepPartitionRange(
+        file_name + ".partition",
         SizeR(start, val_compressed.dataMemSize()));
 
       // sort and unique
@@ -155,11 +159,12 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       file_name = reader->fullPath(name + ".colidx_sorted_uniq");
       start = File::size(file_name);
       auto uniq_compressed =
-        col_idx.segment(0, new_end - col_idx.begin()).compressTo();
+        col_idx.segment(SizeR(0, new_end - col_idx.begin())).compressTo();
       CHECK(uniq_compressed.appendToFile(file_name));
       appendPartitionInfo(
         start, uniq_compressed.dataMemSize(), file_name + ".partition");
-      partition_ranges_[file_name + ".partition"].push_back(
+      reader->keepPartitionRange(
+        file_name + ".partition",
         SizeR(start, val_compressed.dataMemSize()));
 
       return true;
@@ -392,7 +397,7 @@ string SlotReader::fullPath(const string& file_name) {
 
 }
 
-DataPack SlotReader::nextPartition(
+SlotReader::DataPack SlotReader::nextPartition(
   const int slot_id, const LoadMode load_mode) {
   CHECK_LT(slot_id, kSlotIDmax);
   DataPack dp;
@@ -457,11 +462,7 @@ void SlotReader::returnToFirstPartition(const int slot_id) {
   partition_locator_[slot_id].partition_count = 0;
 }
 
-std::vector<SizeR> SlotReader::filePartitions(
-  const int slot_id, const size_t file_idx) {
-  CHECK_LT(slot_id, kSlotIDmax);
-  CHECK_LT(file_idx, data_.file_size());
-
-  std::vector<SizeR> ret_vec;
+void SlotReader::keepPartitionRange(const string& path, const SizeR& range) {
+  partition_ranges_[path].push_back(range);
 }
 } // namespace PS

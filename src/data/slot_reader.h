@@ -94,6 +94,8 @@ class SlotReader {
     index_cache_.erase(slot_id);
   }
 
+  void keepPartitionRange(const string& path, const SizeR& range);
+
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
   void addDirectories(const DataConfig& cache);
@@ -119,8 +121,6 @@ class SlotReader {
   //    std::array<int, 3> <=>
   //    {i-th file, current partition idx, partition numbers of i-th file}
   std::unordered_map<int, PartitionLocator> partition_locator_;
-  // all partition ranges of i-th file under specified slot
-  std::vector<SizeR> filePartitions(const int slot_id, const size_t file_idx);
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) {
