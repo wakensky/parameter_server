@@ -8,6 +8,10 @@
 
 namespace PS {
 
+DEFINE_int32(in_group_parallel, 0,
+  "How many partitions could coexist within one group, for memory control. "
+  "It makes max_num_parallel_groups_in_preprocessing as 1. "
+  "default 0, say, no limit");
 DECLARE_bool(verbose);
 
 namespace LM {
@@ -226,7 +230,7 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
 }
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
-  int time = msg->task.time() * kPace;
+  int time = msg->task.time() * kFilterPace;
   int grp_size = get(msg).fea_grp_size();
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
@@ -236,31 +240,193 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   ocean_.init(myNodeID(), conf_, msg->task);
 
   if (IamWorker()) {
+    std::vector<std::promise<void>> wait_dual(grp_size);
+
+    // initialize preprocess status
+    for (int i = 0; i < grp_size; ++i) {
+      preprocess_status_.push_back(PreprocessStatus(
+        fea_grp_.at(i),
+        time + i * kFilterPace,
+        time + i * kFilterPace + kFilterPace / 2,
+        time + i * kFilterPace + kFilterPace / 2 + 1));
+    }
+
+    const int max_parallel = std::max(
+      1, conf_.solver().max_num_parallel_groups_in_preprocessing());
+    auto groupCouldGo =
+      [&preprocess_status_, &max_parallel](const int grp_order) -> bool {
+      PreprocessStatus& preprocess = preprocess_status_.at(grp_order);
+      if (PreprocessStatus::Progress::GOING == preprocess.getProgress()) {
+        return true;
+      } else if (PreprocessStatus::Progress::FINISHED == preprocess.getProgress()) {
+        return false;
+      } else {
+        if (grp_order >= max_parallel) {
+          // concurrency control
+          for (int i = 0; i <= grp_order - max_parallel; ++i) {
+            if (PreprocessStatus::Progress::FINISHED !=
+                preprocess_status_.at(i).getProgress()) {
+              return false;
+            }
+          }
+        }
+        preprocess.start();
+        return true;
+      }
+    };
+    auto allGroupFinished = [&preprocess_status_]() -> bool {
+      for (const auto& preprocess : preprocess_status_) {
+        if (PreprocessStatus::Progress::FINISHED != preprocess.getProgress()) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    while (true) {
+      for (int i = 0; i < grp_size; ++i) {
+        int grp = fea_grp_.at(i);
+
+        PreprocessStatus& preprocess = preprocess_status_.at(i);
+        if (!groupCouldGo(i)) {
+          continue;
+        }
+
+        while (preprocess.pushNextCount());
+        if (preprocess.allCountFinished() && !preprocess.allFilterFinished()) {
+          while (preprocess.pullNextFilter());
+        }
+
+        if (preprocess.allFilterFinished()) {
+          // remapIndex
+          Localizer<Key, double> *localizer = new Localizer<Key, double>();
+          if (FLAGS_verbose) {
+            LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
+          }
+          this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+          auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_);
+          delete localizer;
+          slot_reader_.clear(grp);
+          this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+          if (FLAGS_verbose) {
+            LI << "finished remapIndex [" << i + 1 << "/" << grp_size << "]";
+          }
+
+          // toColMajor
+          if (FLAGS_verbose) {
+            LI << "started toColMajor [" << i + 1 << "/" << grp_size << "]";
+          }
+          if (X) {
+            this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+            if (conf_.solver().has_feature_block_ratio() && !X->empty()) {
+              X = X->toColMajor();
+            }
+            this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+          }
+          if (FLAGS_verbose) {
+            LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
+          }
+
+          // push initial keys to servers
+          MessagePtr push_initial_key(new Message(kServerGroup));
+          push_initial_key->key = w_->key(grp);
+          push_initial_key->task.set_key_channel(grp);
+          push_initial_key->set_erase_key_cache(true);
+          push_initial_key->fin_handle =
+            [this, i, X, &wait_dual]() {
+            // set parameter value
+            w_->value(grp).resize(w_->key(grp).size());
+            w_->value(grp).setValue(0);
+
+            // set dual
+            if (X) {
+              if (dual_.empty()) {
+                dual_.resize(X->rows());
+                dual_.setZero();
+              } else {
+                CHECK_EQ(dual_.size(), X->rows());
+              }
+              if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
+                dual_.eigenVector() = *X * w_->value(grp).eigenVector();
+              }
+
+              // save MatrixInfo
+              matrix_info_[i] = X->info();
+            }
+
+            // dump to Ocean
+            CHECK(ocean_.dump(SArray<char>(w_->key(grp)), grp, Ocean::DataType::PARAMETER_KEY));
+            CHECK(ocean_.dump(SArray<char>(w_->value(grp)), grp, Ocean::DataType::PARAMETER_VALUE));
+            auto sparse_x = std::static_pointer_cast<SparseMatrix<uint32, double>>(X);
+            CHECK(ocean_.dump(sparse_x, grp));
+
+            // release original parameter memory
+            w_->key(grp).clear();
+            w_->value(grp).clear();
+
+            wait_dual[i].set_value();
+#ifdef TCMALLOC
+            // tcmalloc force return memory to kernel
+            MallocExtension::instance()->ReleaseFreeMemory();
+#endif
+          };
+          w_->push(push_initial_key);
+
+          // set group finished
+          // but push_initial_key may not finish yet,
+          //   so that wait_dual could help
+          preprocess.finish();
+        } // end of: if (preprocess.allFilterFinished())
+      } // end of group loop
+
+      if (allGroupFinished()) {
+        break;
+      } else {
+        std::this_thread::yield();
+      }
+    } // end of the whole while;
+
+    // the label
+    if (!hit_cache) {
+      y_ = MatrixPtr<double>(new DenseMatrix<double>(
+        slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+    }
+    // wait until all push_initial_key finishes
+    for (int i = 0; i < grp_size; ++i) {
+      wait_dual[i].get_future().wait();
+    }
+    saveCache("train");
+  }
+
+  if (IamWorker()) {
     std::vector<int> sync_time(grp_size); // concurrency control
     std::vector<std::promise<void>> wait_dual(grp_size); // wait for dual_
-    for (int i = 0; i < grp_size; ++i, time += kPace) {
+    // Task IDs
+    const int kTimeCountStart = time;
+    const int kTimeCountFinish = kTimeCountStart + kFilterPace / 2;
+    const int kTimeFilterStart = kTimeCountFinish + 1;
+    for (int i = 0; i < grp_size; ++i, time += kFilterPace) {
       if (hit_cache) continue;
       int grp = fea_grp_[i];
-
-      // Task IDs
-      int time_count = time;
-      int time_filter = time_count + 2;
-      int time_push_key = time_filter + 2;
-      sync_time[i] = time_push_key;
-
+      size_t partition_count = 0;
       SlotReader::DataPack dp;
+      int time_count = time_count_start;
+      int time_filter = time_filter_start;
+
       while (!(dp = slot_reader_.nextPartition(grp, SlotReader::UNIQ_COLIDX)).is_ok) {
-        MessagePtr count(new Message(kServerGroup, time_count)); // wakensky time should be changed
+        ++partition_count;
+
+        MessagePtr count(new Message(kServerGroup, time_count++));
         count->key = dp.uniq_colidx;
         count->task.set_key_channel(grp);
         auto arg = w_->set(count);
         arg->set_insert_key_freq(true);
         arg->set_countmin_k(conf_.solver().countmin_k());
-        arg->set_countmin_n(static_cast<int>(
-          dp.uniq_colidx * 1000 * conf_.solver().countmin_n_ratio()));
+        arg->set_countmin_n(static_cast<int>( // wakensky; 1000 was chosen casually
+          dp.uniq_colidx.size() * 1000 * conf_.solver().countmin_n_ratio()));
         CHECK_EQ(time, w_->push(count));
 
-        MessagePtr filter(new Message(KServerGroup, time_filter, time_filter-1)); // wakensky time should be changed
+        MessagePtr filter(new Message(KServerGroup, time_filter++, kTimeCountFinish));
         filter->key = dp.uniq_colidx;
         filter->task.set_key_channel(grp);
         filter->task.set_erase_key_cache(true);
