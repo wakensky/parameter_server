@@ -148,7 +148,7 @@ class BatchSolver : public LinearMethod {
           grp_id_, SlotReader::UNIQ_COLIDX);
         if (dp.is_ok) {
           MessagePtr filter(
-            new Message(kServerGroup, time_filter_++, time_boundary_ + 1));
+            new Message(kServerGroup, time_filter_, time_boundary_ + 1));
           filter->key = dp.uniq_colidx;
           filter->task.set_key_channel(grp_id_);
           filter->task.set_erase_key_cache(true);
@@ -177,6 +177,9 @@ class BatchSolver : public LinearMethod {
         MessagePtr boundary(new Message(kServerGroup, time_boundary_));
         boundary->task.set_key_channel(grp_id_);
         CHECK_EQ(time_boundary_, w_->push(boundary));
+
+        // reset SlotReader partition
+        slot_reader_->returnToFirstPartition(grp_id_);
 
         return (count_finished_ = true);
       }

@@ -354,7 +354,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
               }
 
               // save MatrixInfo
-              matrix_info_[i] = X->info();
+              matrix_info_[grp] = X->info();
             }
 
             // dump to Ocean
@@ -377,7 +377,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
           // set group finished
           // but push_initial_key may not finish yet,
-          //   so that wait_dual could help
+          //   wait_dual could help
           preprocess->finish();
         } // end of: if (preprocess->allFilterFinished())
       } // end of group loop
@@ -400,7 +400,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
     }
     saveCache("train");
   } else {
-    for (int i = 0; i < grp_size; ++i, time += kPace) {
+    for (int i = 0; i < grp_size; ++i) {
       if (hit_cache) continue;
 
       // Task IDs

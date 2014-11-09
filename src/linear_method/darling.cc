@@ -168,7 +168,7 @@ void Darling::updateModel(const MessagePtr& msg) {
   }
 
   CHECK_GT(FLAGS_num_threads, 0);
-  auto time = msg->task.time() * kPace;
+  auto time = std::numeric_limits<int>::max() / 2 + msg->task.time() * kPace;
   auto call = get(msg);
   if (call.has_kkt_filter_threshold()) {
     KKT_filter_threshold_ = call.kkt_filter_threshold();

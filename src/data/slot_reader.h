@@ -94,7 +94,8 @@ class SlotReader {
     index_cache_.erase(slot_id);
   }
 
-  void keepPartitionRange(const string& path, const SizeR& range);
+  // load all file types corresponding to {file_idx, slot_id}
+  void loadPartitionRanges(const int file_idx, const int slot_id);
 
  private:
   string cacheName(const DataConfig& data, int slot_id) const;

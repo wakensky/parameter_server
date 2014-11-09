@@ -115,7 +115,8 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
   std::queue<string> remapped_idx_path_queue;
   SlotReader::DataPack dp;
   size_t matched = 0;
-  while (!(dp = reader->nextPartition(grp_id_, SlotReader::COLIDX)).is_ok) {
+  reader->returnToFirstPartition(grp_id_);
+  while ((dp = reader->nextPartition(grp_id_, SlotReader::COLIDX)).is_ok) {
     // sorted pair
     SArray<Pair> pair;
     pair.resize(dp.colidx.size());
@@ -150,7 +151,6 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     remapped_idx_path_queue.push(path);
   }
 
-  reader->returnToFirstPartition(grp_id);
   // construct new SparseMatrix
   //   containing localizered feature ids
   SArray<uint32> new_index(matched);
@@ -158,7 +158,10 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     SizeR(reader->info<V>(grp_id_).row()).size() + 1);
   new_offset[0] = 0;
   size_t k = 0;
-  while (!(dp = reader->nextPartition(grp_id_, SlotReader::ROWSIZ)).is_ok) {
+  size_t col_start = 0;
+  size_t row_count = 0;
+  reader->returnToFirstPartition(grp_id);
+  while ((dp = reader->nextPartition(grp_id_, SlotReader::ROWSIZ)).is_ok) {
     // load remapped_idx from disk
     CHECK(!remapped_idx_path_queue.empty());
     string remapped_idx_path = remapped_idx_path_queue.front();
@@ -172,15 +175,16 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     if (dp.rowsiz.empty()) { break; }
 
     // fill new_index
-    size_t start = dp.rowsiz[0];
-    for (size_t i = 0; i < dp.rowsiz.size() - 1; ++i) {
+    for (size_t i = 0; i < dp.rowsiz.size(); ++i) {
       size_t n = 0;
-      for (size_t j = dp.rowsiz[i]; j < dp.rowsiz[i + 1]; ++j) {
-        if (0 == remapped_idx[j - start]) { continue; }
+      for (size_t j = 0; j < dp.rowsiz[i]; ++j) {
+        if (0 == remapped_idx[j + col_start]) { continue; }
         ++n;
-        new_index[k++] = remapped_idx[j - start] - 1;
+        new_index[k++] = remapped_idx[j + col_start] - 1;
       }
-      new_offset[i + 1] = new_offset[i] + n;
+      new_offset[row_count + 1] = new_offset[row_count] + n;
+      col_start += dp.rowsiz[i];
+      row_count++;
     }
   }
   CHECK_EQ(k, matched);

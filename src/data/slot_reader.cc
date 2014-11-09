@@ -130,27 +130,18 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       auto val_compressed = val.compressTo();
       CHECK(val_compressed.appendToFile(file_name));
       appendPartitionInfo(start, val_compressed.dataMemSize(), file_name + ".partition");
-      reader->keepPartitionRange(
-        file_name + ".partition",
-        SizeR(start, val_compressed.dataMemSize()));
 
       file_name = reader->fullPath(name + ".colidx");
       start = File::size(file_name);
       auto col_compressed = col_idx.compressTo();
       CHECK(col_compressed.appendToFile(file_name));
       appendPartitionInfo(start, col_compressed.dataMemSize(), file_name + ".partition");
-      reader->keepPartitionRange(
-        file_name + ".partition",
-        SizeR(start, val_compressed.dataMemSize()));
 
       file_name = reader->fullPath(name + ".rowsiz");
       start = File::size(file_name);
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(file_name));
       appendPartitionInfo(start, row_compressed.dataMemSize(), file_name + ".partition");
-      reader->keepPartitionRange(
-        file_name + ".partition",
-        SizeR(start, val_compressed.dataMemSize()));
 
       // sort and unique
       parallelSort(&col_idx, FLAGS_num_threads, [](const uint64& a, const uint64& b) {
@@ -163,9 +154,6 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       CHECK(uniq_compressed.appendToFile(file_name));
       appendPartitionInfo(
         start, uniq_compressed.dataMemSize(), file_name + ".partition");
-      reader->keepPartitionRange(
-        file_name + ".partition",
-        SizeR(start, val_compressed.dataMemSize()));
 
       return true;
     }
@@ -408,9 +396,13 @@ SlotReader::DataPack SlotReader::nextPartition(
   if (locator.partition_idx >= locator.partition_count) {
     locator.file_idx++;
     if (locator.file_idx < data_.file_size()) {
+      // load next data file's partitions
+      loadPartitionRanges(locator.file_idx, slot_id);
+      // initialize locator
       locator.partition_idx = 0;
-      locator.partition_count = partition_ranges_[cacheName(
-        ithFile(data_, locator.file_idx), slot_id) + ".colidx.partition"].size();
+      string file_name = fullPath(
+        cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx.partition");
+      locator.partition_count = partition_ranges_[file_name].size();
     } else {
       // all partitions exhausted
       return dp;
@@ -429,7 +421,7 @@ SlotReader::DataPack SlotReader::nextPartition(
   }
   if (load_mode & LoadMode::UNIQ_COLIDX) {
     string file = fullPath(
-      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".uniq_colidx");
+      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_uniq");
     SArray<char> compressed;
     auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
     compressed.readFromFile(my_range, file);
@@ -462,7 +454,31 @@ void SlotReader::returnToFirstPartition(const int slot_id) {
   partition_locator_[slot_id].partition_count = 0;
 }
 
-void SlotReader::keepPartitionRange(const string& path, const SizeR& range) {
-  partition_ranges_[path].push_back(range);
+void SlotReader::loadPartitionRanges(
+  const int file_idx, const int slot_id) {
+  auto getRangeVector = [](const string& full_path) -> std::vector<SizeR> {
+    std::vector<SizeR> ret_vec;
+    File* partition_file = File::openOrDie(full_path, "r");
+    const size_t kLineMaxLen = 1024;
+    char line_buffer[kLineMaxLen];
+    while (nullptr != partition_file->readLine(line_buffer, kLineMaxLen)) {
+      auto tmp_vec = split(line_buffer, '\t');
+      CHECK_EQ(2, tmp_vec.size());
+      ret_vec.push_back(SizeR(
+        std::stoull(tmp_vec[0], nullptr),
+        std::stoull(tmp_vec[1], nullptr)));
+    };
+    return ret_vec;
+  };
+
+  const string prefix = cacheName(ithFile(data_, file_idx), slot_id);
+  partition_ranges_[fullPath(prefix + ".colidx.partition")] =
+    getRangeVector(fullPath(prefix + ".colidx.partition"));
+  partition_ranges_[fullPath(prefix + ".colidx_sorted_uniq.partition")] =
+    getRangeVector(fullPath(prefix + ".colidx_sorted_uniq.partition"));
+  partition_ranges_[fullPath(prefix + ".rowsiz.partition")] =
+    getRangeVector(fullPath(prefix + ".rowsiz.partition"));
+  partition_ranges_[fullPath(prefix + ".value.partition")] =
+    getRangeVector(fullPath(prefix + ".value.partition"));
 }
 } // namespace PS
