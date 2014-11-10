@@ -45,12 +45,14 @@ class SlotReader {
     std::pair<string, SizeR> uniq_colidx_info;
     std::pair<string, SizeR> cnt_colidx_info;
     std::pair<string, SizeR> rowsiz_info;
-    std::pair<string, SIzeR> val_info;
+    std::pair<string, SizeR> val_info;
 
     bool is_ok;
+    int sn;
 
     DataPack() :
-      is_ok(false) {
+      is_ok(false),
+      sn(-1) {
       // do nothing
     }
   };
@@ -69,18 +71,21 @@ class SlotReader {
     int file_idx;
     size_t partition_idx;
     size_t partition_count;
+    int sn;
 
     PartitionLocator() :
       file_idx(-1),
       partition_idx(0),
-      partition_count(0) {
+      partition_count(0),
+      sn(-1) {
       // do nothing
     }
 
     PartitionLocator(const PartitionLocator& other) :
       file_idx(other.file_idx),
       partition_idx(other.partition_idx),
-      partition_count(other.partition_count) {
+      partition_count(other.partition_count),
+      sn(other.sn) {
       // do nothing
     }
 
@@ -88,6 +93,7 @@ class SlotReader {
       file_idx = rhs.file_idx;
       partition_idx = rhs.partition_idx;
       partition_count = rhs.partition_count;
+      sn = rhs.sn;
       return *this;
     }
   };

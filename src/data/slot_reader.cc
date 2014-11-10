@@ -12,6 +12,9 @@ DEFINE_int32(load_data_max_mb_per_thread,
   2 * 1024,
   "maximum memory usage (MB) allowed for each worker thread "
   "while downloading data (LOAD_DATA)");
+DEFINE_int32(num_downloading_threads,
+  8,
+  "number of threads cooperating while downloading training data");
 DECLARE_bool(verbose);
 
 void SlotReader::init(const DataConfig& data, const DataConfig& cache) {
@@ -51,7 +54,7 @@ int SlotReader::read(ExampleInfo* info) {
       }
     }
 
-    ThreadPool pool(FLAGS_num_threads);
+    ThreadPool pool(FLAGS_num_downloading_threads);
     for (int i = 0; i < data_.file_size(); ++i) {
       auto one_file = ithFile(data_, i);
       pool.add([this, one_file](){ readOneFile(one_file); });
@@ -436,6 +439,7 @@ SlotReader::DataPack SlotReader::nextPartition(
 
   auto& locator = partition_locator_[slot_id];
   locator.partition_idx++;
+  locator.sn++;
 
   if (locator.partition_idx >= locator.partition_count) {
     while (++locator.file_idx < data_.file_size()) {
@@ -457,79 +461,83 @@ SlotReader::DataPack SlotReader::nextPartition(
   }
 
   dp.is_ok = true;
+  dp.sn = locator.sn;
   // load current partition
   if (load_mode & LoadMode::COLIDX) {
-    colidx_info.first = fullPath(
+    dp.colidx_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx");
-    colidx_info.second =
-      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    dp.colidx_info.second =
+      partition_ranges_[dp.colidx_info.first + ".partition"].at(
+        locator.partition_idx);
     if (will_load_data) {
       SArray<char> compressed;
       compressed.readFromFile(
         SizeR(
-          colidx_info.second.begin(),
-          colidx_info.second.begin() + colidx_info.second.end()),
-        file);
+          dp.colidx_info.second.begin(),
+          dp.colidx_info.second.begin() + dp.colidx_info.second.end()),
+        dp.colidx_info.first);
       dp.colidx.uncompressFrom(compressed);
     }
   }
   if (load_mode & LoadMode::UNIQ_COLIDX) {
-    uniq_colidx_info.first = fullPath(
+    dp.uniq_colidx_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_uniq");
-    uniq_colidx_info.second =
-      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    dp.uniq_colidx_info.second =
+      partition_ranges_[dp.uniq_colidx_info.first + ".partition"].at(
+        locator.partition_idx);
     if (will_load_data) {
       SArray<char> compressed;
       compressed.readFromFile(
         SizeR(
-          uniq_colidx_info.second.begin(),
-          uniq_colidx_info.second.begin() + uniq_colidx_info.second.end()),
-        file);
+          dp.uniq_colidx_info.second.begin(),
+          dp.uniq_colidx_info.second.begin() + dp.uniq_colidx_info.second.end()),
+        dp.uniq_colidx_info.first);
       dp.uniq_colidx.uncompressFrom(compressed);
     }
   }
   if (load_mode & LoadMode::CNT_COLIDX) {
-    cnt_colidx_info.first = fullPath(
+    dp.cnt_colidx_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_cnt");
-    cnt_colidx_info.second =
-      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    dp.cnt_colidx_info.second =
+      partition_ranges_[dp.cnt_colidx_info.first + ".partition"].at(
+        locator.partition_idx);
     if (will_load_data) {
       SArray<char> compressed;
       compressed.readFromFile(
         SizeR(
-          cnt_colidx_info.second.begin(),
-          cnt_colidx_info.second.begin() + cnt_colidx_info.second.end()),
-        file);
+          dp.cnt_colidx_info.second.begin(),
+          dp.cnt_colidx_info.second.begin() + dp.cnt_colidx_info.second.end()),
+        dp.cnt_colidx_info.first);
       dp.cnt_colidx.uncompressFrom(compressed);
     }
   }
   if (load_mode & LoadMode::ROWSIZ) {
-    rowsiz_info.first = fullPath(
+    dp.rowsiz_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".rowsiz");
-    rowsiz_info.second =
-      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    dp.rowsiz_info.second =
+      partition_ranges_[dp.rowsiz_info.first + ".partition"].at(locator.partition_idx);
     if (will_load_data) {
       SArray<char> compressed;
       compressed.readFromFile(
         SizeR(
-          rowsiz_info.second.begin(),
-          rowsiz_info.second.begin() + rowsiz_info.second.end()),
-        file);
+          dp.rowsiz_info.second.begin(),
+          dp.rowsiz_info.second.begin() + dp.rowsiz_info.second.end()),
+        dp.rowsiz_info.first);
       dp.rowsiz.uncompressFrom(compressed);
     }
   }
   if (load_mode & LoadMode::VALUE) {
-    val_info.first = fullPath(
+    dp.val_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".val");
-    val_info.second =
-      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    dp.val_info.second =
+      partition_ranges_[dp.val_info.first + ".partition"].at(locator.partition_idx);
     if (will_load_data) {
       SArray<char> compressed;
       compressed.readFromFile(
         SizeR(
-          val_info.second.begin(),
-          val_info.second.begin() + val_info.second.end()),
-        file);
+          dp.val_info.second.begin(),
+          dp.val_info.second.begin() + dp.val_info.second.end()),
+        dp.val_info.first);
       dp.val.uncompressFrom(compressed);
     }
   }
@@ -542,6 +550,7 @@ void SlotReader::returnToFirstPartition(const int slot_id) {
   partition_locator_[slot_id].file_idx = -1;
   partition_locator_[slot_id].partition_idx = 0;
   partition_locator_[slot_id].partition_count = 0;
+  partition_locator_[slot_id].sn = -1;
 }
 
 void SlotReader::loadPartitionRanges(

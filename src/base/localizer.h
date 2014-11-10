@@ -2,9 +2,12 @@
 #include "base/shared_array_inl.h"
 #include "base/sparse_matrix.h"
 #include "util/parallel_sort.h"
+#include "util/split.h"
 #include "data/slot_reader.h"
 
 namespace PS {
+
+DECLARE_int32(in_group_parallel);
 
 template<typename I, typename V>
 class Localizer {
@@ -110,74 +113,112 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
   CHECK_NE(info.type(), MatrixInfo::DENSE)
       << "dense matrix already have compact indeces\n" << info.DebugString();
 
+  struct remapped_path_less {
+    bool operator() (const string& a, const string& b) {
+      auto a_vec = split(a, '.');
+      auto b_vec = split(b, '.');
+      CHECK_EQ(a_vec.size(), b_vec.size());
+      CHECK_EQ(a_vec.size(), 3);
+      return std::stod(a_vec.back()) > std::stod(b_vec.back());
+    }
+  };
+  std::priority_queue<
+    string,
+    std::vector<string>,
+    remapped_path_less> remapped_idx_path_queue;
+  size_t global_matched = 0;
+  std::mutex remapped_idx_lock;
+
   // traverse all partitions
   // generate segmented remapped_idx
-  std::queue<string> remapped_idx_path_queue;
-  SlotReader::DataPack dp;
-  size_t matched = 0;
-  size_t order = 0;
-  reader->returnToFirstPartition(grp_id_);
-  while ((dp = reader->nextPartition(grp_id_, SlotReader::COLIDX)).is_ok) {
-    // sorted pair
-    SArray<Pair> pair;
-    pair.resize(dp.colidx.size());
-    for (size_t i = 0; i < dp.colidx.size(); ++i) {
-      pair[i].k = dp.colidx[i];
-      pair[i].i = i;
-    }
-
-    // wakensky
-    LI << "[remapIndex] 1-st loop: before parallelSort";
-
-    parallelSort(&pair, FLAGS_num_threads, [](const Pair& a, const Pair& b) {
-      return a.k < b.k; });
-
-    // wakensky
-    LI << "[remapIndex] 1-st loop: after parallelSort";
-
-    // generate remapped_idx
-    SArray<uint32> remapped_idx(pair.size(), 0);
-    const I* cur_dict = idx_dict.begin();
-    const Pair* cur_pair = pair.begin();
-    while (cur_dict != idx_dict.end() && cur_pair != pair.end()) {
-      if (*cur_dict < cur_pair->k) {
-        ++cur_dict;
-      } else {
-        if (*cur_dict == cur_pair->k) {
-          remapped_idx[cur_pair->i] = (uint32)(cur_dict - idx_dict.begin()) + 1;
-          ++matched;
+  auto generate_remapped_idx = [&]() {
+    while (true) {
+      // fetch next partition
+      SlotReader::DataPack dp;
+      {
+        Lock l(remapped_idx_lock);
+        if (!(dp = reader->nextPartition(grp_id_, SlotReader::COLIDX, false)).is_ok) {
+          break;
         }
-        ++cur_pair;
       }
+      size_t local_matched = 0;
+
+      // load dp.colidx
+      SArray<char> compressed;
+      compressed.readFromFile(
+        SizeR(
+          dp.colidx_info.second.begin(),
+          dp.colidx_info.second.begin() + dp.colidx_info.second.end()),
+        dp.colidx_info.first);
+      dp.colidx.uncompressFrom(compressed);
+
+      // sorted pair
+      SArray<Pair> pair;
+      pair.resize(dp.colidx.size());
+      for (size_t i = 0; i < dp.colidx.size(); ++i) {
+        pair[i].k = dp.colidx[i];
+        pair[i].i = i;
+      }
+      parallelSort(&pair, FLAGS_num_threads, [](const Pair& a, const Pair& b) {
+        return a.k < b.k; });
+
+      // generate remapped_idx
+      SArray<uint32> remapped_idx(pair.size(), 0);
+      const I* cur_dict = idx_dict.begin();
+      const Pair* cur_pair = pair.begin();
+      while (cur_dict != idx_dict.end() && cur_pair != pair.end()) {
+        if (*cur_dict < cur_pair->k) {
+          ++cur_dict;
+        } else {
+          if (*cur_dict == cur_pair->k) {
+            remapped_idx[cur_pair->i] = (uint32)(cur_dict - idx_dict.begin()) + 1;
+            ++local_matched;
+          }
+          ++cur_pair;
+        }
+      };
+
+      // dump remapped_idx
+      string path = reader->fullPath(
+        node_id_ + ".segmented_remapped_idx." + std::to_string(dp.sn));
+      CHECK(remapped_idx.writeToFile(path));
+      {
+        Lock l(remapped_idx_lock);
+
+        remapped_idx_path_queue.push(path);
+        // increase matched
+        global_matched += local_matched;
+      }
+
+    };
+  };
+
+  reader->returnToFirstPartition(grp_id_);
+  {
+    size_t thread_num = FLAGS_in_group_parallel > 0 ?
+      FLAGS_in_group_parallel :
+      FLAGS_num_threads;
+    ThreadPool remapped_idx_pool(thread_num);
+    for (size_t i = 0; i < thread_num; ++i) {
+      remapped_idx_pool.add(generate_remapped_idx);
     }
-
-    // wakensky
-    LI << "[remapIndex] 1-st loop: generated remapped_idx; its size: " <<
-      remapped_idx.size() << " matched: " << matched;
-
-    // dump remapped_idx
-    string path = reader->fullPath(
-      node_id_ + ".segmented_remapped_idx." + std::to_string(order++));
-    CHECK(remapped_idx.writeToFile(path));
-    remapped_idx_path_queue.push(path);
-
-    // wakensky
-    LI << "[remapIndex] 1-st loop: dumped remapped_idx: " << path;
+    remapped_idx_pool.startWorkers();
   }
 
   // construct new SparseMatrix
   //   containing localized feature ids
-  SArray<uint32> new_index(matched);
+  SArray<uint32> new_index(global_matched);
   SArray<size_t> new_offset(
     SizeR(reader->info<V>(grp_id_).row()).size() + 1);
   new_offset[0] = 0;
   size_t k = 0;
   size_t row_count = 0;
+  SlotReader::DataPack dp;
   reader->returnToFirstPartition(grp_id);
   while ((dp = reader->nextPartition(grp_id_, SlotReader::ROWSIZ)).is_ok) {
     // load remapped_idx from disk
     CHECK(!remapped_idx_path_queue.empty());
-    string remapped_idx_path = remapped_idx_path_queue.front();
+    string remapped_idx_path = remapped_idx_path_queue.top();
     remapped_idx_path_queue.pop();
 
     // wakensky
@@ -210,7 +251,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     // wakensky
     LI << "[remapIndex] 2-nd loop: filled new_index";
   }
-  CHECK_EQ(k, matched);
+  CHECK_EQ(k, global_matched);
 
   // establish new info
   auto new_info = info;
