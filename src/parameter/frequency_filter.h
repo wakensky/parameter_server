@@ -9,7 +9,7 @@ template<typename K>
 class FreqencyFilter {
  public:
   // add unique keys with their key count
-  void insertKeys(const SArray<K>& key, const SArray<uint32>& count);
+  void insertKeys(const SArray<K>& key, const SArray<uint8>& count);
   // filter keys using the threadhold *freqency*
   SArray<K> queryKeys(const SArray<K>& key, int freqency);
 
@@ -35,7 +35,7 @@ SArray<K> FreqencyFilter<K>::queryKeys(const SArray<K>& key, int freqency) {
 }
 
 template<typename K>
-void FreqencyFilter<K>::insertKeys(const SArray<K>& key, const SArray<uint32>& count) {
+void FreqencyFilter<K>::insertKeys(const SArray<K>& key, const SArray<uint8>& count) {
   if (count.empty()) {
     for (size_t i = 0; i < key.size(); ++i) {
       count_.insert(key[i], 1);

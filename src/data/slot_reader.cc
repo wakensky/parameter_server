@@ -93,15 +93,19 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     SArray<float> val;
     SArray<uint64> col_idx;
     SArray<uint16> row_siz;
+    size_t uniq_feature_count;
     // how many elements in row_siz has been created since construction
     //  used for zero-padding
     size_t row_siz_total_size;
+
     bool writeToFile(const string& name) {
       return val.compressTo().writeToFile(name+".value")
           && col_idx.compressTo().writeToFile(name+".colidx")
           && row_siz.compressTo().writeToFile(name+".rowsiz");
     }
-    VSlot() : row_siz_total_size(0) {
+    VSlot() :
+      uniq_feature_count(0),
+      row_siz_total_size(0) {
       // do nothing
     }
     void clear() {
@@ -112,7 +116,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     size_t memSize() {
       return val.memSize() + col_idx.memSize() + row_siz.memSize();
     }
-    bool appendToFile(SlotReader* reader, const string& name) {
+    bool appendToFile(SlotReader* reader, const int slot_id, const string& name) {
       CHECK(nullptr != reader);
       // lambda: append "start\tsize\n" to the file that contains partition info
       //   We named a compressed block "partition" here
@@ -143,17 +147,49 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       CHECK(row_compressed.appendToFile(file_name));
       appendPartitionInfo(start, row_compressed.dataMemSize(), file_name + ".partition");
 
-      // sort and unique
+      // sort, unique and count
       parallelSort(&col_idx, FLAGS_num_threads, [](const uint64& a, const uint64& b) {
         return a < b; });
-      auto new_end = std::unique(col_idx.begin(), col_idx.end());
+      SArray<uint64> uniq_col_idx;
+      uniq_col_idx.reserve(col_idx.size() / 4 + 1);
+      SArray<uint8> cnt_col_idx;
+      cnt_col_idx.reserve(col_idx.size() / 4 + 1);
+      if (!col_idx.empty()) {
+        auto current_key = col_idx.front();
+        size_t current_cnt = 0;
+        for (size_t i = 0; i < col_idx.size(); ++i) {
+          if (current_key != col_idx[i]) {
+            uniq_col_idx.pushBack(current_key);
+            if (current_cnt > kuint8max) {
+              current_cnt = kuint8max;
+            }
+            cnt_col_idx.pushBack(current_cnt);
+            current_key = col_idx[i];
+            current_cnt = 0;
+          }
+          ++current_cnt;
+        }
+        uniq_col_idx.pushBack(current_key);
+        if (current_cnt > kuint8max) {
+            current_cnt = kuint8max;
+        }
+        cnt_col_idx.pushBack(current_cnt);
+      }
+      uniq_feature_count += uniq_col_idx.size();
+
       file_name = reader->fullPath(name + ".colidx_sorted_uniq");
       start = File::size(file_name);
-      auto uniq_compressed =
-        col_idx.segment(SizeR(0, new_end - col_idx.begin())).compressTo();
+      auto uniq_compressed = uniq_col_idx.compressTo();
       CHECK(uniq_compressed.appendToFile(file_name));
       appendPartitionInfo(
         start, uniq_compressed.dataMemSize(), file_name + ".partition");
+
+      file_name = reader->fullPath(name + ".colidx_sorted_cnt");
+      start = File::size(file_name);
+      auto cnt_compressed = cnt_col_idx.compressTo();
+      CHECK(cnt_compressed.appendToFile(file_name));
+      appendPartitionInfo(
+        start, cnt_compressed.dataMemSize(), file_name + ".partition");
 
       return true;
     }
@@ -209,7 +245,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         continue;
       }
 
-      CHECK(slot.appendToFile(this, cacheName(data, i)));
+      CHECK(slot.appendToFile(this, i, cacheName(data, i)));
       slot.clear();
     }
 
@@ -224,9 +260,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
   reader.set_periodicity_callback(periodicity_check_handle);
   reader.Reload();
 
-  // save in cache
-  info = parser.info();
-  writeProtoToASCIIFileOrDie(info, info_name);
+  // the last partition
   for (int i = 0; i < kSlotIDmax; ++i) {
     auto& vslot = vslots[i];
     if (vslot.row_siz.empty() && vslot.val.empty()) continue;
@@ -235,8 +269,18 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       vslot.row_siz.pushBack(0);
       ++vslot.row_siz_total_size;
     }
-    CHECK(vslot.appendToFile(this, cacheName(data, i)));
+    CHECK(vslot.appendToFile(this, i, cacheName(data, i)));
   }
+
+  // the number of unique feature id in each slot
+  for (int i = 0; i < kSlotIDmax; ++i) {
+    parser.slot(i).set_uniq_fea_count(vslots[i].uniq_feature_count);
+  }
+
+  // save in cache
+  info = parser.info();
+  writeProtoToASCIIFileOrDie(info, info_name);
+
   {
     Lock l(mu_);
     info_ = mergeExampleInfo(info_, info);
@@ -386,7 +430,7 @@ string SlotReader::fullPath(const string& file_name) {
 }
 
 SlotReader::DataPack SlotReader::nextPartition(
-  const int slot_id, const LoadMode load_mode) {
+  const int slot_id, const int load_mode, const bool will_load_data) {
   CHECK_LT(slot_id, kSlotIDmax);
   DataPack dp;
 
@@ -394,16 +438,19 @@ SlotReader::DataPack SlotReader::nextPartition(
   locator.partition_idx++;
 
   if (locator.partition_idx >= locator.partition_count) {
-    locator.file_idx++;
-    if (locator.file_idx < data_.file_size()) {
-      // load next data file's partitions
+    while (++locator.file_idx < data_.file_size()) {
+      // find next data file which contains at least one partition on slot_id
       loadPartitionRanges(locator.file_idx, slot_id);
-      // initialize locator
       locator.partition_idx = 0;
       string file_name = fullPath(
         cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx.partition");
       locator.partition_count = partition_ranges_[file_name].size();
-    } else {
+      if (locator.partition_count > 0) {
+        break;
+      }
+    }
+
+    if (locator.file_idx >= data_.file_size()) {
       // all partitions exhausted
       return dp;
     }
@@ -412,40 +459,79 @@ SlotReader::DataPack SlotReader::nextPartition(
   dp.is_ok = true;
   // load current partition
   if (load_mode & LoadMode::COLIDX) {
-    string file = fullPath(
+    colidx_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx");
-    SArray<char> compressed;
-    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(
-      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
-    dp.colidx.uncompressFrom(compressed);
+    colidx_info.second =
+      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    if (will_load_data) {
+      SArray<char> compressed;
+      compressed.readFromFile(
+        SizeR(
+          colidx_info.second.begin(),
+          colidx_info.second.begin() + colidx_info.second.end()),
+        file);
+      dp.colidx.uncompressFrom(compressed);
+    }
   }
   if (load_mode & LoadMode::UNIQ_COLIDX) {
-    string file = fullPath(
+    uniq_colidx_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_uniq");
-    SArray<char> compressed;
-    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(
-      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
-    dp.uniq_colidx.uncompressFrom(compressed);
+    uniq_colidx_info.second =
+      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    if (will_load_data) {
+      SArray<char> compressed;
+      compressed.readFromFile(
+        SizeR(
+          uniq_colidx_info.second.begin(),
+          uniq_colidx_info.second.begin() + uniq_colidx_info.second.end()),
+        file);
+      dp.uniq_colidx.uncompressFrom(compressed);
+    }
+  }
+  if (load_mode & LoadMode::CNT_COLIDX) {
+    cnt_colidx_info.first = fullPath(
+      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_cnt");
+    cnt_colidx_info.second =
+      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    if (will_load_data) {
+      SArray<char> compressed;
+      compressed.readFromFile(
+        SizeR(
+          cnt_colidx_info.second.begin(),
+          cnt_colidx_info.second.begin() + cnt_colidx_info.second.end()),
+        file);
+      dp.cnt_colidx.uncompressFrom(compressed);
+    }
   }
   if (load_mode & LoadMode::ROWSIZ) {
-    string file = fullPath(
+    rowsiz_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".rowsiz");
-    SArray<char> compressed;
-    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(
-      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
-    dp.rowsiz.uncompressFrom(compressed);
+    rowsiz_info.second =
+      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    if (will_load_data) {
+      SArray<char> compressed;
+      compressed.readFromFile(
+        SizeR(
+          rowsiz_info.second.begin(),
+          rowsiz_info.second.begin() + rowsiz_info.second.end()),
+        file);
+      dp.rowsiz.uncompressFrom(compressed);
+    }
   }
   if (load_mode & LoadMode::VALUE) {
-    string file = fullPath(
+    val_info.first = fullPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".val");
-    SArray<char> compressed;
-    auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(
-      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
-    dp.val.uncompressFrom(compressed);
+    val_info.second =
+      partition_ranges_[file + ".partition"].at(locator.partition_idx);
+    if (will_load_data) {
+      SArray<char> compressed;
+      compressed.readFromFile(
+        SizeR(
+          val_info.second.begin(),
+          val_info.second.begin() + val_info.second.end()),
+        file);
+      dp.val.uncompressFrom(compressed);
+    }
   }
 
   return dp;
@@ -476,13 +562,29 @@ void SlotReader::loadPartitionRanges(
   };
 
   const string prefix = cacheName(ithFile(data_, file_idx), slot_id);
-  partition_ranges_[fullPath(prefix + ".colidx.partition")] =
-    getRangeVector(fullPath(prefix + ".colidx.partition"));
-  partition_ranges_[fullPath(prefix + ".colidx_sorted_uniq.partition")] =
-    getRangeVector(fullPath(prefix + ".colidx_sorted_uniq.partition"));
-  partition_ranges_[fullPath(prefix + ".rowsiz.partition")] =
-    getRangeVector(fullPath(prefix + ".rowsiz.partition"));
-  partition_ranges_[fullPath(prefix + ".value.partition")] =
-    getRangeVector(fullPath(prefix + ".value.partition"));
+  string full_path = fullPath(prefix + ".colidx.partition");
+  partition_ranges_[full_path] = getRangeVector(full_path);
+  full_path = fullPath(prefix + ".colidx_sorted_uniq.partition");
+  partition_ranges_[full_path] = getRangeVector(full_path);
+  full_path = fullPath(prefix + ".colidx_sorted_cnt.partition");
+  partition_ranges_[full_path] = getRangeVector(full_path);
+  full_path = fullPath(prefix + ".rowsiz.partition");
+  partition_ranges_[full_path] = getRangeVector(full_path);
+  full_path = fullPath(prefix + ".value.partition");
+  partition_ranges_[full_path] = getRangeVector(full_path);
+}
+
+size_t SlotReader::uniqueFeatureCount(const int slot_id) {
+  size_t i = 0;
+  for (i = 0; i < info_.slot_size(); ++i) {
+    if (info_.slot(i).id() == slot_id) {
+      break;
+    }
+  }
+  if (info_.slot_size() == i) {
+    return 0;
+  } else {
+    return info_.slot(i).uniq_fea_count();
+  }
 }
 } // namespace PS

@@ -180,6 +180,13 @@ class SlotInfo : public ::google::protobuf::Message {
   inline ::google::protobuf::uint64 nnz_ex() const;
   inline void set_nnz_ex(::google::protobuf::uint64 value);
 
+  // optional uint32 uniq_fea_count = 7;
+  inline bool has_uniq_fea_count() const;
+  inline void clear_uniq_fea_count();
+  static const int kUniqFeaCountFieldNumber = 7;
+  inline ::google::protobuf::uint32 uniq_fea_count() const;
+  inline void set_uniq_fea_count(::google::protobuf::uint32 value);
+
   // @@protoc_insertion_point(class_scope:SlotInfo)
  private:
   inline void set_has_format();
@@ -194,6 +201,8 @@ class SlotInfo : public ::google::protobuf::Message {
   inline void clear_has_nnz_ele();
   inline void set_has_nnz_ex();
   inline void clear_has_nnz_ex();
+  inline void set_has_uniq_fea_count();
+  inline void clear_has_uniq_fea_count();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -203,9 +212,10 @@ class SlotInfo : public ::google::protobuf::Message {
   ::google::protobuf::uint64 max_key_;
   ::google::protobuf::uint64 nnz_ele_;
   ::google::protobuf::uint64 nnz_ex_;
+  ::google::protobuf::uint32 uniq_fea_count_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(6 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(7 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2fexample_2eproto();
   friend void protobuf_AssignDesc_proto_2fexample_2eproto();
@@ -642,6 +652,28 @@ inline ::google::protobuf::uint64 SlotInfo::nnz_ex() const {
 inline void SlotInfo::set_nnz_ex(::google::protobuf::uint64 value) {
   set_has_nnz_ex();
   nnz_ex_ = value;
+}
+
+// optional uint32 uniq_fea_count = 7;
+inline bool SlotInfo::has_uniq_fea_count() const {
+  return (_has_bits_[0] & 0x00000040u) != 0;
+}
+inline void SlotInfo::set_has_uniq_fea_count() {
+  _has_bits_[0] |= 0x00000040u;
+}
+inline void SlotInfo::clear_has_uniq_fea_count() {
+  _has_bits_[0] &= ~0x00000040u;
+}
+inline void SlotInfo::clear_uniq_fea_count() {
+  uniq_fea_count_ = 0u;
+  clear_has_uniq_fea_count();
+}
+inline ::google::protobuf::uint32 SlotInfo::uniq_fea_count() const {
+  return uniq_fea_count_;
+}
+inline void SlotInfo::set_uniq_fea_count(::google::protobuf::uint32 value) {
+  set_has_uniq_fea_count();
+  uniq_fea_count_ = value;
 }
 
 // -------------------------------------------------------------------

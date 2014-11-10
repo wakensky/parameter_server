@@ -133,9 +133,9 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
             std::max((int)(w*call.countmin_n()/log(w+1)), 64), call.countmin_k());
       }
       if (msg->value.empty()) {
-        filter.insertKeys(SArray<K>(msg->key), SArray<uint32>());
+        filter.insertKeys(SArray<K>(msg->key), SArray<uint8>());
       } else {
-        filter.insertKeys(SArray<K>(msg->key), SArray<uint32>(msg->value[0]));
+        filter.insertKeys(SArray<K>(msg->key), SArray<uint8>(msg->value[0]));
       }
     }
     if (call.has_query_key_freq()) {

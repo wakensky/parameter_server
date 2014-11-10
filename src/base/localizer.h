@@ -125,8 +125,15 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       pair[i].k = dp.colidx[i];
       pair[i].i = i;
     }
+
+    // wakensky
+    LI << "[remapIndex] 1-st loop: before parallelSort";
+
     parallelSort(&pair, FLAGS_num_threads, [](const Pair& a, const Pair& b) {
       return a.k < b.k; });
+
+    // wakensky
+    LI << "[remapIndex] 1-st loop: after parallelSort";
 
     // generate remapped_idx
     SArray<uint32> remapped_idx(pair.size(), 0);
@@ -144,11 +151,18 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       }
     }
 
+    // wakensky
+    LI << "[remapIndex] 1-st loop: generated remapped_idx; its size: " <<
+      remapped_idx.size() << " matched: " << matched;
+
     // dump remapped_idx
     string path = reader->fullPath(
       node_id_ + ".segmented_remapped_idx." + std::to_string(order++));
     CHECK(remapped_idx.writeToFile(path));
     remapped_idx_path_queue.push(path);
+
+    // wakensky
+    LI << "[remapIndex] 1-st loop: dumped remapped_idx: " << path;
   }
 
   // construct new SparseMatrix
@@ -166,9 +180,15 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     string remapped_idx_path = remapped_idx_path_queue.front();
     remapped_idx_path_queue.pop();
 
+    // wakensky
+    LI << "[remapIndex] 2-nd loop: before load remapped_idx: " << remapped_idx_path;
+
     SArray<char> stash;
     CHECK(stash.readFromFile(remapped_idx_path));
     SArray<uint32> remapped_idx(stash);
+
+    // wakensky
+    LI << "[remapIndex] 2-nd loop: loaded remapped_idx";
 
     // skip empty partition
     if (dp.rowsiz.empty()) { continue; }
@@ -186,6 +206,9 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       col_start += dp.rowsiz[i];
       row_count++;
     }
+
+    // wakensky
+    LI << "[remapIndex] 2-nd loop: filled new_index";
   }
   CHECK_EQ(k, matched);
 

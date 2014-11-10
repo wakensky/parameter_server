@@ -12,6 +12,8 @@ message SlotInfo {
   optional uint64 nnz_ele = 5;
   // total number of non-zero instance, (non-empty rows)
   optional uint64 nnz_ex = 6;
+  // unique feature id count within the slot
+  optional uint32 uniq_fea_count = 7;
 }
 
 message ExampleInfo {

@@ -22,6 +22,8 @@ class SlotReader {
     return readMatrixInfo(info_, slot_id, sizeof(uint64), sizeof(V));
   }
 
+  size_t uniqueFeatureCount(const int slot_id);
+
   // load a slot from cache
   SArray<size_t> offset(int slot_id);
   SArray<uint64> index(int slot_id);
@@ -35,8 +37,16 @@ class SlotReader {
   struct DataPack {
     SArray<uint64> colidx;
     SArray<uint64> uniq_colidx;
+    SArray<uint8> cnt_colidx;
     SArray<uint16> rowsiz;
     SArray<float> val;
+
+    std::pair<string, SizeR> colidx_info;
+    std::pair<string, SizeR> uniq_colidx_info;
+    std::pair<string, SizeR> cnt_colidx_info;
+    std::pair<string, SizeR> rowsiz_info;
+    std::pair<string, SIzeR> val_info;
+
     bool is_ok;
 
     DataPack() :
@@ -48,8 +58,9 @@ class SlotReader {
   enum LoadMode {
     COLIDX = 1L << 0,
     UNIQ_COLIDX = 1L << 1,
-    ROWSIZ = 1L << 2,
-    VALUE = 1L << 3,
+    CNT_COLIDX = 1L << 2,
+    ROWSIZ = 1L << 3,
+    VALUE = 1L << 4,
     END = 1L << 16
   };
 
@@ -83,7 +94,8 @@ class SlotReader {
 
   // load partitions one by one
   //   return invalid DataPack on failure
-  DataPack nextPartition(const int slot_id, const LoadMode load_mode);
+  DataPack nextPartition(
+    const int slot_id, const int load_mode, const bool will_load_data = true);
 
   // return to the first partition
   //   nextPartition will bring us to the first partition again

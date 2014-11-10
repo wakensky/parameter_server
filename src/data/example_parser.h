@@ -17,6 +17,11 @@ class ExampleParser {
   ExampleInfo info();
 
   int maxSlotID() { return ignore_fea_slot_ ? 2 : kSlotIDmax; }
+
+  SlotInfo& slot(const int slot_id) {
+    CHECK_LT(slot_id, kSlotIDmax);
+    return slot_info_[slot_id];
+  };
  private:
   bool parseLibsvm(char*,  Example*);
   bool parseAdfea(char*,  Example*);

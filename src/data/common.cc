@@ -59,6 +59,7 @@ ExampleInfo mergeExampleInfo(const ExampleInfo& A, const ExampleInfo& B) {
     a.set_max_key(std::max(a.max_key(), b.max_key()));
     a.set_nnz_ele(a.nnz_ele() + b.nnz_ele());
     a.set_nnz_ex(a.nnz_ex() + b.nnz_ex());
+    a.set_uniq_fea_count(a.uniq_fea_count() + b.uniq_fea_count());
     slots[id] = a;
   }
 

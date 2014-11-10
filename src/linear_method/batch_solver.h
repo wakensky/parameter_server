@@ -86,7 +86,7 @@ class BatchSolver : public LinearMethod {
         filter_finished_(false),
         all_count_sent_(false),
         all_filter_sent_(false) {
-        // do nothing
+        uniq_fea_count_ = slot_reader->uniqueFeatureCount(grp_id) + 1;
       }
       PreprocessStatus(const PreprocessStatus& other) = delete;
       PreprocessStatus& operator= (const PreprocessStatus& rhs) = delete;
@@ -112,16 +112,16 @@ class BatchSolver : public LinearMethod {
         }
 
         SlotReader::DataPack dp = slot_reader_->nextPartition(
-          grp_id_, SlotReader::UNIQ_COLIDX);
+          grp_id_, SlotReader::UNIQ_COLIDX | SlotReader::CNT_COLIDX);
         if (dp.is_ok) {
           MessagePtr count(new Message(kServerGroup, time_count_));
-          count->key = dp.uniq_colidx;
+          count->addKV(dp.uniq_colidx, {dp.cnt_colidx});
           count->task.set_key_channel(grp_id_);
           auto arg = w_->set(count);
           arg->set_insert_key_freq(true);
           arg->set_countmin_k(conf_.solver().countmin_k());
-          arg->set_countmin_n(static_cast<int>( // wakensky; 1000 was chosen casually
-            dp.uniq_colidx.size() * 1000 * conf_.solver().countmin_n_ratio()));
+          arg->set_countmin_n(static_cast<int>(
+            uniq_fea_count_ * conf_.solver().countmin_n_ratio()));
           CHECK_EQ(time_count_, w_->push(count));
 
           pushed_counts_.push_back(time_count_++);
@@ -216,6 +216,7 @@ class BatchSolver : public LinearMethod {
       bool all_filter_sent_;
       std::vector<int> pushed_counts_;
       std::vector<int> pulled_filters_;
+      size_t uniq_fea_count_;
   }; // end of PreprocessStatus
 
   std::vector<std::shared_ptr<PreprocessStatus>> preprocess_status_;
