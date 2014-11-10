@@ -146,7 +146,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       // sort and unique
       parallelSort(&col_idx, FLAGS_num_threads, [](const uint64& a, const uint64& b) {
         return a < b; });
-      uint64* new_end = std::unique(col_idx.begin(), col_idx.end());
+      auto new_end = std::unique(col_idx.begin(), col_idx.end());
       file_name = reader->fullPath(name + ".colidx_sorted_uniq");
       start = File::size(file_name);
       auto uniq_compressed =
@@ -416,7 +416,8 @@ SlotReader::DataPack SlotReader::nextPartition(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx");
     SArray<char> compressed;
     auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(my_range, file);
+    compressed.readFromFile(
+      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
     dp.colidx.uncompressFrom(compressed);
   }
   if (load_mode & LoadMode::UNIQ_COLIDX) {
@@ -424,7 +425,8 @@ SlotReader::DataPack SlotReader::nextPartition(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_uniq");
     SArray<char> compressed;
     auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(my_range, file);
+    compressed.readFromFile(
+      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
     dp.uniq_colidx.uncompressFrom(compressed);
   }
   if (load_mode & LoadMode::ROWSIZ) {
@@ -432,7 +434,8 @@ SlotReader::DataPack SlotReader::nextPartition(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".rowsiz");
     SArray<char> compressed;
     auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(my_range, file);
+    compressed.readFromFile(
+      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
     dp.rowsiz.uncompressFrom(compressed);
   }
   if (load_mode & LoadMode::VALUE) {
@@ -440,7 +443,8 @@ SlotReader::DataPack SlotReader::nextPartition(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".val");
     SArray<char> compressed;
     auto my_range = partition_ranges_[file + ".partition"].at(locator.partition_idx);
-    compressed.readFromFile(my_range, file);
+    compressed.readFromFile(
+      SizeR(my_range.begin(), my_range.begin() + my_range.end()), file);
     dp.val.uncompressFrom(compressed);
   }
 

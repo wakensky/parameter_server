@@ -268,7 +268,7 @@ std::vector<std::string> readFilenamesInDirectory(const std::string& directory) 
   CHECK(dir != NULL) << "failed to open directory " << directory;
   struct dirent *ent;
   while ((ent = readdir (dir)) != NULL)
-    files.push_back(string(ent->d_name));
+    files.push_back(directory + "/" + string(ent->d_name));
   closedir (dir);
   return files;
 }

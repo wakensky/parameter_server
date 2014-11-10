@@ -115,6 +115,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
   std::queue<string> remapped_idx_path_queue;
   SlotReader::DataPack dp;
   size_t matched = 0;
+  size_t order = 0;
   reader->returnToFirstPartition(grp_id_);
   while ((dp = reader->nextPartition(grp_id_, SlotReader::COLIDX)).is_ok) {
     // sorted pair
@@ -128,7 +129,6 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       return a.k < b.k; });
 
     // generate remapped_idx
-    size_t order = 0;
     SArray<uint32> remapped_idx(pair.size(), 0);
     const I* cur_dict = idx_dict.begin();
     const Pair* cur_pair = pair.begin();
@@ -144,7 +144,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       }
     }
 
-    // dump remmaped_idx
+    // dump remapped_idx
     string path = reader->fullPath(
       node_id_ + ".segmented_remapped_idx." + std::to_string(order++));
     CHECK(remapped_idx.writeToFile(path));
@@ -152,13 +152,12 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
   }
 
   // construct new SparseMatrix
-  //   containing localizered feature ids
+  //   containing localized feature ids
   SArray<uint32> new_index(matched);
   SArray<size_t> new_offset(
     SizeR(reader->info<V>(grp_id_).row()).size() + 1);
   new_offset[0] = 0;
   size_t k = 0;
-  size_t col_start = 0;
   size_t row_count = 0;
   reader->returnToFirstPartition(grp_id);
   while ((dp = reader->nextPartition(grp_id_, SlotReader::ROWSIZ)).is_ok) {
@@ -172,9 +171,10 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     SArray<uint32> remapped_idx(stash);
 
     // skip empty partition
-    if (dp.rowsiz.empty()) { break; }
+    if (dp.rowsiz.empty()) { continue; }
 
     // fill new_index
+    size_t col_start = 0;
     for (size_t i = 0; i < dp.rowsiz.size(); ++i) {
       size_t n = 0;
       for (size_t j = 0; j < dp.rowsiz[i]; ++j) {
