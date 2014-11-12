@@ -1,4 +1,5 @@
 #include <iomanip>
+#include <omp.h>
 #include "system/postoffice.h"
 // #include <omp.h>
 #include "system/customer.h"
@@ -32,6 +33,9 @@ Postoffice::~Postoffice() {
 
 // TODO run a console if it is a Node::MANAGER
 void Postoffice::run() {
+  omp_set_dynamic(false);
+  omp_set_num_threads(FLAGS_num_threads);
+
   // omp_set_dynamic(0);
   // omp_set_num_threads(FLAGS_num_threads);
   yellow_pages_.init();
@@ -96,6 +100,8 @@ void Postoffice::reply(
 }
 
 void Postoffice::queue(const MessageCPtr& msg) {
+  sending_queue_.push(msg);
+#if 0
   if (msg->valid) {
     sending_queue_.push(msg);
   } else {
@@ -110,6 +116,7 @@ void Postoffice::queue(const MessageCPtr& msg) {
     reply->recver = msg->sender;
     yellow_pages_.customer(tk.customer())->exec().accept(reply);
   }
+#endif
 }
 
 //  TODO fault tolerance, check if node info has been changed

@@ -19,7 +19,8 @@ DEFINE_bool(less_memory, false,
 Ocean::Ocean() :
   go_on_prefetching_(true),
   log_prefix_("[Ocean] "),
-  rng_(time(0)) {
+  rng_(time(0)),
+  cpu_profiler_started_(false) {
   // launch prefetch threads
   for (int i = 0; i < FLAGS_num_threads; ++i) {
     thread_vec_.push_back(std::move(

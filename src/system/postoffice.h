@@ -107,6 +107,7 @@ class Postoffice {
   };
   // mutex protecting dashboard_
   std::mutex dashboard_mu_;
+
 };
 
 } // namespace PS

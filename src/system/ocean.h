@@ -152,6 +152,9 @@ class Ocean {
     std::vector<std::pair<JobID, SArray<char>>> getAllLoadedArray(
       const Ocean::DataType type);
 
+    bool getCPUProfilerStarted() { return cpu_profiler_started_; }
+    void setCPUProfilerStarted(const bool in) { cpu_profiler_started_ = in; }
+
   private: // internal types
     enum class JobStatus: unsigned char {
       PENDING = 0,
@@ -368,5 +371,7 @@ class Ocean {
     std::mutex general_mu_;
     std::mutex prefetch_limit_mu_;
     std::condition_variable prefetch_limit_cond_;
+    // whether Google CPU profiler started
+    bool cpu_profiler_started_;
 }; // class Ocean
 }; // namespace PS

@@ -1,3 +1,4 @@
+#include <gperftools/profiler.h>
 #include "linear_method/linear_method.h"
 #include "base/range.h"
 #include "util/eigen3.h"
@@ -14,6 +15,12 @@ namespace PS {
 DEFINE_int32(load_limit, 0,
   "the maximum training/validation file number "
   "that scheduler could assign for each worker. ");
+DEFINE_int32(cpu_profiler_type, 0,
+  "profiling scope of Google CPU profiler; "
+  "0 in default: disabled; "
+  "1: only update model; "
+  "2: only preprocess; "
+  "3: the whole program but load data");
 
 namespace LM {
 
@@ -62,6 +69,9 @@ void LinearMethod::init() {
 void LinearMethod::process(const MessagePtr& msg) {
   switch (get(msg).cmd()) {
     case Call::EVALUATE_PROGRESS: {
+      if (ocean().getCPUProfilerStarted()) {
+        ProfilerFlush();
+      }
       auto prog = evaluateProgress();
       // LL << myNodeID() << prog.DebugString();
       sys_.replyProtocalMessage(msg, prog);
@@ -79,12 +89,26 @@ void LinearMethod::process(const MessagePtr& msg) {
       break;
     }
     case Call::PREPROCESS_DATA:
+      if (FLAGS_cpu_profiler_type > 1 && !ocean().getCPUProfilerStarted()) {
+        ProfilerStart((std::string("/tmp/ps_cdn.cprof.") + myNodeID()).c_str());
+        ocean().setCPUProfilerStarted(true);
+      }
       preprocessData(msg);
       break;
     case Call::UPDATE_MODEL:
+      if (1 == FLAGS_cpu_profiler_type && !ocean().getCPUProfilerStarted()) {
+        ProfilerStart((std::string("/tmp/ps_cdn.cprof.") + myNodeID()).c_str());
+        ocean().setCPUProfilerStarted(true);
+      }
       updateModel(msg);
+      if (ocean().getCPUProfilerStarted()) {
+        ProfilerFlush();
+      }
       break;
     case Call::SAVE_MODEL:
+      if (ocean().getCPUProfilerStarted()) {
+        ProfilerStop();
+      }
       saveModel(msg);
       break;
     case Call::RECOVER:

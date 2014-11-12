@@ -289,15 +289,12 @@ SArrayList<double> Darling::computeGradients(
   SArray<size_t> feature_offset = ocean_.getFeatureOffset(grp, g_key_range);
   SArray<double> feature_value = ocean_.getFeatureValue(grp, g_key_range);
   SArray<double> delta = ocean_.getDelta(grp, g_key_range);
-  CHECK(!feature_index.empty());
-  CHECK(!feature_offset.empty());
-  CHECK_EQ(
-    feature_offset.back() - feature_offset.front(),
-    feature_index.size());
-  if (!binary(grp)) {
-    CHECK(!feature_value.empty());
+  if (!feature_index.empty()) {
+    CHECK_EQ(
+      feature_offset.back() - feature_offset.front(),
+      feature_index.size());
+    CHECK(!delta.empty());
   }
-  CHECK(!delta.empty());
 
   // allocate grads
   SizeR col_range(0, feature_offset.size() - 1);
@@ -305,6 +302,9 @@ SArrayList<double> Darling::computeGradients(
   for (int i : {0, 1} ) {
     grads[i].resize(col_range.size());
     grads[i].setZero();
+  }
+  if (feature_index.empty()) {
+    return grads;
   }
 
   // TODO partition by rows for small col_range size
@@ -345,6 +345,7 @@ void Darling::computeGradients(
   uint32* index = feature_index.data() + (offset[0] - feature_offset[0]);
   double* value = feature_value.data() + (offset[0] - feature_offset[0]);
   double* delta_ptr = delta.data() + col_range.begin();
+  bool is_binary = binary(grp);
 
   // j: column id, i: row id
   for (size_t j = 0; j < col_range.size(); ++j) {
@@ -352,17 +353,17 @@ void Darling::computeGradients(
     size_t n = offset[j+1] - offset[j];
     if (!active_set.test(k)) {
       index += n;
-      if (!binary(grp)) value += n;
+      if (!is_binary) value += n;
       G[j] = U[j] = kInactiveValue_;
       continue;
     }
     double g = 0, u = 0;
-    double d = binary(grp) ? exp(delta_ptr[j]) : delta_ptr[j];
+    double d = is_binary ? exp(delta_ptr[j]) : delta_ptr[j];
     // TODO unroll loop
     for (size_t o = 0; o < n; ++o) {
       auto i = *(index ++);
       double tau = 1 / ( 1 + dual_[i] );
-      if (binary(grp)) {
+      if (is_binary) {
         g -= y[i] * tau;
         u += std::min(tau*(1-tau)*d, .25);
         // u += tau * (1-tau);
@@ -403,8 +404,6 @@ void Darling::updateDual(
     size_t j = base_range.begin() + i;
     double& cw = cur_w[i];
     double& nw = new_w[i];
-    // wakensky
-    CHECK(i < cur_w.size());
 
     if (inactive(nw)) {
       // marked as inactive
@@ -415,8 +414,6 @@ void Darling::updateDual(
     }
     delta_w[i] = nw - cw;
     delta[i] = newDelta(delta_w[i]);
-    // wakensky
-    CHECK(i < delta.size());
 
     cw = nw;
   }
@@ -454,17 +451,13 @@ void Darling::updateDual(
 
   uint32* index = feature_index.data() + (offset[0] - feature_offset[0]);
   double* value = feature_value.data() + (offset[0] - feature_offset[0]);
+  bool is_binary = binary(grp);
 
   // j: column id, i: row id
   for (size_t j = 0; j < col_range.size(); ++j) {
     size_t k  = j + base_range_begin + col_range.begin();
     size_t n = offset[j+1] - offset[j];
-    // wakensky
-    CHECK_LE(j + 1, feature_offset.size());
-
     double wd = w_delta[j];
-    // wakensky
-    CHECK_LE(j, w_delta.size());
 
     if (wd == 0 || !active_set.test(k)) {
       index += n;
@@ -474,7 +467,7 @@ void Darling::updateDual(
     for (size_t o = offset[j]; o < offset[j+1]; ++o) {
       auto i = *(index++);
       if (!row_range.contains(i)) continue;
-      dual_[i] *= binary(grp) ?
+      dual_[i] *= is_binary ?
         exp(y[i] * wd) :
         exp(y[i] * wd * value[o - base_range_begin]);
     }

@@ -40,7 +40,10 @@ class Range {
   T end() const { return end_; }
   T& end() { return end_; }
 
-  size_t size() const { return (size_t)(end_ - begin_); }
+  size_t size() const {
+    if (empty()) { return 0; }
+    return (size_t)(end_ - begin_);
+  }
 
   bool valid() const { return end_ >= begin_; }
   bool empty() const { return begin_ >= end_; }

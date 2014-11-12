@@ -1,5 +1,6 @@
 #include <limits>
 #include <gperftools/malloc_extension.h>
+#include <gperftools/profiler.h>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
 #include "base/matrix_io_inl.h"
@@ -337,6 +338,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           push_initial_key->task.set_erase_key_cache(true);
           push_initial_key->fin_handle =
             [this, i, grp, X, &wait_dual]() {
+            if (ocean_.getCPUProfilerStarted()) {
+              ProfilerFlush();
+            }
+
             // set parameter value
             w_->value(grp).resize(w_->key(grp).size());
             w_->value(grp).setValue(0);
@@ -385,7 +390,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       if (allGroupFinished()) {
         break;
       } else {
-        std::this_thread::yield();
+        // wakensky
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        // std::this_thread::yield();
       }
     } // end of the whole while;
 
@@ -401,6 +408,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
     saveCache("train");
   } else {
     for (int i = 0; i < grp_size; ++i) {
+      if (ocean_.getCPUProfilerStarted()) {
+        ProfilerFlush();
+      }
+
       if (hit_cache) continue;
 
       // Task IDs

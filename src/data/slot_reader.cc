@@ -1,5 +1,6 @@
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <gperftools/malloc_extension.h>
 #include "data/slot_reader.h"
 #include "data/example_parser.h"
 #include "util/threadpool.h"
@@ -251,6 +252,11 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       CHECK(slot.appendToFile(this, i, cacheName(data, i)));
       slot.clear();
     }
+
+#ifdef TCMALLOC
+    // tcmalloc force return memory to kernel
+    MallocExtension::instance()->ReleaseFreeMemory();
+#endif
 
     // log
     if (FLAGS_verbose) {
