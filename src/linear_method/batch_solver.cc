@@ -206,28 +206,21 @@ bool BatchSolver::dataCache(const string& name, bool load) {
 }
 
 int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
-  if (!IamWorker()) return 0;
+  const int starting_count_time = msg->task.time() + 1;
+  const int finishing_count_time = starting_count_time + 10000000;
 
-  if (FLAGS_verbose) {
-    LI << "loading cache ...";
-  }
-
-  bool hit_cache = loadCache("train");
-
-  if (FLAGS_verbose) {
-    if (hit_cache) {
-      LI << "loaded cache successfully";
-    } else {
-      LI << "loaded cache failed";
-    }
-  }
-
-  if (!hit_cache) {
+  if (IamWorker()) {
     CHECK(conf_.has_local_cache());
-    slot_reader_.init(conf_.training_data(), conf_.local_cache());
+    slot_reader_.init(
+      conf_.training_data(), conf_.local_cache(),
+      w_, starting_count_time, finishing_count_time,
+      pathPicker());
     slot_reader_.read(info);
+  } else {
+    w_->waitInMsg(kWorkerGroup, finishing_count_time);
   }
-  return hit_cache;
+
+  return false; // hit_cache disabled
 }
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
@@ -236,7 +229,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
   bool hit_cache = get(msg).hit_cache();
-  ocean_.init(myNodeID(), conf_, msg->task);
+  ocean_.init(myNodeID(), conf_, msg->task, pathPicker());
 
   if (IamWorker()) {
     std::vector<std::promise<void>> wait_dual(grp_size);
@@ -247,9 +240,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         std::shared_ptr<PreprocessStatus>(new PreprocessStatus(
           w_, &slot_reader_,
           conf_, fea_grp_.at(i),
-          time + i * kFilterPace,
-          time + i * kFilterPace + kFilterPace / 2,
-          time + i * kFilterPace + kFilterPace / 2 + 2)));
+          time + i * kFilterPace)));
     }
 
     const int max_parallel = std::max(
@@ -293,11 +284,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           continue;
         }
 
-        while (preprocess->pushNextCount());
-        if (preprocess->allCountFinished() && !preprocess->allFilterFinished()) {
-          while (preprocess->pullNextFilter());
-        }
-
+        preprocess->pullNextFilter();
         if (preprocess->allFilterFinished()) {
           // remapIndex
           Localizer<Key, double> *localizer = new Localizer<Key, double>(myNodeID(), grp);
@@ -415,14 +402,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       if (hit_cache) continue;
 
       // Task IDs
-      int time_boundary = time + i * kFilterPace + kFilterPace / 2;
       int time_push_initial_key = time + i * kFilterPace + kFilterPace - 1;
 
-      // filter
-      w_->waitInMsg(kWorkerGroup, time_boundary);
-      w_->finish(kWorkerGroup, time_boundary + 1);
-
-      // init weight
+      // init keys
       w_->waitInMsg(kWorkerGroup, time_push_initial_key);
       int chl = fea_grp_[i];
       w_->keyFilter(chl).clear();

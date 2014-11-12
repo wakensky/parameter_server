@@ -13,7 +13,13 @@ class SlotReader {
     init(data, cache);
   }
 
-  void init(const DataConfig& data, const DataConfig& cache);
+  void init(
+    const DataConfig& data,
+    const DataConfig& cache,
+    KVVectorPtr w,
+    const int time_count_start,
+    const int time_count_finish,
+    PathPicker& path_picker);
 
   // first read, then save
   int read(ExampleInfo* info = nullptr);
@@ -28,11 +34,6 @@ class SlotReader {
   SArray<size_t> offset(int slot_id);
   SArray<uint64> index(int slot_id);
   template<typename V> SArray<V> value(int slot_id);
-
-  // return the full path according to file_name
-  //    if file exists among directories_, return the corresponding full path
-  //    if not found, randomly pick a new directory
-  string fullPath(const string& file_name);
 
   struct DataPack {
     SArray<uint64> colidx;
@@ -117,7 +118,6 @@ class SlotReader {
 
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
-  void addDirectories(const DataConfig& cache);
   std::default_random_engine rng_;
   size_t nnzEle(int slot_id) const;
   bool readOneFile(const DataConfig& data);
@@ -131,8 +131,6 @@ class SlotReader {
   size_t loaded_file_count_;
   std::unordered_map<int, SArray<size_t>> offset_cache_;
   std::unordered_map<int, SArray<uint64>> index_cache_;
-  // available directories
-  std::vector<string> directories_;
   // partition ranges for each file
   // file_name -> range
   std::unordered_map<string, std::vector<SizeR>> partition_ranges_;
@@ -140,6 +138,10 @@ class SlotReader {
   //    std::array<int, 3> <=>
   //    {i-th file, current partition idx, partition numbers of i-th file}
   std::unordered_map<int, PartitionLocator> partition_locator_;
+  KVVectorPtr w_;
+  int finishing_time_count_;
+  std::atomic_int time_count_;
+  PathPicker* path_picker_;
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) {

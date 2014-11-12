@@ -18,13 +18,22 @@ DEFINE_int32(num_downloading_threads,
   "number of threads cooperating while downloading training data");
 DECLARE_bool(verbose);
 
-void SlotReader::init(const DataConfig& data, const DataConfig& cache) {
+void SlotReader::init(
+  const DataConfig& data,
+  const DataConfig& cache,
+  KVVectorPtr w,
+  const int time_count_start,
+  const int time_count_finish,
+  PathPicker& path_picker) {
   CHECK(data.format() == DataConfig::TEXT);
   if (cache.file_size()) dump_to_disk_ = true;
   data_ = data;
-  addDirectories(cache);
-  CHECK(!directories_.empty());
   rng_.seed(time(0));
+  w_ = w;
+  CHECK(w_);
+  time_count_ = time_count_start;
+  finishing_time_count_ = time_count_finish;
+  path_picker_ = &path_picker;
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
@@ -66,6 +75,11 @@ int SlotReader::read(ExampleInfo* info) {
   for (int i = 0; i < info_.slot_size(); ++i) {
     slot_info_[info_.slot(i).id()] = info_.slot(i);
   }
+
+  // send the closing message to servers
+  MessagePtr boundary(new Message(kServerGroup, time_count_finish_));
+  CHECK_EQ(time_count_finish_, w_->push(boundary));
+
   return 0;
 }
 
@@ -76,7 +90,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       loaded_file_count_ << "/" << data_.file_size() << "]";
   }
 
-  string info_name = fullPath(
+  string info_name = path_picker_->getPath(
     std::to_string(DJBHash32(data.file(0))) +
     "-" + getFilename(data.file(0)) + ".info");
   ExampleInfo info;
@@ -120,8 +134,10 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     size_t memSize() {
       return val.memSize() + col_idx.memSize() + row_siz.memSize();
     }
-    bool appendToFile(SlotReader* reader, const int slot_id, const string& name) {
-      CHECK(nullptr != reader);
+    bool appendToFile(
+      PathPicker* path_picker, const int slot_id, const string& name,
+      KVVectorPtr w, const int count_push_time) {
+      CHECK(nullptr != path_picker);
       // lambda: append "start\tsize\n" to the file that contains partition info
       //   We named a compressed block "partition" here
       auto appendPartitionInfo = [] (
@@ -133,19 +149,19 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         file->close();
       };
 
-      string file_name = reader->fullPath(name + ".value");
+      string file_name = path_picker->getPath(name + ".value");
       size_t start = File::size(file_name);
       auto val_compressed = val.compressTo();
       CHECK(val_compressed.appendToFile(file_name));
       appendPartitionInfo(start, val_compressed.dataMemSize(), file_name + ".partition");
 
-      file_name = reader->fullPath(name + ".colidx");
+      file_name = path_picker->getPath(name + ".colidx");
       start = File::size(file_name);
       auto col_compressed = col_idx.compressTo();
       CHECK(col_compressed.appendToFile(file_name));
       appendPartitionInfo(start, col_compressed.dataMemSize(), file_name + ".partition");
 
-      file_name = reader->fullPath(name + ".rowsiz");
+      file_name = path_picker->getPath(name + ".rowsiz");
       start = File::size(file_name);
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(file_name));
@@ -181,19 +197,24 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       }
       uniq_feature_count += uniq_col_idx.size();
 
-      file_name = reader->fullPath(name + ".colidx_sorted_uniq");
+      // push unique keys with their counts to servers
+      MessagePtr count(new Message(kServerGroup, count_push_time));
+      count->addKV(uniq_col_idx, {cnt_col_idx});
+      count->task.set_key_channel(slot_id);
+      auto arg = w->set(count);
+      arg->set_insert_key_freq(true);
+      arg->set_countmin_k(conf_.solver().countmin_k());
+      arg->set_countmin_n(
+        static_cast<int>(wakensky * conf_.solver().countmin_n_ratio()));
+      CHECK_EQ(count_push_time, w->push(count));
+
+      // dump unique keys to disk
+      file_name = path_picker->getPath(name + ".colidx_sorted_uniq");
       start = File::size(file_name);
       auto uniq_compressed = uniq_col_idx.compressTo();
       CHECK(uniq_compressed.appendToFile(file_name));
       appendPartitionInfo(
         start, uniq_compressed.dataMemSize(), file_name + ".partition");
-
-      file_name = reader->fullPath(name + ".colidx_sorted_cnt");
-      start = File::size(file_name);
-      auto cnt_compressed = cnt_col_idx.compressTo();
-      CHECK(cnt_compressed.appendToFile(file_name));
-      appendPartitionInfo(
-        start, cnt_compressed.dataMemSize(), file_name + ".partition");
 
       return true;
     }
@@ -249,7 +270,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         continue;
       }
 
-      CHECK(slot.appendToFile(this, i, cacheName(data, i)));
+      CHECK(slot.appendToFile(
+        this->path_picker_, i, cacheName(data, i), w_, time_count_++));
       slot.clear();
     }
 
@@ -278,7 +300,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       vslot.row_siz.pushBack(0);
       ++vslot.row_siz_total_size;
     }
-    CHECK(vslot.appendToFile(this, i, cacheName(data, i)));
+    CHECK(vslot.appendToFile(this->path_picker_, i, cacheName(data, i)));
   }
 
   // the number of unique feature id in each slot
@@ -309,7 +331,7 @@ SArray<uint64> SlotReader::index(int slot_id) {
   SArray<uint64> idx = index_cache_[slot_id];
   if (idx.size() == nnz) return idx;
   for (int i = 0; i < data_.file_size(); ++i) {
-    string file = fullPath(cacheName(ithFile(data_, i), slot_id) + ".colidx");
+    string file = path_picker_->getPath(cacheName(ithFile(data_, i), slot_id) + ".colidx");
     SArray<char> comp; CHECK(comp.readFromFile(file));
     SArray<uint64> uncomp;
     {
@@ -331,7 +353,7 @@ SArray<size_t> SlotReader::offset(int slot_id) {
   SArray<size_t> os(1); os[0] = 0;
   if (nnzEle(slot_id) == 0) return os;
   for (int i = 0; i < data_.file_size(); ++i) {
-    string file = fullPath(cacheName(ithFile(data_, i), slot_id) + ".rowsiz");
+    string file = path_picker_->getPath(cacheName(ithFile(data_, i), slot_id) + ".rowsiz");
     SArray<char> comp; CHECK(comp.readFromFile(file));
     SArray<uint16> uncomp;
     {
@@ -390,54 +412,6 @@ bool SlotReader::assemblePartitions(
   return true;
 }
 
-void SlotReader::addDirectories(const DataConfig& cache) {
-  CHECK(cache.file_size() > 0);
-
-  for (size_t i = 0; i < cache.file_size(); ++i) {
-    // check permission
-    struct stat st;
-    if (-1 == stat(cache.file(i).c_str(), &st)) {
-      LL << "dir [" << cache.file(i) << "] cannot be added since error [" <<
-        strerror(errno) << "]";
-      continue;
-    }
-    if (!S_ISDIR(st.st_mode)) {
-      LL << "dir [" << cache.file(i) << "] is not a regular directory";
-      continue;
-    }
-    if (0 != access(cache.file(i).c_str(), R_OK | W_OK)) {
-      LL << "I donnot have read&write permission on dir [" <<
-        cache.file(i) << "]";
-      continue;
-    }
-
-    // add
-    directories_.push_back(cache.file(i));
-  }
-}
-
-string SlotReader::fullPath(const string& file_name) {
-  CHECK(!directories_.empty());
-
-  struct stat st;
-  string dir_path;
-  for (const auto& dir : directories_) {
-    if (-1 != stat((dir + "/" + file_name).c_str(), &st)) {
-      dir_path = dir;
-      break;
-    }
-  }
-
-  if (!dir_path.empty()) {
-    return dir_path + "/" + file_name;
-  } else {
-    std::uniform_int_distribution<size_t> dist(0, directories_.size() - 1);
-    const size_t random_idx = dist(rng_);
-    return directories_.at(random_idx) + "/" + file_name;
-  }
-
-}
-
 SlotReader::DataPack SlotReader::nextPartition(
   const int slot_id, const int load_mode, const bool will_load_data) {
   CHECK_LT(slot_id, kSlotIDmax);
@@ -452,7 +426,7 @@ SlotReader::DataPack SlotReader::nextPartition(
       // find next data file which contains at least one partition on slot_id
       loadPartitionRanges(locator.file_idx, slot_id);
       locator.partition_idx = 0;
-      string file_name = fullPath(
+      string file_name = path_picker_->getPath(
         cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx.partition");
       locator.partition_count = partition_ranges_[file_name].size();
       if (locator.partition_count > 0) {
@@ -470,7 +444,7 @@ SlotReader::DataPack SlotReader::nextPartition(
   dp.sn = locator.sn;
   // load current partition
   if (load_mode & LoadMode::COLIDX) {
-    dp.colidx_info.first = fullPath(
+    dp.colidx_info.first = path_picker_->getPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx");
     dp.colidx_info.second =
       partition_ranges_[dp.colidx_info.first + ".partition"].at(
@@ -486,7 +460,7 @@ SlotReader::DataPack SlotReader::nextPartition(
     }
   }
   if (load_mode & LoadMode::UNIQ_COLIDX) {
-    dp.uniq_colidx_info.first = fullPath(
+    dp.uniq_colidx_info.first = path_picker_->getPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_uniq");
     dp.uniq_colidx_info.second =
       partition_ranges_[dp.uniq_colidx_info.first + ".partition"].at(
@@ -502,7 +476,7 @@ SlotReader::DataPack SlotReader::nextPartition(
     }
   }
   if (load_mode & LoadMode::CNT_COLIDX) {
-    dp.cnt_colidx_info.first = fullPath(
+    dp.cnt_colidx_info.first = path_picker_->getPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_cnt");
     dp.cnt_colidx_info.second =
       partition_ranges_[dp.cnt_colidx_info.first + ".partition"].at(
@@ -518,7 +492,7 @@ SlotReader::DataPack SlotReader::nextPartition(
     }
   }
   if (load_mode & LoadMode::ROWSIZ) {
-    dp.rowsiz_info.first = fullPath(
+    dp.rowsiz_info.first = path_picker_->getPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".rowsiz");
     dp.rowsiz_info.second =
       partition_ranges_[dp.rowsiz_info.first + ".partition"].at(locator.partition_idx);
@@ -533,7 +507,7 @@ SlotReader::DataPack SlotReader::nextPartition(
     }
   }
   if (load_mode & LoadMode::VALUE) {
-    dp.val_info.first = fullPath(
+    dp.val_info.first = path_picker_->getPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".val");
     dp.val_info.second =
       partition_ranges_[dp.val_info.first + ".partition"].at(locator.partition_idx);
@@ -577,15 +551,15 @@ void SlotReader::loadPartitionRanges(
   };
 
   const string prefix = cacheName(ithFile(data_, file_idx), slot_id);
-  string full_path = fullPath(prefix + ".colidx.partition");
+  string full_path = path_picker_->getPath(prefix + ".colidx.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
-  full_path = fullPath(prefix + ".colidx_sorted_uniq.partition");
+  full_path = path_picker_->getPath(prefix + ".colidx_sorted_uniq.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
-  full_path = fullPath(prefix + ".colidx_sorted_cnt.partition");
+  full_path = path_picker_->getPath(prefix + ".colidx_sorted_cnt.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
-  full_path = fullPath(prefix + ".rowsiz.partition");
+  full_path = path_picker_->getPath(prefix + ".rowsiz.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
-  full_path = fullPath(prefix + ".value.partition");
+  full_path = path_picker_->getPath(prefix + ".value.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
 }
 

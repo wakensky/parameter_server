@@ -16,7 +16,7 @@ class BatchSolver : public LinearMethod {
 
  protected:
   static const int kPace = 10;
-  static const int kFilterPace = 10000;
+  static const int kFilterPace = 1000000;
 
   virtual int loadData(const MessageCPtr& msg, ExampleInfo* info);
   virtual void preprocessData(const MessageCPtr& msg);
@@ -72,21 +72,15 @@ class BatchSolver : public LinearMethod {
       PreprocessStatus(
         KVVectorPtr w, SlotReader* slot_reader,
         const Config& conf, const int grp_id,
-        const int time_count_start, const int time_boundary,
         const int time_filter_start) :
         w_(w),
         slot_reader_(slot_reader),
         conf_(conf),
         grp_id_(grp_id),
-        time_count_(time_count_start),
-        time_boundary_(time_boundary),
         time_filter_(time_filter_start),
         prog_(Progress::PENDING),
-        count_finished_(false),
         filter_finished_(false),
-        all_count_sent_(false),
         all_filter_sent_(false) {
-        uniq_fea_count_ = slot_reader->uniqueFeatureCount(grp_id) + 1;
       }
       PreprocessStatus(const PreprocessStatus& other) = delete;
       PreprocessStatus& operator= (const PreprocessStatus& rhs) = delete;
@@ -98,90 +92,46 @@ class BatchSolver : public LinearMethod {
       void setProgress(const Progress progress) {
         prog_ = progress;
       }
-      bool pushNextCount() {
-        if (all_count_sent_) { return false; }
 
-        // in-group parallel control
-        for (const auto msg_id : pushed_counts_) {
-          if (msg_id > time_count_ - FLAGS_in_group_parallel) {
-            continue;
-          }
-          if (!w_->tryWaitOutMsg(kServerGroup, msg_id)) {
-            return false;
+      void pullNextFilter() {
+        if (all_filter_sent_) { return; }
+
+        // in-group parallel control for memory saving
+        if (!pulled_filters_.empty() &&
+            !w_->tryWaitOutMsg(kServerGroup, pulled_filters_.back())) {
+          return;
+        }
+
+        SlotReader::DataPack dp;
+        SArray<uint64> unique_keys;
+        while (true) {
+          dp = slot_reader_->nextPartition(
+            grp_id_, SlotReader::UNIQ_COLIDX);
+          if (dp.is_ok) {
+            if (!dp.uniq_colidx.empty()) {
+              unique_keys.setUnion(dp.uniq_colidx);
+            }
+            // memory limit check
+            if (unique_keys.memSize() >= FLAGS_preprocess_memory_limit) {
+              break;
+            }
+          } else {
+            all_filter_sent_ = true;
+            break;
           }
         }
 
-        SlotReader::DataPack dp = slot_reader_->nextPartition(
-          grp_id_, SlotReader::UNIQ_COLIDX | SlotReader::CNT_COLIDX);
-        if (dp.is_ok) {
-          MessagePtr count(new Message(kServerGroup, time_count_));
-          count->addKV(dp.uniq_colidx, {dp.cnt_colidx});
-          count->task.set_key_channel(grp_id_);
-          auto arg = w_->set(count);
-          arg->set_insert_key_freq(true);
-          arg->set_countmin_k(conf_.solver().countmin_k());
-          arg->set_countmin_n(static_cast<int>(
-            uniq_fea_count_ * conf_.solver().countmin_n_ratio()));
-          CHECK_EQ(time_count_, w_->push(count));
-
-          pushed_counts_.push_back(time_count_++);
-          return true;
-        }
-        all_count_sent_ = true;
-        return false;
-      }
-
-      bool pullNextFilter() {
-        if (all_filter_sent_) { return false; }
-
-        // in-group parallel control
-        for (const auto msg_id : pulled_filters_) {
-          if (msg_id > time_filter_ - FLAGS_in_group_parallel) {
-            continue;
-          }
-          if (!w_->tryWaitOutMsg(kServerGroup, msg_id)) {
-            return false;
-          }
-        }
-
-        SlotReader::DataPack dp = slot_reader_->nextPartition(
-          grp_id_, SlotReader::UNIQ_COLIDX);
-        if (dp.is_ok) {
-          MessagePtr filter(
-            new Message(kServerGroup, time_filter_, time_boundary_ + 1));
+        if (!unique_keys.empty()) {
+          MessagePtr filter(kServerGroup, time_filter_);
           filter->key = dp.uniq_colidx;
           filter->task.set_key_channel(grp_id_);
           filter->task.set_erase_key_cache(true);
           w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
           CHECK_EQ(time_filter_, w_->pull(filter));
-
           pulled_filters_.push_back(time_filter_++);
-          return true;
-        }
-        all_filter_sent_ = true;
-        return false;
-      }
-
-      // whether all count PUSHes acknowledged by servers?
-      bool allCountFinished() {
-        if (!all_count_sent_) { return false; }
-        if (count_finished_) { return true; }
-
-        for (const auto msg_id : pushed_counts_) {
-          if (!w_->tryWaitOutMsg(kServerGroup, msg_id)) {
-            return false;
-          }
         }
 
-        // send boundary message
-        MessagePtr boundary(new Message(kServerGroup, time_boundary_));
-        boundary->task.set_key_channel(grp_id_);
-        CHECK_EQ(time_boundary_, w_->push(boundary));
-
-        // reset SlotReader partition
-        slot_reader_->returnToFirstPartition(grp_id_);
-
-        return (count_finished_ = true);
+        return;
       }
 
       bool allFilterFinished() {
@@ -204,19 +154,12 @@ class BatchSolver : public LinearMethod {
       SlotReader* slot_reader_;
       Config conf_;
       int grp_id_;
-      int time_count_;
-      int time_boundary_;
       int time_filter_;
       Progress prog_;
-      bool count_finished_;
       bool filter_finished_;
-      // all count messages been sent to servers
-      bool all_count_sent_;
       // all filter messages been sent to servers
       bool all_filter_sent_;
-      std::vector<int> pushed_counts_;
       std::vector<int> pulled_filters_;
-      size_t uniq_fea_count_;
   }; // end of PreprocessStatus
 
   std::vector<std::shared_ptr<PreprocessStatus>> preprocess_status_;

@@ -103,7 +103,9 @@ class Ocean {
     Ocean& operator= (const Ocean& rhs) = delete;
 
     // initialization
-    void init(const string& identity, const LM::Config& conf, const Task& task);
+    void init(
+      const string& identity, const LM::Config& conf,
+      const Task& task, PathPicker& path_picker);
 
     // dump specific SArray data to disk or memory pool
     // return false on failure
@@ -151,6 +153,11 @@ class Ocean {
 
     std::vector<std::pair<JobID, SArray<char>>> getAllLoadedArray(
       const Ocean::DataType type);
+
+    void writeBlockCacheInfo();
+    bool readBlockCacheInfo();
+
+    void resetMutableData();
 
     bool getCPUProfilerStarted() { return cpu_profiler_started_; }
     void setCPUProfilerStarted(const bool in) { cpu_profiler_started_ = in; }
@@ -296,16 +303,6 @@ class Ocean {
 
   private: // methods
     Ocean();
-
-    // add new directory
-    // return false on:
-    //  1. dir is not a regular directory
-    //  2. I have no read & write permission
-    bool addDirectory(const string& dir);
-
-    // pick a random directory from directories_
-    string pickDirRandomly();
-
     void prefetchThreadFunc();
 
     // dump an range of input into Ocean
@@ -360,18 +357,15 @@ class Ocean {
     // JobID -> Column range
     // generate by w_::key
     ThreadsafeMap<JobID, SizeR> column_ranges_;
-    // available directories
-    //  you may take the advantage of multi-disks and multi-threaded prefetch
-    std::vector<string> directories_;
     // running permission for prefetch threads
     std::atomic_bool go_on_prefetching_;
     std::vector<std::thread> thread_vec_;
     const string log_prefix_;
-    std::default_random_engine rng_;
     std::mutex general_mu_;
     std::mutex prefetch_limit_mu_;
     std::condition_variable prefetch_limit_cond_;
     // whether Google CPU profiler started
     bool cpu_profiler_started_;
+    PathPicker* path_picker_;
 }; // class Ocean
 }; // namespace PS
