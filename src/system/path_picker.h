@@ -13,7 +13,7 @@ DECLARE_bool(less_memory);
 class PathPicker {
   public:
     SINGLETON(PathPicker);
-    ~PathPicker();
+    ~PathPicker() {};
     PathPicker(const PathPicker& other) = delete;
     PathPicker& operator= (const PathPicker& rhs) = delete;
 
@@ -24,7 +24,7 @@ class PathPicker {
     string getPath(const string& file_name);
 
   private:
-    PathPicker();
+    PathPicker() {};
     // return false if
     //   dir not exists
     //   W/R permission not allowed

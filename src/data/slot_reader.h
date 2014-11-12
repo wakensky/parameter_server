@@ -1,21 +1,29 @@
 #pragma once
 #include "base/shared_array_inl.h"
 #include "proto/example.pb.h"
+#include "proto/linear_method.pb.h"
 #include "data/common.h"
+#include "system/path_picker.h"
+#include "parameter/kv_vector.h"
 
 namespace PS {
 
 // read all slots in *data* with multithreadd, save them into *cache*.
 class SlotReader {
  public:
+  typedef shared_ptr<KVVector<Key, double>> KVVectorPtr;
   SlotReader() { }
-  SlotReader(const DataConfig& data, const DataConfig& cache) {
-    init(data, cache);
+  SlotReader(
+    const DataConfig& data, const DataConfig& cache, const LM::SolverConfig& solver,
+    KVVectorPtr w, const int time_count_start, const int time_count_finish,
+    PathPicker& path_picker) {
+    init(data, cache, solver, w, time_count_start, time_count_finish, path_picker);
   }
 
   void init(
     const DataConfig& data,
     const DataConfig& cache,
+    const LM::SolverConfig& solver,
     KVVectorPtr w,
     const int time_count_start,
     const int time_count_finish,
@@ -142,6 +150,7 @@ class SlotReader {
   int finishing_time_count_;
   std::atomic_int time_count_;
   PathPicker* path_picker_;
+  LM::SolverConfig solver_;
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) {
@@ -149,7 +158,7 @@ template<typename V> SArray<V> SlotReader::value(int slot_id) {
   SArray<V> val;
   if (nnzEle(slot_id) == 0) return val;
   for (int i = 0; i < data_.file_size(); ++i) {
-    string file = fullPath(cacheName(ithFile(data_, i), slot_id) + ".value");
+    string file = path_picker_->getPath(cacheName(ithFile(data_, i), slot_id) + ".value");
     SArray<char> comp; CHECK(comp.readFromFile(file));
     SArray<float> uncomp;
     {

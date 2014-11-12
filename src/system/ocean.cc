@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <fcntl.h>
+#include "util/split.h"
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -19,7 +20,6 @@ DEFINE_bool(less_memory, false,
 Ocean::Ocean() :
   go_on_prefetching_(true),
   log_prefix_("[Ocean] "),
-  rng_(time(0)),
   cpu_profiler_started_(false) {
   // launch prefetch threads
   for (int i = 0; i < FLAGS_num_threads; ++i) {
@@ -48,6 +48,7 @@ void Ocean::init(
   PathPicker& path_picker) {
   identity_ = identity;
   path_picker_ = &path_picker;
+  conf_ = conf;
   CHECK(!identity_.empty());
 
   for (int i = 0; i < task.partition_info_size(); ++i) {
@@ -657,15 +658,14 @@ void Ocean::writeBlockCacheInfo() {
   File* f = File::openOrDie(output_file_path, "w");
 
   for (size_t data_type = 0; data_type < lakes_.size(); ++data_type) {
-    auto blockcache_vec = lakes_.getAllDumpedPath(
-      static_cast<Ocean::DataType>(data_type));
+    auto blockcache_vec = getAllDumpedPath(static_cast<Ocean::DataType>(data_type));
     for (const auto& item : blockcache_vec) {
       std::stringstream ss;
       ss << data_type << "\t" << item.first.grp_id << "\t" <<
         item.first.range.begin() << "\t" << item.first.range.end() << "\t" <<
         item.second << "\n";
+      f->writeString(ss.str());
     }
-    f->writeString(ss.str());
   }
   f->close();
 
@@ -742,12 +742,12 @@ void Ocean::resetMutableData() {
       for (const auto& item : all_path) {
         all_mutable_files[vec_idx].push_back(
           std::make_pair(item.second, static_cast<DataType>(data_type)));
-        vec_idx = (++vec_idx) % all_mutable_files.size();
+        vec_idx = (vec_idx + 1) % all_mutable_files.size();
       }
     }
   }
 
-  auto reset_mutable_func = [](
+  auto reset_mutable_func = [this](
     std::vector<std::pair<string, Ocean::DataType>>& files) {
     for (const auto& item : files) {
       size_t file_size = File::size(item.first);
@@ -771,7 +771,7 @@ void Ocean::resetMutableData() {
   {
     ThreadPool pool(FLAGS_num_threads);
     for (size_t i = 0; i < all_mutable_files.size(); ++i) {
-      pool.add([this, &all_mutable_files]() {
+      pool.add([this, reset_mutable_func, i, &all_mutable_files]() {
         reset_mutable_func(all_mutable_files[i]);
       });
     }

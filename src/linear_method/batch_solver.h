@@ -5,7 +5,7 @@
 
 namespace PS {
 
-DECLARE_int32(in_group_parallel);
+DECLARE_int32(preprocess_memory_limit_each_group);
 
 namespace LM {
 
@@ -112,7 +112,7 @@ class BatchSolver : public LinearMethod {
               unique_keys.setUnion(dp.uniq_colidx);
             }
             // memory limit check
-            if (unique_keys.memSize() >= FLAGS_preprocess_memory_limit) {
+            if (unique_keys.memSize() >= FLAGS_preprocess_memory_limit_each_group) {
               break;
             }
           } else {
@@ -122,7 +122,7 @@ class BatchSolver : public LinearMethod {
         }
 
         if (!unique_keys.empty()) {
-          MessagePtr filter(kServerGroup, time_filter_);
+          MessagePtr filter(new Message(kServerGroup, time_filter_));
           filter->key = dp.uniq_colidx;
           filter->task.set_key_channel(grp_id_);
           filter->task.set_erase_key_cache(true);

@@ -9,6 +9,7 @@
 #include "util/threadsafe_map.h"
 #include "util/threadpool.h"
 #include "base/sparse_matrix.h"
+#include "system/path_picker.h"
 
 namespace PS {
 
@@ -367,5 +368,6 @@ class Ocean {
     // whether Google CPU profiler started
     bool cpu_profiler_started_;
     PathPicker* path_picker_;
+    LM::Config conf_;
 }; // class Ocean
 }; // namespace PS

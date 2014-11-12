@@ -26,7 +26,9 @@ class Localizer {
 
   // return a matrix with index mapped: idx_dict[i] -> i. Any index does not exists
   // in *idx_dict* is dropped. Assume *idx_dict* is ordered
-  MatrixPtr<V> remapIndex(int grp_id, const SArray<I>& idx_dict, SlotReader* reader) const;
+  MatrixPtr<V> remapIndex(
+    int grp_id, const SArray<I>& idx_dict,
+    SlotReader* reader, PathPicker* path_picker) const;
 
   MatrixPtr<V> remapIndex(const SArray<I>& idx_dict);
 
@@ -103,7 +105,8 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(const SArray<I>& idx_dict) {
 
 template<typename I, typename V>
 MatrixPtr<V> Localizer<I,V>::remapIndex(
-  int grp_id, const SArray<I>& idx_dict, SlotReader* reader) const {
+  int grp_id, const SArray<I>& idx_dict, SlotReader* reader,
+  PathPicker* path_picker) const {
   if (idx_dict.empty()) {
     return MatrixPtr<V>();
   }
@@ -179,7 +182,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       };
 
       // dump remapped_idx
-      string path = reader->fullPath(
+      string path = path_picker->getPath(
         node_id_ + ".segmented_remapped_idx." + std::to_string(dp.sn));
       CHECK(remapped_idx.writeToFile(path));
       {
@@ -195,9 +198,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
 
   reader->returnToFirstPartition(grp_id_);
   {
-    size_t thread_num = FLAGS_in_group_parallel > 0 ?
-      FLAGS_in_group_parallel :
-      FLAGS_num_threads;
+    size_t thread_num = FLAGS_num_threads;
     ThreadPool remapped_idx_pool(thread_num);
     for (size_t i = 0; i < thread_num; ++i) {
       remapped_idx_pool.add(generate_remapped_idx);

@@ -9,10 +9,9 @@
 
 namespace PS {
 
-DEFINE_int32(in_group_parallel, 0,
-  "How many partitions could coexist within one group, for memory control. "
-  "It makes max_num_parallel_groups_in_preprocessing as 1. "
-  "default 0, say, no limit");
+DEFINE_int32(preprocess_memory_limit_each_group, 1024 * 1024 * 1024,
+  "approximate memory usage while preprocessing in Bytes for each group; "
+  "1GB in default");
 DECLARE_bool(verbose);
 
 namespace LM {
@@ -212,9 +211,8 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   if (IamWorker()) {
     CHECK(conf_.has_local_cache());
     slot_reader_.init(
-      conf_.training_data(), conf_.local_cache(),
-      w_, starting_count_time, finishing_count_time,
-      pathPicker());
+      conf_.training_data(), conf_.local_cache(), conf_.solver(),
+      w_, starting_count_time, finishing_count_time, pathPicker());
     slot_reader_.read(info);
   } else {
     w_->waitInMsg(kWorkerGroup, finishing_count_time);
@@ -292,7 +290,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
             LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
           }
           this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-          auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_);
+          auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_, &pathPicker());
           delete localizer;
           slot_reader_.clear(grp);
           this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);

@@ -21,6 +21,7 @@ DECLARE_bool(verbose);
 void SlotReader::init(
   const DataConfig& data,
   const DataConfig& cache,
+  const LM::SolverConfig& solver,
   KVVectorPtr w,
   const int time_count_start,
   const int time_count_finish,
@@ -28,12 +29,12 @@ void SlotReader::init(
   CHECK(data.format() == DataConfig::TEXT);
   if (cache.file_size()) dump_to_disk_ = true;
   data_ = data;
-  rng_.seed(time(0));
   w_ = w;
   CHECK(w_);
   time_count_ = time_count_start;
   finishing_time_count_ = time_count_finish;
   path_picker_ = &path_picker;
+  solver_ = solver;
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
@@ -77,8 +78,8 @@ int SlotReader::read(ExampleInfo* info) {
   }
 
   // send the closing message to servers
-  MessagePtr boundary(new Message(kServerGroup, time_count_finish_));
-  CHECK_EQ(time_count_finish_, w_->push(boundary));
+  MessagePtr boundary(new Message(kServerGroup, finishing_time_count_));
+  CHECK_EQ(finishing_time_count_, w_->push(boundary));
 
   return 0;
 }
@@ -136,7 +137,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     }
     bool appendToFile(
       PathPicker* path_picker, const int slot_id, const string& name,
-      KVVectorPtr w, const int count_push_time) {
+      KVVectorPtr w, const int count_push_time,
+      const LM::SolverConfig& solver) {
       CHECK(nullptr != path_picker);
       // lambda: append "start\tsize\n" to the file that contains partition info
       //   We named a compressed block "partition" here
@@ -203,9 +205,9 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       count->task.set_key_channel(slot_id);
       auto arg = w->set(count);
       arg->set_insert_key_freq(true);
-      arg->set_countmin_k(conf_.solver().countmin_k());
+      arg->set_countmin_k(solver.countmin_k());
       arg->set_countmin_n(
-        static_cast<int>(wakensky * conf_.solver().countmin_n_ratio()));
+        static_cast<int>(100000 * solver.countmin_n_ratio()));
       CHECK_EQ(count_push_time, w->push(count));
 
       // dump unique keys to disk
@@ -271,7 +273,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       }
 
       CHECK(slot.appendToFile(
-        this->path_picker_, i, cacheName(data, i), w_, time_count_++));
+        this->path_picker_, i, cacheName(data, i),
+        w_, time_count_++, this->solver_));
       slot.clear();
     }
 
@@ -300,7 +303,9 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       vslot.row_siz.pushBack(0);
       ++vslot.row_siz_total_size;
     }
-    CHECK(vslot.appendToFile(this->path_picker_, i, cacheName(data, i)));
+    CHECK(vslot.appendToFile(
+      this->path_picker_, i, cacheName(data, i),
+      w_, time_count_++, this->solver_));
   }
 
   // the number of unique feature id in each slot

@@ -54,6 +54,7 @@ SRCS = $(PROTOS_CC) \
 	system/executor.cc \
 	system/app.cc \
 	system/ocean.cc \
+	system/path_picker.cc \
 	data/common.cc \
 	data/text_parser.cc \
 	data/example_parser.cc \
