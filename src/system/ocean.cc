@@ -663,7 +663,7 @@ void Ocean::writeBlockCacheInfo() {
       std::stringstream ss;
       ss << data_type << "\t" << item.first.grp_id << "\t" <<
         item.first.range.begin() << "\t" << item.first.range.end() << "\t" <<
-        item.second << "\n";
+        item.second << "\t" << File::size(item.second) << "\n";
       f->writeString(ss.str());
     }
   }
@@ -692,7 +692,7 @@ bool Ocean::readBlockCacheInfo() {
 
     try {
       auto vec = split(each_blockcache, '\t');
-      if (5 != vec.size()) {
+      if (6 != vec.size()) {
         throw std::runtime_error("column number wrong");
       }
 
@@ -705,19 +705,22 @@ bool Ocean::readBlockCacheInfo() {
       FullKeyType range_begin = std::stoull(vec[2]);
       FullKeyType range_end = std::stoull(vec[3]);
       string path = vec[4];
+      size_t file_size = std::stoull(vec[5]);
 
       // make sure corresponding file exists
-      File* target = File::open(path, "r");
-      if (nullptr == target) {
-        throw std::runtime_error("file not exists");
+      if (file_size > 0) {
+        File* target = File::open(path, "r");
+        if (nullptr == target) {
+          throw std::runtime_error("file not exists");
+        }
+        target->close();
       }
-      target->close();
 
       // track
       lakes_[data_type].addWithoutModify(
         JobID(grp_id, Range<FullKeyType>(range_begin, range_end)),
         path);
-    } catch (std::exception e) {
+    } catch (std::exception& e) {
       LL << log_prefix_ << __FUNCTION__ <<
         " encountered illegal blockcache info line [" <<
         each_blockcache << "] [" << e.what() << "]";

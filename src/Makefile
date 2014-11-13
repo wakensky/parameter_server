@@ -1,7 +1,7 @@
 CC = g++
 
 OPT = -O3 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp
-# OPT = -O0 -ggdb -g -gdwarf-2
+# OPT = -O0 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp
 
 BIN = ../bin
 LIB = ../lib

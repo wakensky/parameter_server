@@ -109,7 +109,7 @@ class BatchSolver : public LinearMethod {
             grp_id_, SlotReader::UNIQ_COLIDX);
           if (dp.is_ok) {
             if (!dp.uniq_colidx.empty()) {
-              unique_keys.setUnion(dp.uniq_colidx);
+              unique_keys = unique_keys.setUnion(dp.uniq_colidx);
             }
             // memory limit check
             if (unique_keys.memSize() >= FLAGS_preprocess_memory_limit_each_group) {
@@ -123,7 +123,7 @@ class BatchSolver : public LinearMethod {
 
         if (!unique_keys.empty()) {
           MessagePtr filter(new Message(kServerGroup, time_filter_));
-          filter->key = dp.uniq_colidx;
+          filter->key = unique_keys;
           filter->task.set_key_channel(grp_id_);
           filter->task.set_erase_key_cache(true);
           w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());

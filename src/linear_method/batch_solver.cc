@@ -227,7 +227,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
   bool hit_cache = get(msg).hit_cache();
-  ocean_.init(myNodeID(), conf_, msg->task, pathPicker());
 
   if (IamWorker()) {
     std::vector<std::promise<void>> wait_dual(grp_size);

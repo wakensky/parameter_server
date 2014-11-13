@@ -97,6 +97,8 @@ void KVVector<K,V>::parallelSetValue(const MessagePtr& msg) {
   // get range
   Range<K> key_range(msg->task.key_range());
   auto dest_key = this->ocean().getParameterKey(chl, key_range);
+  LI << "wakensky parallelSetValue dest_key " << dest_key.size() <<
+    " chl " << chl << " key_range " << key_range;
   SizeR range;
   if (!dest_key.empty() && !recv_key.empty()) {
     range = dest_key.findRange(key_range);

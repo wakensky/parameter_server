@@ -105,6 +105,7 @@ void Darling::runIteration() {
 }
 
 void Darling::preprocessData(const MessageCPtr& msg) {
+  ocean_.init(myNodeID(), conf_, msg->task, pathPicker());
   if (ocean_.readBlockCacheInfo()) {
     ocean_.resetMutableData();
     return;
@@ -180,7 +181,7 @@ void Darling::updateModel(const MessagePtr& msg) {
   Range<Key> g_key_range(call.key());
 
   // prefetch
-  auto prefetch_handle = [&](MessagePtr& another) {
+  auto prefetch_handle = [&](MessagePtr another) {
     if (Call::UPDATE_MODEL == get(another).cmd() &&
         0 == prefetched_task_.count(another->task.time()) &&
         another->task.time() <=
@@ -257,7 +258,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     CHECK_EQ(time+2, w_->pull(pull_msg));
   } else if (IamServer()) {
     // none of my bussiness
-    if (w_->myKeyRange().setIntersection(g_key_range).empty()) return;
+    // if (w_->myKeyRange().setIntersection(g_key_range).empty()) return;
 
     // time 0: aggregate all workers' local gradients
     w_->waitInMsg(kWorkerGroup, time);

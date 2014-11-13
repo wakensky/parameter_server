@@ -480,22 +480,6 @@ SlotReader::DataPack SlotReader::nextPartition(
       dp.uniq_colidx.uncompressFrom(compressed);
     }
   }
-  if (load_mode & LoadMode::CNT_COLIDX) {
-    dp.cnt_colidx_info.first = path_picker_->getPath(
-      cacheName(ithFile(data_, locator.file_idx), slot_id) + ".colidx_sorted_cnt");
-    dp.cnt_colidx_info.second =
-      partition_ranges_[dp.cnt_colidx_info.first + ".partition"].at(
-        locator.partition_idx);
-    if (will_load_data) {
-      SArray<char> compressed;
-      compressed.readFromFile(
-        SizeR(
-          dp.cnt_colidx_info.second.begin(),
-          dp.cnt_colidx_info.second.begin() + dp.cnt_colidx_info.second.end()),
-        dp.cnt_colidx_info.first);
-      dp.cnt_colidx.uncompressFrom(compressed);
-    }
-  }
   if (load_mode & LoadMode::ROWSIZ) {
     dp.rowsiz_info.first = path_picker_->getPath(
       cacheName(ithFile(data_, locator.file_idx), slot_id) + ".rowsiz");
@@ -559,8 +543,6 @@ void SlotReader::loadPartitionRanges(
   string full_path = path_picker_->getPath(prefix + ".colidx.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
   full_path = path_picker_->getPath(prefix + ".colidx_sorted_uniq.partition");
-  partition_ranges_[full_path] = getRangeVector(full_path);
-  full_path = path_picker_->getPath(prefix + ".colidx_sorted_cnt.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);
   full_path = path_picker_->getPath(prefix + ".rowsiz.partition");
   partition_ranges_[full_path] = getRangeVector(full_path);

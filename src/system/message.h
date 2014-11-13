@@ -102,13 +102,13 @@ MessagePtrList sliceKeyOrderedMsg(const MessagePtr& msg, const KeyList& sep) {
   MessagePtrList ret(n-1);
   for (int i = 0; i < n-1; ++i) {
     MessagePtr piece(new Message(*msg));
+    piece->clearKV();
     if (Range<K>(sep[i], sep[i+1]).setIntersection(msg_key_range).empty()) {
       // the remote node does not maintain this key range. mark this message as
-      // valid, which will be not actually sent
+      // invalid, which will be not actually sent
       piece->valid = false;
     } else {
       piece->valid = true;  // must set true, otherwise this piece might not be sent
-      piece->clearKV();
       if (!key.empty()) {  // void be divided by 0
         SizeR lr(pos[i], pos[i+1]);
         piece->key = key.segment(lr);
