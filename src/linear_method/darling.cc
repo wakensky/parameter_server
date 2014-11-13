@@ -173,24 +173,41 @@ void Darling::updateModel(const MessagePtr& msg) {
   int grp = call.fea_grp(0);
   Range<Key> g_key_range(call.key());
 
+  typedef std::tuple<int, int, Range<Key>> JobDescriptor;
+  struct JobDescriptorLess {
+    bool operator() (const JobDescriptor& a, const JobDescriptor& b) {
+      return std::get<0>(a) > std::get<0>(b);
+    }
+  };
+  std::priority_queue<
+    JobDescriptor,
+    std::vector<JobDescriptor>,
+    JobDescriptorLess> jobs_to_be_prefetched;
+
   // prefetch
   auto prefetch_handle = [&](MessagePtr another) {
     if (Call::UPDATE_MODEL == get(another).cmd() &&
         0 == prefetched_task_.count(another->task.time()) &&
         another->task.time() <=
           msg->task.time() + 4 * conf_.solver().max_block_delay()) {
-      // prefetch
-      ocean_.prefetch(
+      jobs_to_be_prefetched.push(std::make_tuple(
+        another->task.time(),
         get(another).fea_grp(0),
-        Range<Key>(get(another).key()));
-      // record
-      prefetched_task_.insert(another->task.time());
+        Range<Key>(get(another).key())));
     }
     return;
   };
   if (ocean_.pendingPrefetchCount() <
       conf_.solver().max_block_delay() + 8) {
     exec().forEach(prefetch_handle);
+  }
+  while (!jobs_to_be_prefetched.empty()) {
+    auto job = jobs_to_be_prefetched.top();
+    jobs_to_be_prefetched.pop();
+    // prefetch
+    ocean_.prefetch(std::get<1>(job), std::get<2>(job));
+    // record
+    prefetched_task_.insert(std::get<0>(job));
   }
 
   if (IamWorker()) {

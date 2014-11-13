@@ -298,6 +298,13 @@ void Ocean::prefetchThreadFunc() {
         job_id.toString() << "]";
     }
 
+    // hang on if prefetch limit reached
+    {
+      std::unique_lock<std::mutex> l(prefetch_limit_mu_);
+      prefetch_limit_cond_.wait(
+        l, [this]{ return loaded_data_.size() <= FLAGS_prefetch_job_limit; });
+    }
+
     // check job status
     JobStatus job_status = job_info_table_.getStatus(job_id);
     if (JobStatus::LOADING == job_status ||
@@ -308,13 +315,6 @@ void Ocean::prefetchThreadFunc() {
       }
       // already been prefetched
       continue;
-    }
-
-    // hang on if prefetch limit reached
-    {
-      std::unique_lock<std::mutex> l(prefetch_limit_mu_);
-      prefetch_limit_cond_.wait(
-        l, [this]{ return loaded_data_.size() <= FLAGS_prefetch_job_limit; });
     }
 
     if (FLAGS_verbose) {
@@ -492,9 +492,21 @@ void Ocean::makeMemoryDataReady(const JobID job_id) {
 
   if (loaded_data_.test(job_id)) {
   } else if (JobStatus::LOADING == job_info_table_.getStatus(job_id)) {
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "waiting synchronously [" << job_id.toString() << "]";
+    }
+
     LoadedData memory_data;
     loaded_data_.waitAndGet(job_id, memory_data);
+
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "waited synchronously [" << job_id.toString() << "]";
+    }
   } else {
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "loading synchronously [" << job_id.toString() << "]";
+    }
+
     job_info_table_.setStatus(job_id, JobStatus::LOADING);
     LoadedData memory_data = loadFromDiskSynchronously(job_id);
     loaded_data_.addWithoutModify(job_id, memory_data);
