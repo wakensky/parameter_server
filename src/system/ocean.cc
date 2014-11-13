@@ -26,6 +26,11 @@ Ocean::Ocean() :
     thread_vec_.push_back(std::move(
       std::thread(&Ocean::prefetchThreadFunc, this)));
   }
+  // launch write threads
+  for (int i = 0; i < FLAGS_num_threads * 4; ++i) {
+    write_thread_vec_.push_back(std::move(
+      std::thread(&Ocean::writeThreadFunc, this)));
+  }
 }
 
 Ocean::~Ocean() {
@@ -36,6 +41,14 @@ Ocean::~Ocean() {
       // pump in some illegal prefetch jobs
       //  push threads moving on
       prefetch(0, Range<FullKeyType>());
+    }
+    thread.join();
+  }
+  // join write threads
+  for (auto& thread : write_thread_vec_) {
+    for (int i = 0; i < FLAGS_num_threads + 1; ++i) {
+      // pump in some illegal write jobs
+      pending_writes_.push(JobID(0, Range<FullKeyType>()));
     }
     thread.join();
   }
@@ -469,41 +482,7 @@ void Ocean::drop(const GrpID grp_id, const Range<Ocean::FullKeyType>& range) {
       "]; remaining ref_count: " << job_info_table_.getRef(job_id);
   }
 
-  if (job_info_table_.getRef(job_id) <= 0) {
-    // write mutable data back to disk
-    LoadedData memory_data;
-    if (loaded_data_.tryGet(job_id, memory_data)) {
-      if (!memory_data.parameter_value.empty()) {
-        writeToDisk(SArray<char>(memory_data.parameter_value), job_id, DataType::PARAMETER_VALUE);
-      }
-      if (!memory_data.delta.empty()) {
-        writeToDisk(SArray<char>(memory_data.delta), job_id, DataType::DELTA);
-      }
-    }
-
-    if (FLAGS_verbose) {
-      LI << log_prefix_ << "written to disk [" << job_id.toString() << "]";
-    }
-
-    // release
-    if (job_info_table_.getRef(job_id) <= 0) {
-      // release LoadedData
-      loaded_data_.erase(job_id);
-      // remove from job_info_table_
-      job_info_table_.erase(job_id);
-      prefetch_limit_cond_.notify_all();
-#ifdef TCMALLOC
-      // tcmalloc force return memory to kernel
-      MallocExtension::instance()->ReleaseFreeMemory();
-#endif
-
-      if (FLAGS_verbose) {
-        LI << log_prefix_ << "released [" << job_id.toString() << "]";
-      }
-    }
-  }
-
-  return;
+  pending_writes_.push(job_id);
 }
 
 void Ocean::makeMemoryDataReady(const JobID job_id) {
@@ -569,7 +548,7 @@ bool Ocean::writeToDisk(
 
   string full_path;
   if (lakes_[static_cast<size_t>(type)].tryGet(job_id, full_path)) {
-    return input.writeToFile(full_path, true);
+    return input.writeToFile(full_path);
   } else {
     LL << "cannot not find full_path in lakes_; job_id: " << job_id.toString();
     return false;
@@ -903,5 +882,49 @@ MatrixInfo Ocean::getMatrixInfo(const GrpID grp_id) {
   MatrixInfo info;
   CHECK(matrix_info_.tryGet(grp_id, info));
   return info;
+}
+
+void Ocean::writeThreadFunc() {
+  while (go_on_prefetching_) {
+    // take out a write job
+    JobID job_id;
+    pending_writes_.wait_and_pop(job_id);
+
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "writeThreadFunc ready to write [" <<
+        job_id.toString() << "]";
+    }
+
+    LoadedData memory_data;
+    if (loaded_data_.tryGet(job_id, memory_data)) {
+      if (!memory_data.parameter_value.empty()) {
+        writeToDisk(SArray<char>(memory_data.parameter_value), job_id, DataType::PARAMETER_VALUE);
+      }
+      if (!memory_data.delta.empty()) {
+        writeToDisk(SArray<char>(memory_data.delta), job_id, DataType::DELTA);
+      }
+    }
+
+    if (FLAGS_verbose) {
+      LI << log_prefix_ << "written to disk [" << job_id.toString() << "]";
+    }
+
+    // release
+    if (job_info_table_.getRef(job_id) <= 0) {
+      // remove from job_info_table_
+      job_info_table_.erase(job_id);
+      // release LoadedData
+      loaded_data_.erase(job_id);
+      prefetch_limit_cond_.notify_all();
+#ifdef TCMALLOC
+      // tcmalloc force return memory to kernel
+      MallocExtension::instance()->ReleaseFreeMemory();
+#endif
+      if (FLAGS_verbose) {
+        LI << log_prefix_ << "released [" << job_id.toString() << "]";
+      }
+    }
+
+  }
 }
 }; // namespace PS

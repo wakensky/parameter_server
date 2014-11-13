@@ -1,6 +1,8 @@
-#include "system/van.h"
 #include <string.h>
+#include <iomanip>
 #include <zmq.h>
+#include <sys/time.h>
+#include "system/van.h"
 #include "base/shared_array_inl.h"
 #include "util/local_machine.h"
 
@@ -17,6 +19,19 @@ DEFINE_string(interface, "", "network interface");
 
 DECLARE_int32(num_workers);
 DECLARE_int32(num_servers);
+
+string printNow() {
+  timeval now;
+  gettimeofday(&now, NULL);
+  int milli = now.tv_usec / 1000;
+
+  char buffer[256];
+  strftime(buffer, sizeof(buffer), "%H:%M:%S.", localtime(&now.tv_sec));
+
+  string ret(buffer);
+  ret += std::to_string(milli);
+  return ret;
+}
 
 void Van::init() {
   scheduler_ = parseNode(FLAGS_scheduler);
@@ -168,7 +183,8 @@ Status Van::send(const MessageCPtr& msg, size_t& send_bytes) {
   }
 
   if (FLAGS_print_van) {
-    debug_out_ << "\tSND " << msg->shortDebugString()<< std::endl;
+    debug_out_ << "[" << printNow() <<
+      "] \tSND " << msg->shortDebugString() << std::endl;
   }
   return Status::OK();
 }
@@ -227,7 +243,8 @@ Status Van::recv(const MessagePtr& msg, size_t& recv_bytes) {
   }
 
   if (FLAGS_print_van) {
-    debug_out_ << "\tRCV " << msg->shortDebugString() << std::endl;
+    debug_out_ << "[" << printNow() <<
+      "] \tRCV " << msg->shortDebugString() << std::endl;
   }
   return Status::OK();;
 }

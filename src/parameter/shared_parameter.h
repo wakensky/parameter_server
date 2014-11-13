@@ -149,7 +149,9 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
   } else {
     if ((push && req) || (pull && !req)) {
       setValue(msg);
-      push_pull_count[Ocean::JobID(chl, g_key_range)]++;
+      if (push && req) {
+        push_pull_count[Ocean::JobID(chl, g_key_range)]++;
+      }
     } else if (pull && req) {
       getValue(reply);
       push_pull_count[Ocean::JobID(chl, g_key_range)]--;

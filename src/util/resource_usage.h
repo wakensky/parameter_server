@@ -42,6 +42,19 @@ class ScopedTimer {
   system_clock::time_point timer_;
 };
 
+class ScopedTimerMilli {
+ public:
+  explicit ScopedTimerMilli(double* aggregate_time) :
+      aggregate_time_(aggregate_time) {
+    timer_ = tic();
+  }
+  ~ScopedTimerMilli() { *aggregate_time_ += milliToc(timer_); }
+
+ private:
+  double* aggregate_time_;
+  system_clock::time_point timer_;
+};
+
 // in senconds
 class Timer {
  public:

@@ -307,6 +307,7 @@ class Ocean {
   private: // methods
     Ocean();
     void prefetchThreadFunc();
+    void writeThreadFunc();
 
     // dump an range of input into Ocean
     // true on success
@@ -353,6 +354,8 @@ class Ocean {
       static_cast<size_t>(Ocean::DataType::NUM)> lakes_;
     // pending jobs
     threadsafe_queue<JobID> pending_jobs_;
+    // pending writes
+    threadsafe_queue<JobID> pending_writes_;
     // Job status
     JobInfoTable job_info_table_;
     // memory pool for all loaded data
@@ -363,6 +366,7 @@ class Ocean {
     // running permission for prefetch threads
     std::atomic_bool go_on_prefetching_;
     std::vector<std::thread> thread_vec_;
+    std::vector<std::thread> write_thread_vec_;
     const string log_prefix_;
     std::mutex general_mu_;
     std::mutex prefetch_limit_mu_;
