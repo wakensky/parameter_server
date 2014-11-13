@@ -163,6 +163,8 @@ class Ocean {
     bool getCPUProfilerStarted() { return cpu_profiler_started_; }
     void setCPUProfilerStarted(const bool in) { cpu_profiler_started_ = in; }
 
+    MatrixInfo getMatrixInfo(const GrpID grp_id);
+
   private: // internal types
     enum class JobStatus: unsigned char {
       PENDING = 0,
@@ -369,5 +371,7 @@ class Ocean {
     bool cpu_profiler_started_;
     PathPicker* path_picker_;
     LM::Config conf_;
+    // info for each sparse matrix
+    ThreadsafeMap<GrpID, MatrixInfo> matrix_info_;
 }; // class Ocean
 }; // namespace PS

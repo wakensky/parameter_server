@@ -223,10 +223,8 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
   int time = msg->task.time() * kFilterPace;
-  int grp_size = get(msg).fea_grp_size();
-  fea_grp_.clear();
-  for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
   bool hit_cache = get(msg).hit_cache();
+  int grp_size = get(msg).fea_grp_size();
 
   if (IamWorker()) {
     std::vector<std::promise<void>> wait_dual(grp_size);
@@ -330,22 +328,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
             w_->value(grp).resize(w_->key(grp).size());
             w_->value(grp).setValue(0);
 
-            // set dual
-            if (X) {
-              if (dual_.empty()) {
-                dual_.resize(X->rows());
-                dual_.setZero();
-              } else {
-                CHECK_EQ(dual_.size(), X->rows());
-              }
-              if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
-                dual_.eigenVector() = *X * w_->value(grp).eigenVector();
-              }
-
-              // save MatrixInfo
-              matrix_info_[grp] = X->info();
-            }
-
             // dump to Ocean
             CHECK(ocean_.dump(SArray<char>(w_->key(grp)), grp, Ocean::DataType::PARAMETER_KEY));
             CHECK(ocean_.dump(SArray<char>(w_->value(grp)), grp, Ocean::DataType::PARAMETER_VALUE));
@@ -380,11 +362,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       }
     } // end of the whole while;
 
-    // the label
-    if (!hit_cache) {
-      y_ = MatrixPtr<double>(new DenseMatrix<double>(
-        slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
-    }
     // wait until all push_initial_key finishes
     for (int i = 0; i < grp_size; ++i) {
       wait_dual[i].get_future().wait();
@@ -540,8 +517,7 @@ void BatchSolver::showProgress(int iter) {
 }
 
 bool BatchSolver::binary(const int grp_id) const {
-  CHECK_GT(matrix_info_.count(grp_id), 0);
-  return MatrixInfo::SPARSE_BINARY == matrix_info_.at(grp_id).type();
+  return MatrixInfo::SPARSE_BINARY == ocean_.getMatrixInfo(grp_id).type();
 }
 
 void BatchSolver::computeEvaluationAUC(AUCData *data) {

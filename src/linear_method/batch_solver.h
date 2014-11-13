@@ -49,8 +49,6 @@ class BatchSolver : public LinearMethod {
   // global data information, only available at the scheduler
   ExampleInfo g_train_info_;
 
-  // matrix for training data, available at the workers
-  std::map<int, MatrixInfo> matrix_info_;
   MatrixPtr<double> y_;
   SlotReader slot_reader_;
   // dual_ = X * w

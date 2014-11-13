@@ -240,8 +240,6 @@ bool SArray<V>::writeToFile(
     file->close();
     return false;
   }
-  return (file->write(ptr_.get(), length) == length
-          && file->flush() && file->close());
 }
 
 template <typename V>

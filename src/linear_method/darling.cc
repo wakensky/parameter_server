@@ -105,59 +105,53 @@ void Darling::runIteration() {
 }
 
 void Darling::preprocessData(const MessageCPtr& msg) {
+  int grp_size = get(msg).fea_grp_size();
+  fea_grp_.clear();
+  for (int i = 0; i < grp_size; ++i) { fea_grp_.push_back(get(msg).fea_grp(i)); }
   ocean_.init(myNodeID(), conf_, msg->task, pathPicker());
-  if (ocean_.readBlockCacheInfo()) {
-    ocean_.resetMutableData();
-    return;
-  }
 
-  BatchSolver::preprocessData(msg);
   if (IamWorker()) {
+    // labels
+    y_ = MatrixPtr<double>(new DenseMatrix<double>(
+      slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+
     // dual_ = exp(y.*(X_*w_))
+    dual_.resize(y_->rows());
+    dual_.setZero();
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
   }
-  for (int grp : fea_grp_) {
-    size_t n = ocean_.groupKeyCount(grp);
-    active_set_[grp].resize(n, true);
-    delta_[grp].resize(n);
-    delta_[grp].setValue(conf_.darling().delta_init_value());
 
-    // dump delta_[grp] to Ocean
-    CHECK(ocean_.dump(SArray<char>(delta_[grp]), grp, Ocean::DataType::DELTA));
+  if (ocean_.readBlockCacheInfo()) {
+    ocean_.resetMutableData();
+  } else {
+    BatchSolver::preprocessData(msg);
 
-    // reset delta_[grp]
-    delta_[grp].clear();
+    // initialize delta
+    for (int grp : fea_grp_) {
+      const size_t n = ocean_.groupKeyCount(grp);
+      delta_[grp].resize(n);
+      delta_[grp].setValue(conf_.darling().delta_init_value());
+
+      // dump delta_[grp] to Ocean
+      CHECK(ocean_.dump(SArray<char>(delta_[grp]), grp, Ocean::DataType::DELTA));
+
+      // reset delta_[grp]
+      delta_[grp].clear();
 
 #ifdef TCMALLOC
-    // tcmalloc force return memory to kernel
-    MallocExtension::instance()->ReleaseFreeMemory();
+      // tcmalloc force return memory to kernel
+      MallocExtension::instance()->ReleaseFreeMemory();
 #endif
+    }
+
+    // produce blockcache info file
+    ocean_.writeBlockCacheInfo();
   }
 
-  // produce blockcache info file
-  ocean_.writeBlockCacheInfo();
-
-  // memory usage in y_, w_ and dual_ (features in training data)
-  if (FLAGS_verbose) {
-    // y_
-    if (y_) {
-      LI << "total memSize in y_: " << y_->memSize();
-    }
-
-    // w_
-    if (w_) {
-      LI << "total memSize in w_: " << w_->memSize();
-    }
-
-    // dual_
-    LI << "total memSize in dual_: " << dual_.memSize();
-
-    // delta_
-    size_t delta_mem_size = 0;
-    for (const auto& item : delta_) {
-      delta_mem_size += item.second.memSize();
-    }
-    LI << "total memSize in delta_: " << delta_mem_size;
+  // allocate active_set_
+  for (int grp : fea_grp_) {
+    const size_t n = ocean_.groupKeyCount(grp);
+    active_set_[grp].resize(n, true);
   }
 }
 
@@ -417,8 +411,8 @@ void Darling::updateDual(
     cw = nw;
   }
 
-  CHECK_GT(matrix_info_.count(grp), 0);
-  SizeR row_range(0, matrix_info_[grp].row().end() - matrix_info_[grp].row().begin());
+  MatrixInfo matrix_info = ocean_.getMatrixInfo(grp);
+  SizeR row_range(0, matrix_info.row().end() - matrix_info.row().begin());
   ThreadPool pool(FLAGS_num_threads);
   int npart = FLAGS_num_threads;
   for (int i = 0; i < npart; ++i) {

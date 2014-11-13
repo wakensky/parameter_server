@@ -163,6 +163,10 @@ bool Ocean::dump(
       grp_id << "] while dumping SparseMatrix";
     return false;
   }
+
+  // dump matrix info
+  matrix_info_.addWithoutModify(grp_id, X->info());
+
   return true;
 }
 
@@ -669,6 +673,38 @@ void Ocean::writeBlockCacheInfo() {
   }
   f->close();
 
+  const string column_range_file_path = path_picker_->getPath(
+    string("column_range.") + identity_ + ".info");
+  f = File::openOrDie(column_range_file_path, "w");
+
+  auto column_range_vec = column_ranges_.all();
+  for (const auto& item : column_range_vec) {
+    std::stringstream ss;
+    ss << item.first.grp_id << "\t" <<
+      item.first.range.begin() << "\t" << item.first.range.end() << "\t" <<
+      item.second.begin() << "\t" << item.second.end() << "\n";
+    f->writeString(ss.str());
+  }
+  f->close();
+
+  const string matrix_info_file_path = path_picker_->getPath(
+    string("matrix_info.") + identity_ + ".info");
+  f = File::openOrDie(matrix_info_file_path, "w");
+
+  auto matrix_info_vec = matrix_info_.all();
+  for (const auto& item : matrix_info_vec) {
+    const string dumped_matrix_info_path = path_picker_->getPath(
+      string("matrix_info.") + identity_ + "." + std::to_string(item.first));
+    writeProtoToASCIIFileOrDie(
+      item.second,
+      dumped_matrix_info_path);
+    std::stringstream ss;
+    ss << item.first << "\t" <<
+      dumped_matrix_info_path << "\n";
+    f->writeString(ss.str());
+  }
+  f->close();
+
   return;
 }
 
@@ -708,12 +744,10 @@ bool Ocean::readBlockCacheInfo() {
       size_t file_size = std::stoull(vec[5]);
 
       // make sure corresponding file exists
-      if (file_size > 0) {
-        File* target = File::open(path, "r");
-        if (nullptr == target) {
-          throw std::runtime_error("file not exists");
-        }
-        target->close();
+      if (file_size != File::size(path)) {
+        std::stringstream ss;
+        ss << "incorrect file size. " << file_size << " vs " << File::size(path);
+        throw std::runtime_error(ss.str());
       }
 
       // track
@@ -728,8 +762,89 @@ bool Ocean::readBlockCacheInfo() {
       return false;
     }
   }
-
   f->close();
+
+  const string column_range_file_path = path_picker_->getPath(
+    string("column_range.") + identity_ + ".info");
+  f = File::open(column_range_file_path, "r");
+  if (nullptr == f) {
+    // file not exists
+    return false;
+  }
+
+  while (nullptr != f->readLine(buf, sizeof(buf))) {
+    string each_column_range(buf);
+
+    // remove tailing line-break
+    if (!each_column_range.empty() && '\n' == each_column_range.back()) {
+      each_column_range.resize(each_column_range.size() - 1);
+    }
+
+    try {
+      auto vec = split(each_column_range, '\t');
+      if (5 != vec.size()) {
+        throw std::runtime_error("column number wrong");
+      }
+
+      GrpID grp_id = std::stoul(vec[0]);
+      FullKeyType range_begin = std::stoull(vec[1]);
+      FullKeyType range_end = std::stoull(vec[2]);
+      size_t column_begin = std::stoul(vec[3]);
+      size_t column_end = std::stoul(vec[4]);
+
+      SizeR current_range(column_begin, column_end);
+      column_ranges_.addWithoutModify(
+        JobID(grp_id, Range<FullKeyType>(range_begin, range_end)),
+        current_range);
+      group_key_counts_[grp_id] += current_range.size();
+    } catch (std::exception& e) {
+      LL << log_prefix_ << __FUNCTION__ <<
+        " encountered illegal column_range info line [" <<
+        each_column_range << "] [" << e.what() << "]";
+      f->close();
+      return false;
+    }
+  }
+  f->close();
+
+  const string matrix_info_file_path = path_picker_->getPath(
+    string("matrix_info.") + identity_ + ".info");
+  f = File::open(matrix_info_file_path, "r");
+  if (nullptr == f) {
+    // file not exists
+    return false;
+  }
+
+  while (nullptr != f->readLine(buf, sizeof(buf))) {
+    string each_matrix_info(buf);
+
+    // remove tailing line-break
+    if (!each_matrix_info.empty() && '\n' == each_matrix_info.back()) {
+      each_matrix_info.resize(each_matrix_info.size() - 1);
+    }
+
+    try {
+      auto vec = split(each_matrix_info, '\t');
+      if (2 != vec.size()) {
+        throw std::runtime_error("column number wrong");
+      }
+
+      GrpID grp_id = std::stoul(vec[0]);
+      const string matrix_info_path = vec[1];
+      MatrixInfo current_matrix_info;
+      readFileToProtoOrDie(matrix_info_path, &current_matrix_info);
+
+      matrix_info_.addWithoutModify(grp_id, current_matrix_info);
+    } catch (std::exception& e) {
+      LL << log_prefix_ << __FUNCTION__ <<
+        " encountered illegal matrix_info info line [" <<
+        each_matrix_info << "] [" << e.what() << "]";
+      f->close();
+      return false;
+    }
+  }
+  f->close();
+
   return true;
 }
 
@@ -782,5 +897,11 @@ void Ocean::resetMutableData() {
   }
 
   return;
+}
+
+MatrixInfo Ocean::getMatrixInfo(const GrpID grp_id) {
+  MatrixInfo info;
+  CHECK(matrix_info_.tryGet(grp_id, info));
+  return info;
 }
 }; // namespace PS
