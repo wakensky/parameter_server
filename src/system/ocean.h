@@ -158,8 +158,6 @@ class Ocean {
     void writeBlockCacheInfo();
     bool readBlockCacheInfo();
 
-    void resetMutableData();
-
     bool getCPUProfilerStarted() { return cpu_profiler_started_; }
     void setCPUProfilerStarted(const bool in) { cpu_profiler_started_ = in; }
 
@@ -342,6 +340,14 @@ class Ocean {
       const Range<FullKeyType>& partition_range,
       const Ocean::DataType type,
       SArray<char> input);
+
+    bool isMutableDataType(const DataType dt) {
+      if (DataType::PARAMETER_VALUE == dt ||
+          DataType::DELTA == dt) {
+        return true;
+      }
+      return false;
+    }
 
   private: // attributes
     string identity_;

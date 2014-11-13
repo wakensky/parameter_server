@@ -695,6 +695,7 @@ bool Ocean::readBlockCacheInfo() {
     // file not exists
     return false;
   }
+  threadsafe_queue<std::tuple<string, DataType, size_t>> mutable_files;
 
   char buf[2048];
   while (nullptr != f->readLine(buf, sizeof(buf))) {
@@ -720,10 +721,14 @@ bool Ocean::readBlockCacheInfo() {
       FullKeyType range_begin = std::stoull(vec[2]);
       FullKeyType range_end = std::stoull(vec[3]);
       string path = vec[4];
-      size_t file_size = std::stoull(vec[5]);
+      const size_t file_size = std::stoull(vec[5]);
 
-      // make sure corresponding file exists
-      if (file_size != File::size(path)) {
+      if (isMutableDataType(static_cast<DataType>(data_type))) {
+        // mutable files will be zeroed later
+        mutable_files.push(std::make_tuple(
+          path, static_cast<DataType>(data_type), file_size));
+      } else if (file_size != File::size(path)) {
+        // make sure corresponding non-mutable file exists
         std::stringstream ss;
         ss << "incorrect file size. " << file_size << " vs " << File::size(path);
         throw std::runtime_error(ss.str());
@@ -742,6 +747,27 @@ bool Ocean::readBlockCacheInfo() {
     }
   }
   f->close();
+
+  // zero mutable files
+  auto resetMutable = [this, &mutable_files]() {
+    std::tuple<string, DataType, size_t> mutable_file;
+    while (mutable_files.try_pop(mutable_file)) {
+      int init_value = 0;
+      if (DataType::DELTA == std::get<1>(mutable_file)) {
+        init_value = conf_.darling().delta_init_value();
+      }
+
+      SArray<ValueType> buf(std::get<2>(mutable_file) / sizeof(ValueType), init_value);
+      buf.writeToFile(std::get<0>(mutable_file));
+    };
+  };
+  {
+    ThreadPool pool(FLAGS_num_threads);
+    for (size_t i = 0; i < FLAGS_num_threads; ++i) {
+      pool.add(resetMutable);
+    }
+    pool.startWorkers();
+  }
 
   const string column_range_file_path = path_picker_->getPath(
     string("column_range.") + identity_ + ".info");
@@ -825,57 +851,6 @@ bool Ocean::readBlockCacheInfo() {
   f->close();
 
   return true;
-}
-
-void Ocean::resetMutableData() {
-  // get all mutable files' path
-  std::vector<std::vector<
-    std::pair<string, Ocean::DataType>>> all_mutable_files(FLAGS_num_threads);
-  size_t vec_idx = 0;
-  for (size_t data_type = 0; data_type < lakes_.size(); ++data_type) {
-    if (static_cast<size_t>(DataType::PARAMETER_VALUE) == data_type ||
-        static_cast<size_t>(DataType::DELTA) == data_type) {
-      auto all_path = lakes_.at(data_type).all();
-      for (const auto& item : all_path) {
-        all_mutable_files[vec_idx].push_back(
-          std::make_pair(item.second, static_cast<DataType>(data_type)));
-        vec_idx = (vec_idx + 1) % all_mutable_files.size();
-      }
-    }
-  }
-
-  auto reset_mutable_func = [this](
-    std::vector<std::pair<string, Ocean::DataType>>& files) {
-    for (const auto& item : files) {
-      size_t file_size = File::size(item.first);
-      if (0 == file_size) {
-        continue;
-      }
-
-      if (DataType::PARAMETER_VALUE == item.second) {
-        SArray<ValueType> buf(file_size / sizeof(ValueType), 0);
-        buf.writeToFile(item.first);
-      } else if (DataType::DELTA == item.second) {
-        SArray<ValueType> buf(file_size / sizeof(ValueType), conf_.darling().delta_init_value());
-        buf.writeToFile(item.first);
-      } else {
-        LL << log_prefix_ << "UNKNOWN_DATATYPE for " << __FUNCTION__ <<
-          " [" << static_cast<size_t>(item.second) << "]";
-      }
-    }
-  };
-
-  {
-    ThreadPool pool(FLAGS_num_threads);
-    for (size_t i = 0; i < all_mutable_files.size(); ++i) {
-      pool.add([this, reset_mutable_func, i, &all_mutable_files]() {
-        reset_mutable_func(all_mutable_files[i]);
-      });
-    }
-    pool.startWorkers();
-  }
-
-  return;
 }
 
 MatrixInfo Ocean::getMatrixInfo(const GrpID grp_id) {

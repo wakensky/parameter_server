@@ -122,7 +122,6 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   }
 
   if (ocean_.readBlockCacheInfo()) {
-    ocean_.resetMutableData();
   } else {
     BatchSolver::preprocessData(msg);
 
