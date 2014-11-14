@@ -226,7 +226,6 @@ void Darling::updateModel(const MessagePtr& msg) {
 
     // wakensky
     LI << "local_keys.size " << local_keys.size() <<
-      " local_keys[0] " << local_keys[0] <<
       " G.size " << local_gradients[0].size() <<
       " U.size " << local_gradients[1].size() <<
       " grp " << grp <<
@@ -298,22 +297,21 @@ SArrayList<double> Darling::computeGradients(
   SArray<size_t> feature_offset = ocean_.getFeatureOffset(grp, g_key_range);
   SArray<double> feature_value = ocean_.getFeatureValue(grp, g_key_range);
   SArray<double> delta = ocean_.getDelta(grp, g_key_range);
-  if (!feature_index.empty()) {
-    CHECK_EQ(
-      feature_offset.back() - feature_offset.front(),
-      feature_index.size());
-    CHECK(!delta.empty());
+  SArrayList<double> grads(2);
+  if (feature_index.empty()) {
+    return grads;
   }
+
+  CHECK_EQ(
+    feature_offset.back() - feature_offset.front(),
+    feature_index.size());
+  CHECK(!delta.empty());
 
   // allocate grads
   SizeR col_range(0, feature_offset.size() - 1);
-  SArrayList<double> grads(2);
   for (int i : {0, 1} ) {
     grads[i].resize(col_range.size());
     grads[i].setZero();
-  }
-  if (feature_index.empty()) {
-    return grads;
   }
 
   // TODO partition by rows for small col_range size

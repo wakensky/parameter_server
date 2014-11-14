@@ -34,13 +34,18 @@ class CountMin {
     uint32 h = hash(key);
     const uint32 delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
     for (int j = 0; j < k_; ++j) {
-      data_[h % n_] += count;
+      uint64 current_count = data_[h % n_];
+      if (current_count + (uint64)count < kuint8max) {
+        data_[h % n_] += count;
+      } else {
+        data_[h % n_] = kuint8max;
+      }
       h += delta;
     }
   }
 
   V query(const K& key) const {
-    V res = (V)kuint64max;
+    V res = (V)kuint8max;
     uint32 h = hash(key);
     const uint32 delta = (h >> 17) | (h << 15);  // Rotate right 17 bits
     for (int j = 0; j < k_; ++j) {

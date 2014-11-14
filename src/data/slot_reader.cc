@@ -182,7 +182,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         for (size_t i = 0; i < col_idx.size(); ++i) {
           if (current_key != col_idx[i]) {
             uniq_col_idx.pushBack(current_key);
-            if (current_cnt > kuint8max) {
+            if (current_cnt >= kuint8max) {
               current_cnt = kuint8max;
             }
             cnt_col_idx.pushBack(current_cnt);
@@ -200,14 +200,17 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       uniq_feature_count += uniq_col_idx.size();
 
       // push unique keys with their counts to servers
+      int candidate_scale = uniq_col_idx.size() * 10000 * solver.countmin_n_ratio();
+      if (candidate_scale <= 0) {
+        candidate_scale = 1000000 * solver.countmin_n_ratio();
+      }
       MessagePtr count(new Message(kServerGroup, count_push_time));
       count->addKV(uniq_col_idx, {cnt_col_idx});
       count->task.set_key_channel(slot_id);
       auto arg = w->set(count);
       arg->set_insert_key_freq(true);
       arg->set_countmin_k(solver.countmin_k());
-      arg->set_countmin_n(
-        static_cast<int>(100000 * solver.countmin_n_ratio()));
+      arg->set_countmin_n(candidate_scale);
       CHECK_EQ(count_push_time, w->push(count));
 
       // dump unique keys to disk

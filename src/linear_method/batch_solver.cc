@@ -321,7 +321,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           push_initial_key->fin_handle =
             [this, i, grp, X, &wait_dual]() {
             if (ocean_.getCPUProfilerStarted()) {
-              ProfilerFlush();
+              // ProfilerFlush();
             }
 
             // set parameter value
@@ -370,7 +370,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   } else {
     for (int i = 0; i < grp_size; ++i) {
       if (ocean_.getCPUProfilerStarted()) {
-        ProfilerFlush();
+        // ProfilerFlush();
       }
 
       if (hit_cache) continue;

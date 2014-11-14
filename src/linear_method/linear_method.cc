@@ -70,7 +70,7 @@ void LinearMethod::process(const MessagePtr& msg) {
   switch (get(msg).cmd()) {
     case Call::EVALUATE_PROGRESS: {
       if (ocean().getCPUProfilerStarted()) {
-        ProfilerFlush();
+        // ProfilerFlush();
       }
       auto prog = evaluateProgress();
       // LL << myNodeID() << prog.DebugString();
@@ -90,24 +90,24 @@ void LinearMethod::process(const MessagePtr& msg) {
     }
     case Call::PREPROCESS_DATA:
       if (FLAGS_cpu_profiler_type > 1 && !ocean().getCPUProfilerStarted()) {
-        ProfilerStart((std::string("/tmp/ps_cdn.cprof.") + myNodeID()).c_str());
+        // ProfilerStart((std::string("/tmp/ps_cdn.cprof.") + myNodeID()).c_str());
         ocean().setCPUProfilerStarted(true);
       }
       preprocessData(msg);
       break;
     case Call::UPDATE_MODEL:
       if (1 == FLAGS_cpu_profiler_type && !ocean().getCPUProfilerStarted()) {
-        ProfilerStart((std::string("/tmp/ps_cdn.cprof.") + myNodeID()).c_str());
+        // ProfilerStart((std::string("/tmp/ps_cdn.cprof.") + myNodeID()).c_str());
         ocean().setCPUProfilerStarted(true);
       }
       updateModel(msg);
       if (ocean().getCPUProfilerStarted()) {
-        ProfilerFlush();
+        // ProfilerFlush();
       }
       break;
     case Call::SAVE_MODEL:
       if (ocean().getCPUProfilerStarted()) {
-        ProfilerStop();
+        // ProfilerStop();
       }
       saveModel(msg);
       break;
