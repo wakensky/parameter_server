@@ -196,12 +196,16 @@ MatrixPtr<V> SArray<V>::matrix(size_t rows, size_t cols) {
 
 template <typename V>
 bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
-  if (range == SizeR::all()) range = SizeR(0, File::size(data.file(0)));
+  if (range == SizeR::all()) {
+    range = SizeR(0, File::size(data.file(0)));
+    // wakensky
+    LI << "readFromFile [" << data.file(0) << "] [" << range.size() << "]";
+  }
   if (range.empty()) { clear(); return true; }
 
   File* file = File::open(data, "r");
   try {
-    if (file == NULL || !file->open()) {
+    if (NULL == file) {
       throw std::runtime_error("");
     }
     resize(range.size());
@@ -210,7 +214,7 @@ bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
     if (file->read(ptr_.get(), length) != length) {
       throw std::runtime_error("");
     }
-  } catch (std::exception e) {
+  } catch (std::exception& e) {
     if (file) { file->close(); }
     return false;
   }
@@ -227,6 +231,9 @@ bool SArray<V>::writeToFile(
   CHECK_LE(range.end(), size_);
 
   File* file = File::open(file_name, "w");
+  if (NULL == file) {
+    return false;
+  }
   size_t length = range.size() * sizeof(V);
   bool succ = file->write(data_, length) == length;
   if (succ) {

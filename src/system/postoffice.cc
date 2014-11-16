@@ -23,6 +23,8 @@ DEFINE_int32(report_interval, 0,
 DEFINE_bool(verbose, false, "print extra debug info");
 DEFINE_bool(log_to_file, false, "redirect INFO log to file; eg. log_w1_datetime");
 DEFINE_bool(parallel_match, false, "enable multi-threaded match operation");
+DEFINE_int32(BF_AMPLIFICATION, 1000,
+  "bloom filter amplification coefficient; 1000 in default");
 DECLARE_string(interface);
 
 Postoffice::~Postoffice() {
@@ -100,8 +102,6 @@ void Postoffice::reply(
 }
 
 void Postoffice::queue(const MessageCPtr& msg) {
-  sending_queue_.push(msg);
-#if 0
   if (msg->valid) {
     sending_queue_.push(msg);
   } else {
@@ -116,7 +116,6 @@ void Postoffice::queue(const MessageCPtr& msg) {
     reply->recver = msg->sender;
     yellow_pages_.customer(tk.customer())->exec().accept(reply);
   }
-#endif
 }
 
 //  TODO fault tolerance, check if node info has been changed

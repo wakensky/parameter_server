@@ -200,18 +200,18 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       uniq_feature_count += uniq_col_idx.size();
 
       // push unique keys with their counts to servers
-      int candidate_scale = uniq_col_idx.size() * 10000 * solver.countmin_n_ratio();
-      if (candidate_scale <= 0) {
-        candidate_scale = 1000000 * solver.countmin_n_ratio();
+      if (!uniq_col_idx.empty()) {
+        MessagePtr count(new Message(kServerGroup, count_push_time));
+        count->addKV(uniq_col_idx, {cnt_col_idx});
+        count->task.set_key_channel(slot_id);
+        Range<uint64>(uniq_col_idx.front(), uniq_col_idx.back() + 1).to(
+          count->task.mutable_key_range());
+        auto arg = w->set(count);
+        arg->set_insert_key_freq(true);
+        arg->set_countmin_k(solver.countmin_k());
+        arg->set_countmin_n(static_cast<int>(solver.countmin_n_ratio() * 100));
+        CHECK_EQ(count_push_time, w->push(count));
       }
-      MessagePtr count(new Message(kServerGroup, count_push_time));
-      count->addKV(uniq_col_idx, {cnt_col_idx});
-      count->task.set_key_channel(slot_id);
-      auto arg = w->set(count);
-      arg->set_insert_key_freq(true);
-      arg->set_countmin_k(solver.countmin_k());
-      arg->set_countmin_n(candidate_scale);
-      CHECK_EQ(count_push_time, w->push(count));
 
       // dump unique keys to disk
       file_name = path_picker->getPath(name + ".colidx_sorted_uniq");
@@ -220,6 +220,11 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       CHECK(uniq_compressed.appendToFile(file_name));
       appendPartitionInfo(
         start, uniq_compressed.dataMemSize(), file_name + ".partition");
+
+#ifdef TCMALLOC
+    // tcmalloc force return memory to kernel
+    MallocExtension::instance()->ReleaseFreeMemory();
+#endif
 
       return true;
     }
@@ -252,6 +257,11 @@ bool SlotReader::readOneFile(const DataConfig& data) {
 
   // invoked by FileLineReader every N lines
   std::function<void(void*)> periodicity_check_handle = [&] (void*) {
+#ifdef TCMALLOC
+    // tcmalloc force return memory to kernel
+    MallocExtension::instance()->ReleaseFreeMemory();
+#endif
+
     // check memory usage
     size_t mem_size = 0;
     for (auto& slot : vslots) {
@@ -310,6 +320,10 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       this->path_picker_, i, cacheName(data, i),
       w_, time_count_++, this->solver_));
   }
+#ifdef TCMALLOC
+    // tcmalloc force return memory to kernel
+    MallocExtension::instance()->ReleaseFreeMemory();
+#endif
 
   // the number of unique feature id in each slot
   for (int i = 0; i < kSlotIDmax; ++i) {

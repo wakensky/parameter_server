@@ -267,7 +267,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     CHECK_EQ(time+2, w_->pull(pull_msg));
   } else if (IamServer()) {
     // none of my bussiness
-    // if (w_->myKeyRange().setIntersection(g_key_range).empty()) return;
+    if (w_->myKeyRange().setIntersection(g_key_range).empty()) return;
 
     // time 0: aggregate all workers' local gradients
     w_->waitInMsg(kWorkerGroup, time);
@@ -479,6 +479,101 @@ void Darling::updateDual(
         exp(y[i] * wd * value[o - base_range_begin]);
     }
   }
+}
+void Darling::threadUpdateWeight(
+  int grp, size_t begin, size_t size, size_t base_range_begin,
+  SArray<double> G, SArray<double> U,
+  size_t* nnz_w, double* objv, double* violation,
+  std::vector<size_t>* clear_idx,
+  SArray<double>& value, SArray<double>& delta, Bitmap& active_set) {
+  double eta = conf_.learning_rate().eta();
+  double lambda = conf_.penalty().lambda(0);
+
+  *nnz_w = 0;
+  *objv = 0.0;
+  *violation = std::numeric_limits<double>::min();
+  clear_idx->clear();
+
+  for (size_t i = begin; i < size + begin; ++i) {
+    size_t k = i + base_range_begin;
+    if (!active_set.test(k)) continue;
+    double g = G[i], u = U[i] / eta + 1e-10;
+    double g_pos = g + lambda, g_neg = g - lambda;
+    double& w = value[i];
+    double d = - w, vio = 0;
+
+    if (0 == w) {
+      if (g_pos < 0) {
+        vio = - g_pos;
+      } else if (g_neg > 0) {
+        vio = g_neg;
+      } else if (g_pos > KKT_filter_threshold_ && g_neg < - KKT_filter_threshold_) {
+        clear_idx->push_back(k);
+        w = kInactiveValue_;
+        continue;
+      }
+    }
+    *violation = std::max(*violation, vio);
+
+    if (g_pos <= u * w) {
+      d = - g_pos / u;
+    } else if (g_neg >= u * w) {
+      d = - g_neg / u;
+    }
+    d = std::min(delta[i], std::max(-delta[i], d));
+    delta[i] = newDelta(d);
+    w += d;
+
+    if (w != 0) { (*nnz_w)++; *objv += fabs(w); }
+  }
+}
+
+void Darling::parallelUpdateWeight(
+  int grp, Range<Key> g_key_range, SizeR base_range,
+  SArray<double> G, SArray<double> U) {
+  CHECK_EQ(G.size(), base_range.size());
+  CHECK_EQ(U.size(), base_range.size());
+
+  auto value = ocean_.getParameterValue(grp, g_key_range);
+  auto& active_set = active_set_[grp];
+  auto delta = ocean_.getDelta(grp, g_key_range);
+
+  std::vector<size_t> nnz_w_vec(FLAGS_num_threads);
+  std::vector<double> objv_vec(FLAGS_num_threads);
+  std::vector<double> violation_vec(FLAGS_num_threads);
+  std::vector<std::vector<size_t>> clear_idx_collection(FLAGS_num_threads);
+
+  {
+    ThreadPool pool(FLAGS_num_threads);
+    size_t cumulative_begin = 0;
+    for (int i = 0; i < FLAGS_num_threads; ++i) {
+      auto sub_range = base_range.evenDivide(FLAGS_num_threads, i);
+      pool.add([this, i, grp, cumulative_begin, sub_range, base_range, &G, &U, &nnz_w_vec, &objv_vec, &violation_vec, &clear_idx_collection, &value, &delta, &active_set]() {
+        threadUpdateWeight(
+          grp, cumulative_begin, sub_range.size(), base_range.begin(),
+          G, U,
+          &nnz_w_vec[i], &objv_vec[i], &violation_vec[i],
+          &clear_idx_collection[i],
+          value, delta, active_set);
+      });
+      cumulative_begin += sub_range.size();
+    }
+    pool.startWorkers();
+  }
+
+  // collect
+  size_t nnz_w_sum = 0;
+  double objv_sum = 0;
+  for (int i = 0; i < FLAGS_num_threads; ++i) {
+    nnz_w_sum += nnz_w_vec[i];
+    objv_sum += objv_vec[i];
+    violation_ = std::max(violation_vec[i], violation_);
+
+    for (auto idx : clear_idx_collection[i]) {
+      active_set.clear(idx);
+    }
+  }
+  weight_stat_[Ocean::JobID(grp, g_key_range)] = std::make_pair(nnz_w_sum, objv_sum);
 }
 
 void Darling::updateWeight(

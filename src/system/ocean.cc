@@ -509,6 +509,15 @@ void Ocean::makeMemoryDataReady(const JobID job_id) {
 
     job_info_table_.setStatus(job_id, JobStatus::LOADING);
     LoadedData memory_data = loadFromDiskSynchronously(job_id);
+    // wakensky;  temp solution for bad read
+    if (!memory_data.parameter_key.empty() &&
+        (memory_data.parameter_value.empty() || memory_data.delta.empty())) {
+      LL << "bad read for " << job_id.toString() << "; try again after 1s";
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      memory_data = loadFromDiskSynchronously(job_id);
+      CHECK(!memory_data.parameter_value.empty());
+      CHECK(!memory_data.delta.empty());
+    }
     loaded_data_.addWithoutModify(job_id, memory_data);
     job_info_table_.setStatus(job_id, JobStatus::LOADED);
 
@@ -560,7 +569,8 @@ bool Ocean::writeToDisk(
 
   string full_path;
   if (lakes_[static_cast<size_t>(type)].tryGet(job_id, full_path)) {
-    return input.writeToFile(full_path);
+    CHECK(input.writeToFile(full_path, true)) << strerror(errno);
+    return true;
   } else {
     LL << "cannot not find full_path in lakes_; job_id: " << job_id.toString();
     return false;
@@ -911,7 +921,6 @@ void Ocean::writeThreadFunc() {
         LI << log_prefix_ << "released [" << job_id.toString() << "]";
       }
     }
-
   }
 }
 }; // namespace PS

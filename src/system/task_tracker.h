@@ -51,7 +51,7 @@ class TaskTracker {
   std::mutex mu_;
   std::condition_variable cond_;
 
-  std::map<int, bool> task_;
+  std::unordered_map<int, bool> task_;
 };
 
 } // namespace PS

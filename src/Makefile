@@ -31,7 +31,7 @@ endif
 LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ \
 	-Wl,-rpath centos_lib -Wl,-dynamic-linker=./centos_lib/ld-linux-x86-64.so.2
 ifeq (${TCMALLOC}, 1)
-  LDFLAGS += -ltcmalloc_and_profiler
+  LDFLAGS += -ltcmalloc
 endif
 GTEST = -lgtest_main -lgtest
 

@@ -17,9 +17,20 @@ class Darling : public BatchSolver {
 
   SArrayList<double> computeGradients(int task_id, int grp, Range<Key> g_key_range);
   void updateDual(int grp, Range<Key> g_key_range, SArray<double> new_weight);
+  // serial
+  void parallelUpdateWeight(
+    int grp, Range<Key> g_key_range, SizeR base_range,
+    SArray<double> G, SArray<double> U);
+  // parallel
   void updateWeight(
     int grp, Range<Key> g_key_range, SizeR base_range,
     SArray<double> G, SArray<double> U);
+  void threadUpdateWeight(
+          int grp, size_t begin, size_t size, size_t base_range_begin,
+          SArray<double> G, SArray<double> U,
+          size_t* nnz_w, double* objv, double* violation,
+          std::vector<size_t>* clear_idx,
+          SArray<double>& value, SArray<double>& delta, Bitmap& active_set);
 
   Progress evaluateProgress();
   void showProgress(int iter);

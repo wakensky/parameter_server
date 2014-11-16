@@ -123,6 +123,8 @@ class BatchSolver : public LinearMethod {
           MessagePtr filter(new Message(kServerGroup, time_filter_));
           filter->key = unique_keys;
           filter->task.set_key_channel(grp_id_);
+          Range<uint64>(unique_keys.front(), unique_keys.back() + 1).to(
+            filter->task.mutable_key_range());
           filter->task.set_erase_key_cache(true);
           w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
           CHECK_EQ(time_filter_, w_->pull(filter));

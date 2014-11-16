@@ -3,6 +3,8 @@
 #include "parameter/frequency_filter.h"
 namespace PS {
 
+DECLARE_int32(BF_AMPLIFICATION);
+
 template <typename K> class SharedParameter;
 template <typename K> using SharedParameterPtr = std::shared_ptr<SharedParameter<K>>;
 
@@ -112,8 +114,8 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
     std::swap(reply->sender, reply->recver);
   }
 
-  this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
   // process
+  this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
   if (call.replica()) {
     if (pull && !req && Range<K>(msg->task.key_range()) == myKeyRange()) {
       recoverFrom(msg);
@@ -127,10 +129,13 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
     if (key_filter_ignore_chl_) chl = 0;
     if (call.insert_key_freq() && req) {
       auto& filter = key_filter_[chl];
-      if (filter.empty()) {
-        double w = (double)FLAGS_num_workers;
+      if (filter.empty() && !msg->key.empty()) {
+        const double w = (double)FLAGS_num_workers;
+        const int scale = static_cast<int>(
+            SArray<K>(msg->key).size() * FLAGS_BF_AMPLIFICATION *
+            (call.countmin_n() / 100.0));
         filter.resize(
-            std::max((int)(w*call.countmin_n()/log(w+1)), 64), call.countmin_k());
+            std::max((int)(w*scale/log(w+1)), 64), call.countmin_k());
       }
       if (msg->value.empty()) {
         filter.insertKeys(SArray<K>(msg->key), SArray<uint8>());
