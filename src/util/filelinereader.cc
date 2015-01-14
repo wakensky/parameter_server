@@ -33,7 +33,6 @@ void FileLineReader::Reload() {
     }
     // Chop the last linefeed if present.
     int len = strlen(result);
-    const size_t interval = std::pow(2, 14) - 1;
     if (len > 0 && result[len - 1] == '\n') {  // Linefeed.
       result[--len] = '\0';
     }
@@ -41,10 +40,6 @@ void FileLineReader::Reload() {
       result[--len] = '\0';
     }
     if (line_callback_) line_callback_(result);
-
-    if (0 == (readed_line_count & interval) && periodicity_callback_) {
-      periodicity_callback_(nullptr);
-    }
 
     // increase line counter
     readed_line_count++;

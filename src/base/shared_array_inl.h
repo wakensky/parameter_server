@@ -217,18 +217,6 @@ bool SArray<V>::writeToFile(SizeR range, const string& file_name) const {
 }
 
 template <typename V>
-bool SArray<V>::appendToFile(SizeR range, const string& file_name) const {
-  if (range.empty()) return true;
-  CHECK(range.valid());
-  CHECK_LE(range.end(), size_);
-
-  File* file = File::open(file_name, "a+");
-  size_t length = range.size() * sizeof(V);
-  return (file->write(ptr_.get(), length) == length
-          && file->flush() && file->close());
-}
-
-template <typename V>
 void SArray<V>::uncompressFrom(const char* src, size_t src_size) {
   if (src_size == 0) { clear(); return; }
   size_t dsize = 0;

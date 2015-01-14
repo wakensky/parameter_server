@@ -183,6 +183,7 @@ void Executor::run() {
       }
       // run the finishing callback if necessary
       auto o_recver = rnode(original_recver_id);
+      CHECK(o_recver) << "no such node: " << original_recver_id;
       if (o_recver->tryWaitOutgoingTask(t)) {
         if (FLAGS_verbose) {
           LI << "Task [" << t << "] completed. msg [" <<
@@ -208,7 +209,7 @@ void Executor::run() {
 void Executor::accept(const MessagePtr& msg) {
   Lock l(recved_msg_mu_);
   auto sender = rnode(msg->sender); CHECK(sender) << msg->shortDebugString();
-  sender->cacheKeyRecver(msg);
+  sender->decodeFilter(msg);
   recved_msgs_.push_back(msg);
   dag_cond_.notify_one();
 }
@@ -257,18 +258,6 @@ void Executor::replace(const Node& dead, const Node& live) {
   //   LL << my_node_.id() << ": re-sent " << ptr->pending_msgs_.size()
   //      << " pnending messages to " << live_id;
   // }
-}
-
-void Executor::forEach(std::function<void(MessagePtr&)> handle) {
-  Lock l(recved_msg_mu_);
-
-  for (auto& msg : recved_msgs_) {
-    if (msg) {
-      handle(msg);
-    }
-  }
-
-  return;
 }
 
 

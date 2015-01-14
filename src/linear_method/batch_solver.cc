@@ -1,10 +1,9 @@
-#include <limits>
-#include <gperftools/malloc_extension.h>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
 #include "base/matrix_io_inl.h"
 #include "base/localizer.h"
 #include "base/sparse_matrix.h"
+#include "data/common.h"
 
 namespace PS {
 
@@ -17,7 +16,6 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
-  feature_station_.init(myNodeID(), conf_);
 }
 
 void BatchSolver::run() {
@@ -70,14 +68,6 @@ void BatchSolver::run() {
   Task preprocess = newTask(Call::PREPROCESS_DATA);
   for (auto grp : fea_grp_) set(&preprocess)->add_fea_grp(grp);
   set(&preprocess)->set_hit_cache(hit_cache > 0);
-  // add all block partitions into preprocess task
-  for (const auto& block_info : fea_blk_) {
-    // add
-    PartitionInfo* partition = preprocess.add_partition_info();
-    // set
-    partition->set_fea_grp(block_info.first);
-    block_info.second.to(partition->mutable_key());
-  }
   active_nodes->submitAndWait(preprocess);
   if (sol_cf.tail_feature_freq()) {
     LI << "Features with frequency <= " << sol_cf.tail_feature_freq() << " are filtered";
@@ -201,21 +191,7 @@ bool BatchSolver::dataCache(const string& name, bool load) {
 
 int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   if (!IamWorker()) return 0;
-
-  if (FLAGS_verbose) {
-    LI << "loading cache ...";
-  }
-
   bool hit_cache = loadCache("train");
-
-  if (FLAGS_verbose) {
-    if (hit_cache) {
-      LI << "loaded cache successfully";
-    } else {
-      LI << "loaded cache failed";
-    }
-  }
-
   if (!hit_cache) {
     CHECK(conf_.has_local_cache());
     slot_reader_.init(conf_.training_data(), conf_.local_cache());
@@ -258,8 +234,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       }
 
       MessagePtr count(new Message(kServerGroup, time));
-      count->addKV(uniq_key, {key_cnt});
+      count->setKey(uniq_key);
+      count->addValue(key_cnt);
       count->task.set_key_channel(grp);
+      count->addFilter(FilterConfig::KEY_CACHING);
       auto arg = w_->set(count);
       arg->set_insert_key_freq(true);
       arg->set_countmin_k(conf_.solver().countmin_k());
@@ -268,9 +246,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // time 2: pull filered keys
       MessagePtr filter(new Message(kServerGroup, time+2, time+1));
-      filter->key = uniq_key;
+      filter->setKey(uniq_key);
       filter->task.set_key_channel(grp);
-      filter->task.set_erase_key_cache(true);
+      filter->addFilter(FilterConfig::KEY_CACHING)->set_clear_cache_if_done(true);
       w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
       filter->fin_handle = [this, grp, localizer, i, grp_size]() mutable {
         // localize the training matrix
@@ -291,18 +269,14 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         }
 
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        if (conf_.solver().has_feature_block_ratio() && !X->empty()) {
-          X = X->toColMajor();
-        }
+        if (conf_.solver().has_feature_block_ratio()) X = X->toColMajor();
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
 
         if (FLAGS_verbose) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
 
-        feature_station_.addFeatureGrp(grp, X);
-        // wakensky; tcmalloc force return memory to kernel
-        MallocExtension::instance()->ReleaseFreeMemory();
+        { Lock l(mu_); X_[grp] = X; }
       };
       CHECK_EQ(time+2, w_->pull(filter));
       pull_time[i] = time + 2;
@@ -318,42 +292,38 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // time 0: push the filtered keys to servers
       MessagePtr push_key(new Message(kServerGroup, time));
       int grp = fea_grp_[i];
-      push_key->key = w_->key(grp);
+      push_key->setKey(w_->key(grp));
       push_key->task.set_key_channel(grp);
+      push_key->addFilter(FilterConfig::KEY_CACHING);
       CHECK_EQ(time, w_->push(push_key));
 
       // time 2: fetch initial value of w_
       MessagePtr pull_val(new Message(kServerGroup, time+2, time+1));
-      pull_val->key = w_->key(grp);
+      pull_val->setKey(w_->key(grp));
       pull_val->task.set_key_channel(grp);
-      pull_val->task.set_erase_key_cache(true);
+      push_key->addFilter(FilterConfig::KEY_CACHING)->set_clear_cache_if_done(true);
       pull_val->wait = true;
       CHECK_EQ(time+2, w_->pull(pull_val));
       pull_time[i] = time + 2;
       if (pull_val->key.empty()) continue; // otherwise received(time+2) will return error
 
       auto init_w = w_->received(time+2);
-      CHECK_EQ(init_w.size(), 1);
-      CHECK_EQ(w_->key(grp).size(), init_w[0].first.size());
-      w_->value(grp) = init_w[0].second;
+      CHECK_EQ(init_w.second.size(), 1);
+      CHECK_EQ(w_->key(grp).size(), init_w.first.size());
+      w_->value(grp) = init_w.second[0];
 
       // set the local variable
-      MatrixInfo matrix_info = feature_station_.getMatrixInfo(grp);
-      size_t rows = matrix_info.row().end() - matrix_info.row().begin();
-      if (0 == rows) continue;
+      auto X = X_[grp];
+      if (!X) continue;
       if (dual_.empty()) {
-        dual_.resize(rows);
+        dual_.resize(X->rows());
         dual_.setZero();
       } else {
-        CHECK_EQ(dual_.size(), rows);
+        CHECK_EQ(dual_.size(), X->rows());
       }
-#if 0
-      // wakensky: If ZERO initialization is good enough,
-      //    we can save a lot of disk read cost here
       if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
         dual_.eigenVector() = *X * w_->value(grp).eigenVector();
       }
-#endif
     }
     // the label
     if (!hit_cache) {

@@ -59,7 +59,7 @@ void addLabel(const InstanceInfo& info, SArray<V> label, MatrixPtrList<V>* mat) 
 // label, feature_group 1, feature_group 2, ...
 // TODO do not support dense feature group yet...
 template<typename V>
-bool readMatricesFromProto(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose) {
+bool readMatricesFromProto(const DataConfig& data, MatrixPtrList<V>* mat) {
 //   // load info
 //   InstanceInfo info;
 //   for (int i = 0; i < data.file_size(); ++i) {
@@ -115,21 +115,9 @@ bool readMatricesFromProto(const DataConfig& data, MatrixPtrList<V>* mat, bool v
 }
 
 template<typename V>
-bool readMatricesFromBin(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose) {
-  if (verbose) {
-    for (size_t i = 0; i < data.file_size(); ++i) {
-      LI << "I will load bin data [" << i + 1 << "/" << data.file_size() << "] " <<
-        "[" << data.file(i) << "]";
-    }
-  }
-
+bool readMatricesFromBin(const DataConfig& data, MatrixPtrList<V>* mat) {
   // load matrices one by one
   for (int i = 0; i < data.file_size(); ++i) {
-    if (verbose) {
-      LI << "loading bin data [" << i + 1 << "/" << data.file_size() << "] " <<
-        "[" << data.file(i) << "] ...";
-    }
-
     // load info
     MatrixInfo info;
     auto f = ithFile(data, i, ".info");
@@ -213,14 +201,7 @@ bool readMatricesFromBin(const DataConfig& data, MatrixPtrList<V>* mat, bool ver
 }
 
 template<typename V>
-bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose) {
-  if (verbose) {
-    for (size_t i = 0; i < data.file_size(); ++i) {
-      LI << "I will load text data [" << i + 1 << "/" << data.file_size() << "] " <<
-        "[" << data.file(i) << "]";
-    }
-  }
-
+bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat) {
   // TODO. multi-thread
   TextParser parser(data.text(), data.ignore_feature_group());
 
@@ -255,11 +236,6 @@ bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat, bool ve
   };
 
   for (int i = 0; i < data.file_size(); ++i) {
-    if (verbose) {
-      LI << "loading text data [" << i + 1 << "/" << data.file_size() << "] " <<
-        "[" << data.file(i) << "] ...";
-    }
-
     // construct a DataConfig containing only one file
     DataConfig current_data_conf = data;
     current_data_conf.clear_file();
@@ -307,15 +283,15 @@ bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat, bool ve
 }
 
 template<typename V> bool
-readMatrices(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose) {
+readMatrices(const DataConfig& data, MatrixPtrList<V>* mat) {
   mat->clear();
   switch(data.format()) {
     case DataConfig::PROTO:
-      return readMatricesFromProto<V>(data, mat, verbose);
+      return readMatricesFromProto<V>(data, mat);
     case DataConfig::TEXT:
-      return readMatricesFromText<V>(data, mat, verbose);
+      return readMatricesFromText<V>(data, mat);
     case DataConfig::BIN:
-      return readMatricesFromBin<V>(data, mat, verbose);
+      return readMatricesFromBin<V>(data, mat);
     default: {
       LL << "unknonw data format: " << data.DebugString();
     }
@@ -324,9 +300,9 @@ readMatrices(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose) {
 }
 
 template<typename V>
-MatrixPtrList<V> readMatricesOrDie(const DataConfig& data, bool verbose) {
+MatrixPtrList<V> readMatricesOrDie(const DataConfig& data) {
   MatrixPtrList<V> mat;
-  CHECK(readMatrices(data, &mat, verbose));
+  CHECK(readMatrices(data, &mat));
   return mat;
 }
 

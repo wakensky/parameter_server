@@ -8,7 +8,7 @@ fi
 
 dir=`dirname "$0"`
 conf=${dir}/${1}
-mpirun=${dir}/../tools/mpirun
+mpirun=${dir}/mpirun
 
 source ${conf}
 

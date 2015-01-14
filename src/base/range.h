@@ -89,12 +89,7 @@ Range<T> Range<T>::evenDivide(size_t n, size_t i) const {
   CHECK_LT(i, n);
   auto itv = static_cast<long double>(end_ - begin_) /
              static_cast<long double>(n);
-  T new_end = static_cast<T>(begin_ + itv * (i + 1));
-  if (i + 1 == n) {
-    // the last partition
-    new_end = end_;
-  }
-  return Range(static_cast<T>(begin_+itv*i), new_end);
+  return Range(static_cast<T>(begin_+itv*i), static_cast<T>(begin_+itv*(i+1)));
 }
 
 template <typename T>

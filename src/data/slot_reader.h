@@ -36,8 +36,6 @@ class SlotReader {
   string cacheName(const DataConfig& data, int slot_id) const;
   size_t nnzEle(int slot_id) const;
   bool readOneFile(const DataConfig& data);
-  bool assemblePartitions(
-    SArray<char>& out, SArray<char>& in, const string& partition_file_name) const;
   string cache_;
   DataConfig data_;
   bool dump_to_disk_;
@@ -56,12 +54,7 @@ template<typename V> SArray<V> SlotReader::value(int slot_id) const {
   for (int i = 0; i < data_.file_size(); ++i) {
     string file = cacheName(ithFile(data_, i), slot_id) + ".value";
     SArray<char> comp; CHECK(comp.readFromFile(file));
-    SArray<float> uncomp;
-    {
-      SArray<char> buffer;
-      CHECK(assemblePartitions(buffer, comp, file + ".partition"));
-      uncomp = buffer;
-    }
+    SArray<float> uncomp; uncomp.uncompressFrom(comp);
     size_t n = val.size();
     val.resize(n+uncomp.size());
     for (size_t i = 0; i < uncomp.size(); ++i) val[n+i] = uncomp[i];

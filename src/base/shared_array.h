@@ -64,12 +64,8 @@ template<typename V> class SArray {
 
   // Capacity
   size_t size() const { return size_; }
-  size_t dataMemSize() const { return size_*sizeof(V); }
   size_t capacity() const { return capacity_; }
   size_t memSize() const { return capacity_*sizeof(V); }
-
-  // wakensky
-  size_t ptrUseCount() { return ptr_.use_count(); }
 
   // static int64 gMemSize() { return g_mem_usage_sarray.load(); }
 
@@ -150,19 +146,14 @@ template<typename V> class SArray {
   // write the segment [range.begin(), range.end()) into a binary file
   bool writeToFile(SizeR range, const string& file_name) const;
 
-  // append all values into a binary file
-  bool appendToFile(const string& file_name) const {
-    return appendToFile(SizeR(0, size_), file_name);
-  }
-  // append the segment [range.begin(), range.end()) into a binary file
-  bool appendToFile(SizeR range, const string& file_name) const;
-
 
  private:
   size_t size_ = 0;
   size_t capacity_ = 0;
   V* data_ = nullptr;
   shared_ptr<void> ptr_ = shared_ptr<void>(nullptr);
+
+
 };
 
 // for debug use

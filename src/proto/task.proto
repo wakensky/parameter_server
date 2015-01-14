@@ -3,11 +3,7 @@ import "proto/node.proto";
 import "proto/range.proto";
 import "proto/app.proto";
 import "proto/linear_method.proto";
-
-message PartitionInfo {
-  optional int32 fea_grp = 1;
-  optional PbRange key = 2;
-}
+import "proto/filter.proto";
 
 message Task {
   enum Type {
@@ -19,32 +15,41 @@ message Task {
     HEARTBEATING = 6;
   }
   required Type type = 1;
+  // whether request or reply message
+  optional bool request = 2 [default = false];
+  // will not send a reply message if true
+  optional bool do_not_reply = 3 [default = false];
+  // the customer name
+  optional string customer = 4;
 
-  // request or reply message
-  required bool request = 2 [default = false];
-  // customer name
-  required string customer = 3;
+  // time
+  optional int32 time = 5;
+  optional int32 wait_time = 6 [default = -1];
 
-  optional int32 time = 4;
-  optional int32 wait_time = 5 [default = -1];
-
-  // the higher the more important,
-  // optional int32 priority = 6 [default = 0];
-
-  // if or not there is the key list
-  optional bool has_key = 6 [default = false];
   // the key range of this task
   optional PbRange key_range = 7;
-  // signature of the key lists, used to identity the key cache
-  optional uint32 key_signature = 8;
   // namespace of keys
-  optional int32 key_channel = 9;
-  // clear cache after finished
-  optional bool erase_key_cache = 10 [default = false];
+  optional int32 key_channel = 8;
+  // indiciate whether or not has the key list
+  optional bool has_key = 9 [default = false];
 
-  // set values if data are compressed, empty means data are not compressed
-  repeated uint64 uncompressed_size = 11;
+  enum DataType {
+    OTHER = 0;
+    INT8 = 1;
+    INT16 = 2;
+    INT32 = 3;
+    INT64 = 4;
+    UINT8 = 5;
+    UINT16 = 6;
+    UINT32 = 7;
+    UINT64 = 8;
+    FLOAT = 9;
+    DOUBLE = 10;
+  }
+  optional DataType key_type = 13;
+  repeated DataType value_type = 14;
 
+  repeated FilterConfig filter = 12;
   // general task
   optional bytes msg = 101;
   optional ManageNode mng_node = 102;
@@ -56,9 +61,6 @@ message Task {
   // applications
   optional LM.Call linear_method = 301;
   optional CallSketch sketch = 302;
-
-  // block partition information
-  repeated PartitionInfo partition_info = 401;
 }
 
 message ManageNode {
@@ -95,9 +97,6 @@ message CallSharedPara {
   }
   required Command cmd= 1;
 
-  // key namespace
-  // optional int32 channel = 2;
-
   optional bool insert_key_freq = 3;
   optional int32 query_key_freq = 4;
 
@@ -128,34 +127,4 @@ message SketchResponse {
   optional double process_time = 2;
   optional uint32 payload = 3;
   optional uint32 key = 4;
-}
-
-message HeartbeatReport {
-  optional int32 task_id = 1 [default = 0];
-  optional string hostname = 14;
-
-  // time stamp
-  // latest heartbeat report the scheduler has ever received 
-  //    from a specified worker/server
-  optional uint32 seconds_since_epoch = 2; 
-
-  optional uint32 total_time_milli = 13;
-  optional uint32 busy_time_milli = 3;
-
-  // recv/sent bytes via zmq
-  optional uint32 net_in_mb = 4;
-  optional uint32 net_out_mb = 5;
-
-  // user+sys (percentage)
-  optional uint32 process_cpu_usage = 6;
-  optional uint32 host_cpu_usage = 7;
-
-  optional uint32 process_rss_mb = 8;
-  optional uint32 process_virt_mb = 9;
-  optional uint32 host_in_use_gb = 10;
-  optional uint32 host_in_use_percentage = 15;
-
-  // host's network in/out bandwidth usage (MB/s)
-  optional uint32 host_net_in_bw = 11;
-  optional uint32 host_net_out_bw = 12;
 }

@@ -21,28 +21,25 @@ MatrixInfo readMatrixInfo(const InstanceInfo& info, int i);
 // placed in a binary file one by one. Return two matrices, label vector and
 // feature matrix
 template<typename V>
-bool readMatricesFromProto(
-  const DataConfig& data, MatrixPtrList<V>* mat, bool verbose = false);
+bool readMatricesFromProto(const DataConfig& data, MatrixPtrList<V>* mat);
 
 // Read from binary files, which are direct dumps of memory.
 template<typename V>
-bool readMatricesFromBin(
-  const DataConfig& data, MatrixPtrList<V>* mat, bool verbose = false);
+bool readMatricesFromBin(const DataConfig& data, MatrixPtrList<V>* mat);
 
 // Read from text files
 // TODO only support read sparse data now
 template<typename V>
-bool readMatricesFromText(
-  const DataConfig& data, MatrixPtrList<V>* mat, bool verbose = false);
+bool readMatricesFromText(const DataConfig& data, MatrixPtrList<V>* mat);
 
 // Read matrices from local disk or hdfs in binary, protobuf, or text formats,
 // return a list of matrices: label, fea_grp_0, fea_grp_1, ...
 template<typename V>
-bool readMatrices(const DataConfig& data, MatrixPtrList<V>* mat, bool verbose = false);
+bool readMatrices(const DataConfig& data, MatrixPtrList<V>* mat);
 
 // Read or die
 template<typename V>
-MatrixPtrList<V> readMatricesOrDie(const DataConfig& data, bool verbose = false);
+MatrixPtrList<V> readMatricesOrDie(const DataConfig& data);
 
 
 } // namespace PS

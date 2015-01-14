@@ -34,7 +34,7 @@ if (( ${rank_size} < ${num_workers} + ${num_servers} + 1 )); then
 fi
 
 mkdir -p ${3}/../output
-${3}/ps_cdn \
+${3}/ps \
     -num_servers ${num_servers} \
     -num_workers ${num_workers} \
     -num_threads ${num_threads} \
@@ -45,12 +45,6 @@ ${3}/ps_cdn \
     ${verbose} \
     ${log_to_file} \
     ${log_instant} \
-    -load_limit ${load_limit} \
-    -line_limit ${line_limit} \
     ${print_van} \
     ${shuffle_fea_id} \
-    ${parallel_match} \
-    ${mmap_training_data} \
-    -prefetch_mem_limit_kb ${prefetch_mem_limit_kb} \
-    ${prefetch_detail} \
     || { echo "rank:${my_rank} launch failed"; exit -1; }

@@ -1,4 +1,4 @@
-#include "file.h"
+#include "util/file.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -82,11 +82,7 @@ size_t File::size(const std::string& name) {
     return 0;
   }
   struct stat f_stat;
-  if (0 != stat(name.c_str(), &f_stat)) {
-    // something wrong
-    //   for example: the file may not exist
-    return 0;
-  }
+  stat(name.c_str(), &f_stat);
   return f_stat.st_size;
 }
 
@@ -249,10 +245,8 @@ void writeProtoToFileOrDie(const GProto& proto,
 
 // TODO read home from $HDFS_HOME if empty
 std::string hadoopFS(const HDFSConfig& conf) {
-  // return (conf.home() + "/bin/hadoop dfs -D fs.default.name=" + conf.namenode()
-  //        + " -D hadoop.job.ugi=" + conf.ugi());
-  // simple use in ByteDance
-  return ("HADOOP_USER_NAME=tiger " + conf.home() + "/bin/hadoop fs ");
+  return (conf.home() + "/bin/hadoop dfs -D fs.default.name=" + conf.namenode()
+          + " -D hadoop.job.ugi=" + conf.ugi());
 }
 
 

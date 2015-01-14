@@ -95,9 +95,6 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(const SArray<I>& idx_dict) {
 template<typename I, typename V>
 MatrixPtr<V> Localizer<I, V>::remapIndex(
     int grp_id, const SArray<I>& idx_dict, SlotReader* reader) const {
-  if (idx_dict.empty()) {
-    return MatrixPtr<V>(new SparseMatrix<uint32, V>());
-  }
   SArray<V> val;
   auto info = reader->info<V>(grp_id);
   CHECK_NE(info.type(), MatrixInfo::DENSE)

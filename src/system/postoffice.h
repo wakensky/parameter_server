@@ -4,6 +4,7 @@
 #include "system/yellow_pages.h"
 #include "system/heartbeat_info.h"
 #include "util/threadsafe_queue.h"
+#include "dashboard.h"
 
 namespace PS {
 
@@ -12,7 +13,6 @@ DECLARE_int32(num_workers);
 DECLARE_int32(num_unused);
 DECLARE_int32(num_replicas);
 DECLARE_string(node_file);
-DECLARE_bool(parallel_match);
 
 class Postoffice {
  public:
@@ -22,7 +22,7 @@ class Postoffice {
   void run();
   // Queue a message into the sending buffer, which will be sent by the sending
   // thread.
-  void queue(const MessageCPtr& msg);
+  void queue(const MessagePtr& msg);
   // reply *task* from *recver* with *reply_msg*
   void reply(const NodeID& recver, const Task& task, const string& reply_msg = string());
   // reply message *msg* with protocal message *proto*
@@ -53,7 +53,8 @@ class Postoffice {
   void heartbeat();
   // monitor thread function only used by scheduler
   void monitor();
-  void addMyNode(const string& name, const Node& recver);
+
+  // void addMyNode(const string& name, const Node& recver);
 
   string printDashboardTitle();
   string printHeartbeatReport(const string& node_id, const HeartbeatReport& report);
@@ -66,47 +67,14 @@ class Postoffice {
   std::unique_ptr<std::thread> sending_;
   std::unique_ptr<std::thread> heartbeating_;
   std::unique_ptr<std::thread> monitoring_;
-  threadsafe_queue<MessageCPtr> sending_queue_;
+  threadsafe_queue<MessagePtr> sending_queue_;
 
   // yp_ should stay behind sending_queue_ so it will be destroied earlier
   YellowPages yellow_pages_;
 
   // heartbeat info for workers/servers
   HeartbeatInfo heartbeat_info_;
-
-  // record all heartbeat info by scheduler
-  std::map<NodeID, HeartbeatReport,
-    bool (*)(const NodeID& a, const NodeID& b)> dashboard_{
-    [](const NodeID& a, const NodeID& b) -> bool {
-      // lambda: split NodeID into primary segment and secondary segment
-      auto splitNodeID = [] (const NodeID& in, string& primary, string& secondary) {
-        size_t tailing_alpha_idx = in.find_last_not_of("0123456789");
-        if (std::string::npos == tailing_alpha_idx) {
-          primary = in;
-          secondary = "";
-        } else {
-          primary = in.substr(0, tailing_alpha_idx + 1);
-          secondary = in.substr(tailing_alpha_idx + 1);
-        }
-        return;
-      };
-
-      // split
-      string a_primary, a_secondary;
-      splitNodeID(a, a_primary, a_secondary);
-      string b_primary, b_secondary;
-      splitNodeID(b, b_primary, b_secondary);
-
-      // compare
-      if (a_primary != b_primary) {
-        return a_primary < b_primary;
-      } else {
-        return std::stoul(a_secondary) < std::stoul(b_secondary);
-      }
-    }
-  };
-  // mutex protecting dashboard_
-  std::mutex dashboard_mu_;
+  Dashboard dashboard_;
 };
 
 } // namespace PS

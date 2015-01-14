@@ -1,6 +1,5 @@
 #pragma once
 #include "linear_method/linear_method.h"
-#include "linear_method/feature_station.h"
 #include "data/slot_reader.h"
 
 namespace PS {
@@ -48,7 +47,6 @@ class BatchSolver : public LinearMethod {
   SlotReader slot_reader_;
   // dual_ = X * w
   SArray<double> dual_;
-  FeatureStation feature_station_;
 
 
   std::mutex mu_;

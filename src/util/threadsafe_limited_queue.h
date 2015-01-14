@@ -10,7 +10,7 @@ template<typename T>
 class threadsafeLimitedQueue {
  public:
   threadsafeLimitedQueue() { }
-  void setMaxCapacity(size_t capacity) { Lock l(mu_); max_capacity_ = capacity; }
+  void setMaxCapacity(size_t capacity) { max_capacity_ = capacity; }
 
   void push(const T& value, size_t capacity) {
     if (capacity > max_capacity_) { LL << "you will be blocked here forever..."; }

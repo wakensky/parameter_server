@@ -28,13 +28,6 @@ void FTRL::init() {
   }
 }
 
-void FTRL::stop() {
-  done_ = true;
-  prog_thr_->join();
-  if (data_thr_) data_thr_->join();
-  Customer::stop();
-}
-
 void FTRL::run() {
   // start the system
   LinearMethod::startSystem();
@@ -42,11 +35,12 @@ void FTRL::run() {
   // the thread collects progress from workers and servers
   prog_thr_ = unique_ptr<std::thread>(new std::thread([this]() {
         sleep(conf_.solver().eval_interval());
-        while (!done_) {
+        while (true) {
           sleep(conf_.solver().eval_interval());
           showProgress();
         }
       }));
+  prog_thr_->detach();
 
   // run in the eventual consistency model
   Task update = newTask(Call::UPDATE_MODEL);
@@ -62,11 +56,12 @@ void FTRL::updateModel(const MessagePtr& msg) {
 
   // the thread reports progress to the scheduler
   prog_thr_ = unique_ptr<std::thread>(new std::thread([this]() {
-        while (!done_) {
+        while (true) {
           sleep(conf_.solver().eval_interval());
           evalProgress();
         }
       }));
+  prog_thr_->detach();
 
   if (IamServer()) return;
 
@@ -84,6 +79,7 @@ void FTRL::updateModel(const MessagePtr& msg) {
           if (!ret) read_data_finished_ = true;
         }
       }));
+  data_thr_->detach();
 
   MatrixPtrList<Real> X;
   for (int i = 0; ; ++i) {
@@ -97,8 +93,10 @@ void FTRL::updateModel(const MessagePtr& msg) {
 
     // pull the working set
     MessagePtr filter(new Message(kServerGroup));
-    filter->addKV(uniq_key, {key_cnt});
+    filter->setKey(uniq_key);
+    filter->addValue(key_cnt);
     filter->task.set_key_channel(i);
+    filter->addFilter(FilterConfig::KEY_CACHING);
     filter->wait = true;
     auto arg = worker_w_->set(filter);
     arg->set_insert_key_freq(true);
@@ -106,7 +104,8 @@ void FTRL::updateModel(const MessagePtr& msg) {
     worker_w_->pull(filter);
 
     MessagePtr pull_val(new Message(kServerGroup));
-    pull_val->key = worker_w_->key(i);
+    pull_val->setKey(worker_w_->key(i));
+    pull_val->addFilter(FilterConfig::KEY_CACHING);
     pull_val->task.set_key_channel(i);
     int time = worker_w_->pull(pull_val);
 
@@ -121,8 +120,8 @@ void FTRL::updateModel(const MessagePtr& msg) {
 
     worker_w_->waitOutMsg(kServerGroup, time);
     auto w = worker_w_->received(time);
-    CHECK_EQ(w.size(), 1);
-    worker_w_->value(i) = w[0].second;
+    CHECK_EQ(w.second.size(), 1);
+    worker_w_->value(i) = w.second[0];
     // LL << w[0].second;
 
     SArray<Real> Xw(Y->rows());
@@ -140,14 +139,16 @@ void FTRL::updateModel(const MessagePtr& msg) {
     // push local gradient
     MessagePtr push_msg(new Message(kServerGroup));
 
-    push_msg->addKV(worker_w_->key(i), {pos, neg});
+    push_msg->setKey(worker_w_->key(i));
+    push_msg->addValue({pos,neg});
     push_msg->addValue(grad);
-    Range<Key>::all().to(push_msg->task.mutable_key_range());
     push_msg->task.set_key_channel(i);
-    push_msg->task.set_erase_key_cache(true);
+    push_msg->addFilter(FilterConfig::KEY_CACHING)->set_clear_cache_if_done(true);
+    // push_msg->task.set_erase_key_cache(true);
     time = worker_w_->push(push_msg);
 
     worker_w_->waitOutMsg(kServerGroup, time);
+    worker_w_->clear(i);
   }
 }
 
