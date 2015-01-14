@@ -46,7 +46,7 @@ void Darling::runIteration() {
       }
 
       // make sure leading UPDATE_MODEL tasks could be picked up by workers
-      if (update.time() - tau <= first_update_model_task_id) {
+      if (update.wait_time() < first_update_model_task_id) {
         update.set_wait_time(-1);
       }
 
@@ -147,6 +147,15 @@ void Darling::updateModel(const MessagePtr& msg) {
     push_msg->addFilter(FilterConfig::KEY_CACHING);
     CHECK_EQ(time, w_->push(push_msg));
 
+    // wakensky
+    if (1023 == grp) {
+      double sum_dual = 0.0;
+      for (size_t i = 0; i < dual_.size(); ++i) {
+        sum_dual += dual_[i];
+      }
+      LL << myNodeID() << " [after computeGradients] sum_dual: " << sum_dual;
+    }
+
     // time 1: servers do update, none of my business
     // time 2: pull the updated model from servers
     msg->finished = false; // not finished until model updates are pulled
@@ -162,11 +171,31 @@ void Darling::updateModel(const MessagePtr& msg) {
         CHECK_EQ(seg_pos, data.first); CHECK_EQ(data.second.size(), 1);
         mu_.lock();
 
+        // wakensky
+        if (1023 == grp) {
+            double sum_dual = 0.0;
+            for (size_t i = 0; i < dual_.size(); ++i) {
+                sum_dual += dual_[i];
+            }
+            LL << myNodeID() << " [before updateDual] sum_dual: " << sum_dual <<
+              "; new_wei: " << SArray<double>(data.second[0])[0];
+        }
+
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
         busy_timer_.start();
         updateDual(grp, seg_pos, data.second[0]);
         busy_timer_.stop();
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+
+        // wakensky
+        if (1023 == grp) {
+            double sum_dual = 0.0;
+            for (size_t i = 0; i < dual_.size(); ++i) {
+                sum_dual += dual_[i];
+            }
+            LL << myNodeID() << " [after updateDual] sum_dual: " << sum_dual <<
+              "; new_wei: " << SArray<double>(data.second[0])[0];
+        }
 
         mu_.unlock();
       }

@@ -245,8 +245,12 @@ void writeProtoToFileOrDie(const GProto& proto,
 
 // TODO read home from $HDFS_HOME if empty
 std::string hadoopFS(const HDFSConfig& conf) {
+#if 0
   return (conf.home() + "/bin/hadoop dfs -D fs.default.name=" + conf.namenode()
           + " -D hadoop.job.ugi=" + conf.ugi());
+#endif
+  // simple use in ByteDance
+  return ("HADOOP_USER_NAME=tiger " + conf.home() + "/bin/hadoop fs ");
 }
 
 

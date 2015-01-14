@@ -1,7 +1,7 @@
 CC = g++
 
-OPT = -O3 -ggdb
-# OPT = -O0 -ggdb
+OPT = -O3 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp
+# OPT = -O0 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp
 
 BIN = ../bin
 LIB = ../lib
@@ -16,18 +16,24 @@ THIRD_LIB=$(THIRD)/lib
 #-Wconversion -fPIC
 WARN = -Wall -Wno-unused-function -finline-functions -Wno-sign-compare #-fno-omit-frame-pointer
 INCPATH = -I. -I${THIRD_INC}
+DEFINE = 
+ifeq (${TCMALLOC}, 1)
+  DEFINE += -DTCMALLOC
+endif
 
 # STATIC=1
 ifeq (${STATIC}, 1)
 # TODO a lot of warning on mac with llvm
-    CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
+    CFLAGS = -static -static-libgcc -static-libstdc++ -std=c++0x $(DEFINE) $(WARN) $(OPT) $(INCPATH) -fPIC # -fopenmp
 else
-    CFLAGS = -std=c++0x $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
+    CFLAGS = -std=c++0x $(DEFINE) $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
 endif
 
-# -ltcmalloc_and_profiler
-LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz \
--lsnappy -lm -lpthread -lrt  -lstdc++
+LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ \
+	-Wl,-rpath centos_lib -Wl,-dynamic-linker=./centos_lib/ld-linux-x86-64.so.2
+ifeq (${TCMALLOC}, 1)
+  LDFLAGS += -ltcmalloc_debug
+endif
 GTEST = -lgtest_main -lgtest
 
 OBJS = $(SRCS:.cc=.o)
@@ -87,7 +93,7 @@ TESTS = \
         sparse_matrix_multi_thread_perf \
 	fault_tolerance_press \
 
-all: dir $(addprefix $(BIN)/, ps) # text2proto
+all: dir $(addprefix $(BIN)/, ps_cdn) # text2proto
 data: $(addprefix $(BIN)/, showins proto2bin)
 test: $(addprefix $(BIN)/, $(TESTS))
 
@@ -121,7 +127,7 @@ $(BIN)/%: test/%.cc $(LIB)/libps.a
 $(LIB)/libps.a: $(OBJS) #gtest
 	ar crv $@ $(OBJS)
 
-$(BIN)/ps: main.cc $(LIB)/libps.a
+$(BIN)/ps_cdn: main.cc $(LIB)/libps.a
 	$(CC) $(CFLAGS) main.cc $(LDFLAGS) -o $@
 
 # =====================
