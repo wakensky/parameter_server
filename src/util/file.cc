@@ -82,7 +82,11 @@ size_t File::size(const std::string& name) {
     return 0;
   }
   struct stat f_stat;
-  stat(name.c_str(), &f_stat);
+  if (0 != stat(name.c_str(), &f_stat)) {
+    // something wrong
+    //   for example: the file may not exist
+    return 0;
+  }
   return f_stat.st_size;
 }
 

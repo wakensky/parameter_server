@@ -100,5 +100,12 @@ static string dbstr(const V* data, int n, int m = 5) {
   return ss.str();
 }
 
+static uint32_t DJBHash32(const std::string& str) {
+  uint32_t hash = 5381;
+  for (const char& item : str) {
+    hash = ((hash << 5) + hash) + static_cast<uint32_t>(item);
+  }
+  return hash;
+}
 
 } // namespace PS

@@ -183,6 +183,7 @@ void Postoffice::manageApp(const Task& tk) {
   auto& mng = tk.mng_app();
   if (mng.cmd() == ManageApp::ADD) {
     yellow_pages_.add(std::static_pointer_cast<Customer>(App::create(mng.app_config())));
+    PathPicker::instance().init(mng.app_config().linear_method());
   }
 }
 

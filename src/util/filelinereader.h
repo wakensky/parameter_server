@@ -27,6 +27,12 @@ class FileLineReader {
     line_callback_ = callback;
   }
 
+  // Sets the periodic callback
+  // The handler will be invoked at every N lines
+  void set_periodic_callback(std::function<void(int)> callback) {
+    periodic_callback_ = callback;
+  }
+
   // Reloads the file line by line.
   void Reload();
 
@@ -36,6 +42,7 @@ class FileLineReader {
  private:
   DataConfig data_conf_;
   std::function<void(char*)> line_callback_;
+  std::function<void(int)> periodic_callback_;
   bool loaded_successfully_;
 };
 

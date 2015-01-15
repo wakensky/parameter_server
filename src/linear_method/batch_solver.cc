@@ -194,7 +194,7 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   bool hit_cache = loadCache("train");
   if (!hit_cache) {
     CHECK(conf_.has_local_cache());
-    slot_reader_.init(conf_.training_data(), conf_.local_cache());
+    slot_reader_.init(conf_.training_data(), conf_.local_cache(), &pathPicker());
     slot_reader_.read(info);
   }
   return hit_cache;
