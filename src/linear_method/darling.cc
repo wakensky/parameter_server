@@ -92,6 +92,7 @@ void Darling::runIteration() {
 }
 
 void Darling::preprocessData(const MessageCPtr& msg) {
+  ocean_.init(myNodeID(), conf_, msg->task, &path_picker_);
   BatchSolver::preprocessData(msg);
   if (IamWorker()) {
     // dual_ = exp(y.*(X_*w_))
@@ -102,6 +103,11 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     active_set_[grp].resize(n, true);
     delta_[grp].resize(n);
     delta_[grp].setValue(conf_.darling().delta_init_value());
+
+    // wakensky
+    // Ocean Test: dump
+    ocean_.dump(grp, w_->key(grp), w_->value(grp), delta_[grp],
+      std::static_pointer_cast<SparseMatrix<uint32, double>>(X_[grp]));
   }
 }
 

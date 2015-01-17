@@ -4,13 +4,15 @@
 #include "system/postoffice.h"
 #include "system/executor.h"
 #include "system/path_picker.h"
+#include "system/ocean.h"
 namespace PS {
 
 // An object shared across multiple nodes.
 class Customer {
  public:
   Customer() : sys_(Postoffice::instance()), exec_(*this),
-    path_picker_(PathPicker::instance()){
+    path_picker_(PathPicker::instance()),
+    ocean_(Ocean::instance()) {
     exec_thread_ = unique_ptr<std::thread>(new std::thread(&Executor::run, &exec_));
   }
   // process a message received from a remote node
@@ -45,6 +47,8 @@ class Customer {
   RNodePtr taskpool(const NodeID& k) { return exec_.rnode(k); }
   // all child customer names
   const StringList& children() const { return child_customers_; }
+  // return the ocean
+  Ocean& ocean() { return ocean_; }
   // return the path_picker_
   PathPicker& pathPicker() { return path_picker_; }
 
@@ -53,9 +57,10 @@ class Customer {
   string name_;
   StringList child_customers_;
   Postoffice& sys_;
-  PathPicker& path_picker_;
   Executor exec_;
   unique_ptr<std::thread> exec_thread_;
+  PathPicker& path_picker_;
+  Ocean& ocean_;
  private:
   DISALLOW_COPY_AND_ASSIGN(Customer);
 };

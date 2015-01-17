@@ -5,6 +5,11 @@ import "proto/app.proto";
 import "proto/linear_method.proto";
 import "proto/filter.proto";
 
+message PartitionInfo {
+  optional int32 fea_grp = 1;
+  optional PbRange key = 2;
+}
+
 message Task {
   enum Type {
     TERMINATE = 1;
@@ -61,6 +66,9 @@ message Task {
   // applications
   optional LM.Call linear_method = 301;
   optional CallSketch sketch = 302;
+
+  // column partition information
+  repeated PartitionInfo partition_info = 401;
 }
 
 message ManageNode {

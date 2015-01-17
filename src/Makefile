@@ -29,7 +29,7 @@ else
     CFLAGS = -std=c++0x $(DEFINE) $(WARN) $(OPT) $(INCPATH) #-fopenmp #-fPIC #
 endif
 
-LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ \
+LDFLAGS = -L$(THIRD_LIB) -L$(LIB) -lps -lgflags -lzmq -lprotobuf -lglog -lz -lsnappy -lm -lpthread -lrt -lstdc++ -ltbb \
 	-Wl,-rpath centos_lib -Wl,-dynamic-linker=./centos_lib/ld-linux-x86-64.so.2
 ifeq (${TCMALLOC}, 1)
   LDFLAGS += -ltcmalloc
@@ -56,6 +56,7 @@ SRCS = $(PROTOS_CC) \
 	system/app.cc \
 	system/dashboard.cc \
 	system/path_picker.cc \
+	system/ocean.cc \
 	filter/filter.cc \
 	data/common.cc \
 	data/text_parser.cc \
