@@ -398,17 +398,7 @@ void BatchSolver::saveModel(const MessageCPtr& msg) {
   if (output.format() == DataConfig::TEXT) {
     CHECK(output.file_size());
     std::string file = output.file(0) + "_" + myNodeID();
-    std::ofstream out(file); CHECK(out.good());
-    for (int grp : fea_grp_) {
-      auto key = w_->key(grp);
-      auto value = w_->value(grp);
-      CHECK_EQ(key.size(), value.size());
-      // TODO use the model_file in msg
-      for (size_t i = 0; i < key.size(); ++i) {
-        double v = value[i];
-        if (v != 0 && !(v != v)) out << key[i] << "\t" << v << "\n";
-      }
-    }
+    CHECK(ocean_.saveModel(file));
     LI << myNodeID() << " writes model to " << file;
   } else {
     LL << "didn't implement yet";

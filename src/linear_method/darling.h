@@ -18,7 +18,10 @@ class Darling : public BatchSolver {
   SArrayList<double> computeGradients(int grp, SizeR global_range, int task_id);
   void updateDual(
     int grp, SizeR global_range, SArray<double> new_w, const int task_id);
-  void updateWeight(int grp, SizeR col_range, SArray<double> G, SArray<double> U);
+  void updateWeight(
+    int grp, SizeR global_range,
+    SArray<double> G, SArray<double> U,
+    const int task_id);
 
   Progress evaluateProgress();
   void showProgress(int iter);
@@ -44,6 +47,11 @@ class Darling : public BatchSolver {
 
   std::unordered_map<int, Bitmap> active_set_;
   std::unordered_map<int, SArray<double>> delta_;
+  // {nnz_w, objv} for each column partitioned unit on servers
+  std::unordered_map<
+    Ocean::UnitID,
+    std::pair<size_t, double>,
+    Ocean::UnitIDHash> progress_stat_;
 
   SparseFilter kkt_filter_;
 

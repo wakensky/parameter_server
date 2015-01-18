@@ -226,7 +226,7 @@ void Darling::updateModel(const MessagePtr& msg) {
       CHECK_EQ(data.second.size(), 2);
 
       this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-      updateWeight(grp, seg_pos, data.second[0], data.second[1]);
+      updateWeight(grp, g_key_range, data.second[0], data.second[1], msg->task.time());
       this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
     }
     w_->finish(kWorkerGroup, time+1);
@@ -443,21 +443,36 @@ void Darling::updateDual(
 }
 
 void Darling::updateWeight(
-    int grp, SizeR range, SArray<double> G, SArray<double> U) {
-  CHECK_EQ(G.size(), range.size());
-  CHECK_EQ(U.size(), range.size());
+  int grp, SizeR global_range,
+  SArray<double> G, SArray<double> U,
+  const int task_id) {
+  // load data
+  Ocean::DataPack data_pack = ocean_.get(grp, global_range, task_id);
+  // on-demand usage
+  SArray<double> value(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_VALUE)]);
+  SArray<double> delta(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::DELTA)]);
+  SizeR anchor = ocean_.fetchAnchor(grp, global_range);
+
+  // check
+  CHECK_EQ(G.size(), anchor.size());
+  CHECK_EQ(U.size(), anchor.size());
+  CHECK_EQ(value.size(), delta.size());
+
+  // progress statistic
+  size_t nnz_w = 0;
+  double objv = 0.0;
 
   double eta = conf_.learning_rate().eta();
   double lambda = conf_.penalty().lambda(0);
-  auto& value = w_->value(grp);
   auto& active_set = active_set_[grp];
-  auto& delta = delta_[grp];
-  for (size_t i = 0; i < range.size(); ++i) {
-    size_t k = i + range.begin();
+  for (size_t i = 0; i < anchor.size(); ++i) {
+    size_t k = i + anchor.begin();
     if (!active_set.test(k)) continue;
     double g = G[i], u = U[i] / eta + 1e-10;
     double g_pos = g + lambda, g_neg = g - lambda;
-    double& w = value[k];
+    double& w = value[i];
     double d = - w, vio = 0;
 
     if (w == 0) {
@@ -478,10 +493,16 @@ void Darling::updateWeight(
     } else if (g_neg >= u * w) {
       d = - g_neg / u;
     }
-    d = std::min(delta[k], std::max(-delta[k], d));
-    delta[k] = newDelta(d);
+    d = std::min(delta[i], std::max(-delta[i], d));
+    delta[i] = newDelta(d);
     w += d;
+
+    if (!(kkt_filter_.marked(w) || 0 == w)) {
+      nnz_w++;
+      objv += fabs(w);
+    }
   }
+  progress_stat_[Ocean::UnitID(grp, global_range)] = std::make_pair(nnz_w, objv);
 }
 
 
@@ -548,13 +569,11 @@ Progress Darling::evaluateProgress() {
     size_t nnz_as = 0;
     double objv = 0;
     for (int grp : fea_grp_) {
-      const auto& value = w_->value(grp);
-      for (double w : value) {
-        if (kkt_filter_.marked(w) || w == 0) continue;
-        ++ nnz_w;
-        objv += fabs(w);
-      }
       nnz_as += active_set_[grp].nnz();
+    }
+    for (const auto& column_partition : progress_stat_) {
+      nnz_w += column_partition.second.first;
+      objv += column_partition.second.second;
     }
     prog.set_objv(objv * conf_.penalty().lambda(0));
     prog.set_nnz_w(nnz_w);

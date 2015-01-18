@@ -251,6 +251,46 @@ SizeR Ocean::fetchAnchor(
   }
 }
 
+bool Ocean::saveModel(const string& path) {
+  // open file
+  std::ofstream out(path);
+  CHECK(out.good());
+
+  // traverse all column partitioned units
+  for (auto iterator = units_.begin();
+       iterator != units_.end(); ++iterator) {
+    SArray<FullKey> parameter_key;
+    SArray<Value> parameter_value;
+
+    if (UnitStatus::LOADED == iterator->second.status) {
+      parameter_key = iterator->second.data_pack.arrays[
+        static_cast<size_t>(DataSource::PARAMETER_KEY)];
+      parameter_value = iterator->second.data_pack.arrays[
+        static_cast<size_t>(DataSource::PARAMETER_VALUE)];
+    } else {
+      // load from disk
+      SArray<char> key_stash;
+      CHECK(key_stash.readFromFile(iterator->second.path_pack.path[
+        static_cast<size_t>(DataSource::PARAMETER_KEY)]));
+      parameter_key = key_stash;
+
+      SArray<char> value_stash;
+      CHECK(value_stash.readFromFile(iterator->second.path_pack.path[
+        static_cast<size_t>(DataSource::PARAMETER_VALUE)]));
+      parameter_value = value_stash;
+    }
+    CHECK_EQ(parameter_key.size(), parameter_value.size());
+
+    for (size_t i = 0; i < parameter_key.size(); ++i) {
+      double v = parameter_value[i];
+      if (!(v != v || 0 == v)) {
+        out << parameter_key[i] << "\t" << v << "\n";
+      }
+    }
+  }
+  return true;
+}
+
 void Ocean::prefetchThreadFunc() {
   while (go_on_) {
     // take out a UnitID which needs prefetch

@@ -109,12 +109,23 @@ void KVVector<K,V>::getValue(const MessagePtr& msg) {
   SArray<K> recv_key(msg->key);
   if (recv_key.empty()) return;
   int chl = msg->task.key_channel();
-  CHECK_EQ(key_[chl].size(), val_[chl].size());
+  SizeR key_range(msg->task.key_range());
+
+  // load data
+  Ocean::DataPack data_pack = this->ocean().get(
+    chl, key_range, msg->task.owner_time());
+  SArray<Key> parameter_key(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
+  SArray<double> parameter_value(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_VALUE)]);
+
+  // check
+  CHECK_EQ(parameter_key.size(), parameter_value.size());
 
   SArray<V> val;
   // auto op = [](const V* src, V* dst) { *dst = *src; };
   size_t n = parallelOrderedMatch(
-      key(chl), value(chl), recv_key, OpAssign<V>(), FLAGS_num_threads, &val);
+    parameter_key, parameter_value, recv_key, OpAssign<V>(), FLAGS_num_threads, &val);
   CHECK_EQ(n, val.size());
   msg->clearValue();
   msg->addValue(val);
