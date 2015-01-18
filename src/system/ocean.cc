@@ -69,8 +69,10 @@ bool Ocean::dump(
 
   for (const auto& global_range : iterator->second) {
     SizeR in_group_anchor = parameter_key.findRange(global_range);
+
     UnitBody unit_body;
     unit_body.in_group_anchor = in_group_anchor;
+    anchors_[UnitID(grp_id, global_range)] = in_group_anchor;
 
     dumpColumnPartitionedSArray(
       SArray<char>(parameter_key), UnitID(grp_id, global_range),
@@ -97,7 +99,17 @@ bool Ocean::dump(
         SArray<char>(matrix->value()), UnitID(grp_id, global_range),
         feature_in_group_anchor, DataSource::FEATURE_VALUE, &unit_body);
 
-      // TODO: some checks here
+      auto segmented_offset = matrix->offset().segment(
+        SizeR(in_group_anchor.begin(), in_group_anchor.end() + 1));
+      auto segmented_feature_key = matrix->index().segment(feature_in_group_anchor);
+      CHECK_EQ(
+        segmented_offset.back() - segmented_offset.front(),
+        segmented_feature_key.size());
+      // wakensky
+      LI << "dumped unit [" << UnitID(grp_id, global_range).toString() <<
+        "]; off.front: " << segmented_offset.front() <<
+        "; off.back: " << segmented_offset.back() <<
+        "; fea_key.size: " << segmented_feature_key.size();
     }
 
     // record
@@ -224,7 +236,18 @@ void Ocean::drop(
   if (accessor->second.in_use_tasks.empty()) {
     accessor->second.setStatus(UnitStatus::DROPPING);
     accessor->second.setStatus(UnitStatus::DROPPED);
+    in_memory_unit_count_--;
     // TODO write back to disk synchronously; write back to disk asynchronously
+  }
+}
+
+SizeR Ocean::fetchAnchor(
+  const GroupID grp_id, const Range<FullKey>& global_range) {
+  auto iterator = anchors_.find(UnitID(grp_id, global_range));
+  if (anchors_.end() != iterator) {
+    return iterator->second;
+  } else {
+    return SizeR();
   }
 }
 
@@ -311,9 +334,11 @@ bool Ocean::loadFromDiskSynchronously(
   }
 
   // check
-  auto offset = data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_OFFSET)];
+  SArray<Offset> offset(
+    data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_OFFSET)]);
   if (!offset.empty()) {
-    auto feature_key = data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_KEY)];
+    SArray<ShortKey> feature_key(
+      data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_KEY)]);
     CHECK_EQ(offset.back() - offset.front(), feature_key.size());
   }
 

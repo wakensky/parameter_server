@@ -282,6 +282,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         if (conf_.solver().has_feature_block_ratio()) X = X->toColMajor();
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
 
+        // record MatrixInfo
+        matrix_info_[grp] = X->info();
+
         if (FLAGS_verbose) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
@@ -412,6 +415,14 @@ void BatchSolver::showProgress(int iter) {
     showNNZ(i);
     showTime(i);
   }
+}
+
+bool BatchSolver::binary(const int grp_id) const {
+  return MatrixInfo::SPARSE_BINARY == matrix_info_[grp_id].type();
+}
+
+size_t BatchSolver::rows(const int grp_id) const {
+  return matrix_info_[grp_id].row().end() - matrix_info_[grp_id].row().begin();
 }
 
 void BatchSolver::computeEvaluationAUC(AUCData *data) {

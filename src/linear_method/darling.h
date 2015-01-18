@@ -15,16 +15,28 @@ class Darling : public BatchSolver {
   virtual void updateModel(const MessagePtr& msg);
 
  protected:
-  SArrayList<double> computeGradients(int grp, SizeR col_range);
-  void updateDual(int grp, SizeR col_range, SArray<double> new_weight);
+  SArrayList<double> computeGradients(int grp, SizeR global_range, int task_id);
+  void updateDual(
+    int grp, SizeR global_range, SArray<double> new_w, const int task_id);
   void updateWeight(int grp, SizeR col_range, SArray<double> G, SArray<double> U);
 
   Progress evaluateProgress();
   void showProgress(int iter);
   void showKKTFilter(int iter);
 
-  void computeGradients(int grp, SizeR col_range, SArray<double> G, SArray<double> U);
-  void updateDual(int grp, SizeR row_range, SizeR col_range, SArray<double> w_delta);
+  void computeGradients(
+    int grp, SizeR thr_anchor, const size_t group_anchor_begin,
+    SArray<double> G, SArray<double> U,
+    SArray<uint32> feature_key,
+    SArray<size_t> feature_offset,
+    SArray<double> feature_value,
+    SArray<double> delta);
+  void updateDual(
+    int grp, SizeR th_row_range, SizeR anchor, SArray<double> w_delta,
+    SArray<uint32> feature_index,
+    SArray<size_t> feature_offset,
+    SArray<double> feature_value,
+    SArray<double> delta);
 
   double newDelta(double delta_w) {
     return std::min(conf_.darling().delta_max_value(), 2 * fabs(delta_w) + .1);

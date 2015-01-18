@@ -176,6 +176,9 @@ class Ocean {
       const Range<FullKey>& global_range,
       const TaskID task_id);
 
+    SizeR fetchAnchor(
+      const GroupID grp_id, const Range<FullKey>& global_range);
+
   private: // internal types
     enum class UnitStatus: unsigned char {
       INIT = 0,
@@ -195,6 +198,11 @@ class Ocean {
       SizeR in_group_anchor;
       // who are using this unit
       InUseTaskHashMap in_use_tasks;
+
+      UnitBody():
+        status(UnitStatus::INIT) {
+        // do nothing
+      }
 
       void setStatus(const UnitStatus new_status) {
         CHECK_LT(
@@ -228,20 +236,27 @@ class Ocean {
       DataPack* data_pack);
 
   private: // attributes
-    using UnitHashMap = tbb::concurrent_hash_map<UnitID, UnitBody, UnitIDHash>;
-    using UnitPrefetchQueue = tbb::concurrent_queue<std::pair<UnitID, TaskID>>;
     string identity_;
+
+    using UnitHashMap = tbb::concurrent_hash_map<UnitID, UnitBody, UnitIDHash>;
     std::unordered_map<GroupID, std::vector<Range<FullKey>>> group_partition_ranges_;
     UnitHashMap units_;
-    // switch for asynchronized threads
-    std::atomic_bool go_on_;
+
+    using UnitPrefetchQueue = tbb::concurrent_queue<std::pair<UnitID, TaskID>>;
     UnitPrefetchQueue prefetch_queue_;
     std::mutex prefetch_queue_mu_;
     std::condition_variable prefetch_queue_not_empty_cv_;
+    std::vector<std::thread> prefetch_threads_;
+
+    std::unordered_map<UnitID, SizeR, UnitIDHash> anchors_;
+
+    // switch for asynchronized threads
+    std::atomic_bool go_on_;
+
     std::atomic_size_t in_memory_unit_count_;
     std::condition_variable in_memory_unit_not_full_cv_;
     std::mutex in_memory_limit_mu_;
-    std::vector<std::thread> prefetch_threads_;
+
     PathPicker* path_picker_;
     LM::Config conf_;
 

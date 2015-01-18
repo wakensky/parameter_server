@@ -137,7 +137,7 @@ void Darling::updateModel(const MessagePtr& msg) {
 
     this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
     busy_timer_.start();
-    auto local_gradients = computeGradients(grp, seg_pos);
+    auto local_gradients = computeGradients(grp, g_key_range, msg->task.time());
     busy_timer_.stop();
     this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
 
@@ -171,7 +171,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     pull_msg->task.set_key_channel(grp);
     pull_msg->addFilter(FilterConfig::KEY_CACHING);
     // the callback for updating the local dual variable
-    pull_msg->fin_handle = [this, grp, seg_pos, time, msg] () {
+    pull_msg->fin_handle = [this, grp, seg_pos, time, msg, g_key_range] () {
       if (!seg_pos.empty()) {
         auto data = w_->received(time+2);
         CHECK_EQ(seg_pos, data.first); CHECK_EQ(data.second.size(), 1);
@@ -189,7 +189,7 @@ void Darling::updateModel(const MessagePtr& msg) {
 
         this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
         busy_timer_.start();
-        updateDual(grp, seg_pos, data.second[0]);
+        updateDual(grp, g_key_range, data.second[0], msg->task.time());
         busy_timer_.stop();
         this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
 
@@ -233,22 +233,53 @@ void Darling::updateModel(const MessagePtr& msg) {
   }
 }
 
-SArrayList<double> Darling::computeGradients(int grp, SizeR col_range) {
+SArrayList<double> Darling::computeGradients(int grp, SizeR global_range, int task_id) {
   SArrayList<double> grads(2);
+  // load data
+  Ocean::DataPack data_pack = ocean_.get(grp, global_range, task_id);
+  // on-demand usage
+  SArray<uint32> feature_key(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_KEY)]);
+  SArray<size_t> feature_offset(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_OFFSET)]);
+  SArray<double> feature_value(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_VALUE)]);
+  SArray<double> delta(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::DELTA)]);
+  SizeR anchor = ocean_.fetchAnchor(grp, global_range);
+  if (feature_key.empty()) {
+    return grads;
+  }
+
+  // check
+  if (!feature_value.empty()) {
+    CHECK_EQ(feature_key.size(), feature_value.size());
+  }
+  CHECK_EQ(feature_offset.size(), anchor.size() + 1);
+  CHECK_EQ(feature_offset.size(), delta.size() + 1);
+  CHECK_EQ(
+    feature_offset.back() - feature_offset.front(),
+    feature_key.size());
+
+  // allocate grads
   for (int i : {0, 1} ) {
-    grads[i].resize(col_range.size());
+    grads[i].resize(anchor.size());
     grads[i].setZero();
   }
+
   // TODO partition by rows for small col_range size
-  int num_threads = col_range.size() < 64 ? 1 : FLAGS_num_threads;
+  int num_threads = anchor.size() < 64 ? 1 : FLAGS_num_threads;
   ThreadPool pool(num_threads);
   int npart = num_threads * 1;  // could use a larger partition number
   for (int i = 0; i < npart; ++i) {
-    auto thr_range = col_range.evenDivide(npart, i);
-    if (thr_range.empty()) continue;
-    auto gr = thr_range - col_range.begin();
-    pool.add([this, grp, thr_range, gr, &grads]() {
-        computeGradients(grp, thr_range, grads[0].segment(gr), grads[1].segment(gr));
+    auto thr_anchor = anchor.evenDivide(npart, i);
+    if (thr_anchor.empty()) continue;
+    auto gr = thr_anchor - anchor.begin();
+    pool.add([this, grp, thr_anchor, anchor, gr, &grads,
+              &feature_key, &feature_offset, &feature_value, &delta]() {
+        computeGradients(grp, thr_anchor, anchor.begin(),
+          grads[0].segment(gr), grads[1].segment(gr),
+          feature_key, feature_offset, feature_value, delta);
       });
   }
   pool.startWorkers();
@@ -256,39 +287,48 @@ SArrayList<double> Darling::computeGradients(int grp, SizeR col_range) {
 }
 
 void Darling::computeGradients(
-    int grp, SizeR col_range, SArray<double> G, SArray<double> U) {
-  CHECK_EQ(G.size(), col_range.size());
-  CHECK_EQ(U.size(), col_range.size());
-  CHECK(X_[grp]->colMajor());
+  int grp, SizeR thr_anchor, const size_t group_anchor_begin,
+  SArray<double> G, SArray<double> U,
+  SArray<uint32> feature_key,
+  SArray<size_t> feature_offset,
+  SArray<double> feature_value,
+  SArray<double> delta) {
+  CHECK_EQ(G.size(), thr_anchor.size());
+  CHECK_EQ(U.size(), thr_anchor.size());
 
-  const auto& active_set = active_set_[grp];
-  const auto& delta = delta_[grp];
-  const double* y = y_->value().data();
-  auto X = std::static_pointer_cast<SparseMatrix<uint32, double>>(
-      X_[grp]->colBlock(col_range));
-  const size_t* offset = X->offset().data();
-  uint32* index = X->index().data() + offset[0];
-  double* value = X->value().data() + offset[0];
-  bool binary = X->binary();
+  const auto& active_set = active_set_[grp]; // KKT utility
+  const double* y = y_->value().data();  // labels
 
+  // offset's head and delta's head are aligned,
+  //   although offset is longer by 1
+  const size_t* offset = feature_offset.data() + (thr_anchor.begin() - group_anchor_begin);
+  double* delta_ptr = delta.data() + (thr_anchor.begin() - group_anchor_begin);
+  // Positions reside in offset are group-wise.
+  // Since a group has been seperated into several segments,
+  //   we should have all positions minus their head,
+  //   which transforms group-wise positions to segment-wise positions.
+  uint32* index = feature_key.data() + (offset[0] - feature_offset.front());
+  double* value = feature_value.data() + (offset[0] - feature_offset.front());
+
+  bool is_binary = binary(grp);
   // j: column id, i: row id
-  for (size_t j = 0; j < X->cols(); ++j) {
-    size_t k = j + col_range.begin();
+  for (size_t j = 0; j < thr_anchor.size(); ++j) {
+    size_t k = j + thr_anchor.begin();
     size_t n = offset[j+1] - offset[j];
     if (!active_set.test(k)) {
       index += n;
-      if (!binary) value += n;
+      if (!is_binary) value += n;
       kkt_filter_.mark(&G[j]);
       kkt_filter_.mark(&U[j]);
       continue;
     }
     double g = 0, u = 0;
-    double d = binary ? exp(delta[k]) : delta[k];
+    double d = is_binary ? exp(delta_ptr[j]) : delta_ptr[j];
     // TODO unroll loop
     for (size_t o = 0; o < n; ++o) {
       auto i = *(index ++);
       double tau = 1 / ( 1 + dual_[i] );
-      if (binary) {
+      if (is_binary) {
         g -= y[i] * tau;
         u += std::min(tau*(1-tau)*d, .25);
         // u += tau * (1-tau);
@@ -303,15 +343,41 @@ void Darling::computeGradients(
   }
 }
 
-void Darling::updateDual(int grp, SizeR col_range, SArray<double> new_w) {
+void Darling::updateDual(
+  int grp, SizeR global_range, SArray<double> new_w, const int task_id) {
   SArray<double> delta_w(new_w.size());
-  auto& cur_w = w_->value(grp);
   auto& active_set = active_set_[grp];
-  auto& delta = delta_[grp];
+  // load data
+  Ocean::DataPack data_pack = ocean_.get(grp, global_range, task_id);
+  // on-demand usage
+  SArray<double> parameter_value(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_VALUE)]);
+  SArray<uint32> feature_key(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_KEY)]);
+  SArray<size_t> feature_offset(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_OFFSET)]);
+  SArray<double> feature_value(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_VALUE)]);
+  SArray<double> delta(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::DELTA)]);
+  SizeR anchor = ocean_.fetchAnchor(grp, global_range);
 
+  // check
+  CHECK_EQ(anchor.size(), parameter_value.size());
+  if (!feature_value.empty()) {
+    CHECK_EQ(feature_key.size(), feature_value.size());
+  }
+  CHECK_EQ(feature_offset.size(), anchor.size() + 1);
+  CHECK_EQ(feature_offset.size(), delta.size() + 1);
+  CHECK_EQ(
+    feature_offset.back() - feature_offset.front(),
+    feature_key.size());
+
+  // update weight
+  auto& cur_w = parameter_value;
   for (size_t i = 0; i < new_w.size(); ++i) {
-    size_t j = col_range.begin() + i;
-    double& cw = cur_w[j];
+    size_t j = anchor.begin() + i;
+    double& cw = cur_w[i];
     double& nw = new_w[i];
     if (kkt_filter_.marked(nw)) {
       active_set.clear(j);
@@ -320,41 +386,45 @@ void Darling::updateDual(int grp, SizeR col_range, SArray<double> new_w) {
       continue;
     }
     delta_w[i] = nw - cw;
-    delta[j] = newDelta(delta_w[i]);
+    delta[i] = newDelta(delta_w[i]);
     cw = nw;
   }
 
-  CHECK(X_[grp]);
-  SizeR row_range(0, X_[grp]->rows());
+  SizeR row_range(0, rows(grp));
   ThreadPool pool(FLAGS_num_threads);
   int npart = FLAGS_num_threads;
   for (int i = 0; i < npart; ++i) {
-    auto thr_range = row_range.evenDivide(npart, i);
-    if (thr_range.empty()) continue;
-    pool.add([this, grp, thr_range, col_range, delta_w]() {
-        updateDual(grp, thr_range, col_range, delta_w);
-      });
+    auto thr_row_range = row_range.evenDivide(npart, i);
+    if (thr_row_range.empty()) continue;
+    pool.add([this, grp, thr_row_range, anchor, delta_w,
+              &feature_key, &feature_offset, &feature_value, &delta]() {
+      updateDual(
+        grp, thr_row_range, anchor, delta_w,
+        feature_key, feature_offset, feature_value, delta);
+    });
   }
   pool.startWorkers();
 }
 
 void Darling::updateDual(
-    int grp, SizeR row_range, SizeR col_range, SArray<double> w_delta) {
-  CHECK_EQ(w_delta.size(), col_range.size());
-  CHECK(X_[grp]->colMajor());
+  int grp, SizeR th_row_range, SizeR anchor, SArray<double> w_delta,
+  SArray<uint32> feature_index,
+  SArray<size_t> feature_offset,
+  SArray<double> feature_value,
+  SArray<double> delta) {
+  CHECK_EQ(w_delta.size(), anchor.size());
 
   const auto& active_set = active_set_[grp];
   double* y = y_->value().data();
-  auto X = std::static_pointer_cast<
-    SparseMatrix<uint32, double>>(X_[grp]->colBlock(col_range));
-  size_t* offset = X->offset().data();
-  uint32* index = X->index().data() + offset[0];
-  double* value = X->value().data();
-  bool binary = X->binary();
 
+  size_t* offset = feature_offset.data();
+  uint32* index = feature_index.data();
+  double* value = feature_value.data();
+
+  bool is_binary = binary(grp);
   // j: column id, i: row id
-  for (size_t j = 0; j < X->cols(); ++j) {
-    size_t k  = j + col_range.begin();
+  for (size_t j = 0; j < anchor.size(); ++j) {
+    size_t k = j + anchor.begin();
     size_t n = offset[j+1] - offset[j];
     double wd = w_delta[j];
     if (wd == 0 || !active_set.test(k)) {
@@ -364,8 +434,8 @@ void Darling::updateDual(
     // TODO unroll the loop
     for (size_t o = offset[j]; o < offset[j+1]; ++o) {
       auto i = *(index++);
-      if (!row_range.contains(i)) continue;
-      dual_[i] *= binary ? exp(y[i] * wd) : exp(y[i] * wd * value[o]);
+      if (!th_row_range.contains(i)) continue;
+      dual_[i] *= is_binary ? exp(y[i] * wd) : exp(y[i] * wd * value[o - offset[0]]);
     }
   }
 }
