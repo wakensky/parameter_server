@@ -30,6 +30,11 @@ message Task {
   // time
   optional int32 time = 5;
   optional int32 wait_time = 6 [default = -1];
+  // The owner who has this task
+  //   For example, task UPDATE_MODEL x may derive some PUSH/PULL requests.
+  //   These derived requests belong to x, so their owner_time is x.
+  //   Ocean needs owner_time to trace the usage of column partitioned units.
+  optional int32 owner_time = 501;
 
   // the key range of this task
   optional PbRange key_range = 7;

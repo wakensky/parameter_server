@@ -150,6 +150,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     push_msg->addValue(local_gradients);
     g_key_range.to(push_msg->task.mutable_key_range());
     push_msg->task.set_key_channel(grp);
+    push_msg->task.set_owner_time(msg->task.time());
     push_msg->addFilter(FilterConfig::KEY_CACHING);
     CHECK_EQ(time, w_->push(push_msg));
 
@@ -169,6 +170,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     pull_msg->setKey(local_keys);
     g_key_range.to(pull_msg->task.mutable_key_range());
     pull_msg->task.set_key_channel(grp);
+    pull_msg->task.set_owner_time(msg->task.time());
     pull_msg->addFilter(FilterConfig::KEY_CACHING);
     // the callback for updating the local dual variable
     pull_msg->fin_handle = [this, grp, seg_pos, time, msg, g_key_range] () {

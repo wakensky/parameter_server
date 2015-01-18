@@ -72,7 +72,13 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
   // merge values, and store them in recved_val
   int t = msg->task.time();
   Range<K> key_range(msg->task.key_range());
-  SizeR idx_range = key_[chl].findRange(key_range);
+  SizeR idx_range = this->ocean().fetchAnchor(chl, key_range);
+
+  // load data
+  Ocean::DataPack data_pack = this->ocean().get(
+    chl, key_range, msg->task.owner_time());
+  SArray<Key> parameter_key(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
 
   recved_val_mu_.lock();
   auto& matched = recved_val_[t];
@@ -87,12 +93,12 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
       matched.first = idx_range;
       matched.second.push_back(SArray<V>());
       CHECK_EQ(parallelOrderedMatch(
-          recv_key, recv_data, key_[chl].segment(idx_range),
+          recv_key, recv_data, parameter_key,
           OpAssign<V>(), FLAGS_num_threads, &matched.second[i]), recv_key.size());
     } else {
       CHECK_EQ(matched.first, idx_range);
       CHECK_EQ(parallelOrderedMatch(
-          recv_key, recv_data, key_[chl].segment(idx_range),
+          recv_key, recv_data, parameter_key,
           OpPlus<V>(), FLAGS_num_threads, &matched.second[i]), recv_key.size());
     }
   }

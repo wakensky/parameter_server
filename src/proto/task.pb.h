@@ -438,6 +438,13 @@ class Task : public ::google::protobuf::Message {
   inline ::google::protobuf::int32 wait_time() const;
   inline void set_wait_time(::google::protobuf::int32 value);
 
+  // optional int32 owner_time = 501;
+  inline bool has_owner_time() const;
+  inline void clear_owner_time();
+  static const int kOwnerTimeFieldNumber = 501;
+  inline ::google::protobuf::int32 owner_time() const;
+  inline void set_owner_time(::google::protobuf::int32 value);
+
   // optional .PS.PbRange key_range = 7;
   inline bool has_key_range() const;
   inline void clear_key_range();
@@ -573,6 +580,8 @@ class Task : public ::google::protobuf::Message {
   inline void clear_has_time();
   inline void set_has_wait_time();
   inline void clear_has_wait_time();
+  inline void set_has_owner_time();
+  inline void clear_has_owner_time();
   inline void set_has_key_range();
   inline void clear_has_key_range();
   inline void set_has_key_channel();
@@ -597,15 +606,15 @@ class Task : public ::google::protobuf::Message {
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int type_;
+  ::google::protobuf::int32 time_;
+  ::std::string* customer_;
   bool request_;
   bool do_not_reply_;
   bool has_key_;
-  ::std::string* customer_;
-  ::google::protobuf::int32 time_;
   ::google::protobuf::int32 wait_time_;
   ::PS::PbRange* key_range_;
+  ::google::protobuf::int32 owner_time_;
   ::google::protobuf::int32 key_channel_;
-  int key_type_;
   ::google::protobuf::RepeatedField<int> value_type_;
   ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig > filter_;
   ::std::string* msg_;
@@ -615,9 +624,10 @@ class Task : public ::google::protobuf::Message {
   ::PS::LM::Call* linear_method_;
   ::PS::CallSketch* sketch_;
   ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo > partition_info_;
+  int key_type_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(19 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(20 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -1631,15 +1641,37 @@ inline void Task::set_wait_time(::google::protobuf::int32 value) {
   wait_time_ = value;
 }
 
-// optional .PS.PbRange key_range = 7;
-inline bool Task::has_key_range() const {
+// optional int32 owner_time = 501;
+inline bool Task::has_owner_time() const {
   return (_has_bits_[0] & 0x00000040u) != 0;
 }
-inline void Task::set_has_key_range() {
+inline void Task::set_has_owner_time() {
   _has_bits_[0] |= 0x00000040u;
 }
-inline void Task::clear_has_key_range() {
+inline void Task::clear_has_owner_time() {
   _has_bits_[0] &= ~0x00000040u;
+}
+inline void Task::clear_owner_time() {
+  owner_time_ = 0;
+  clear_has_owner_time();
+}
+inline ::google::protobuf::int32 Task::owner_time() const {
+  return owner_time_;
+}
+inline void Task::set_owner_time(::google::protobuf::int32 value) {
+  set_has_owner_time();
+  owner_time_ = value;
+}
+
+// optional .PS.PbRange key_range = 7;
+inline bool Task::has_key_range() const {
+  return (_has_bits_[0] & 0x00000080u) != 0;
+}
+inline void Task::set_has_key_range() {
+  _has_bits_[0] |= 0x00000080u;
+}
+inline void Task::clear_has_key_range() {
+  _has_bits_[0] &= ~0x00000080u;
 }
 inline void Task::clear_key_range() {
   if (key_range_ != NULL) key_range_->::PS::PbRange::Clear();
@@ -1671,13 +1703,13 @@ inline void Task::set_allocated_key_range(::PS::PbRange* key_range) {
 
 // optional int32 key_channel = 8;
 inline bool Task::has_key_channel() const {
-  return (_has_bits_[0] & 0x00000080u) != 0;
+  return (_has_bits_[0] & 0x00000100u) != 0;
 }
 inline void Task::set_has_key_channel() {
-  _has_bits_[0] |= 0x00000080u;
+  _has_bits_[0] |= 0x00000100u;
 }
 inline void Task::clear_has_key_channel() {
-  _has_bits_[0] &= ~0x00000080u;
+  _has_bits_[0] &= ~0x00000100u;
 }
 inline void Task::clear_key_channel() {
   key_channel_ = 0;
@@ -1693,13 +1725,13 @@ inline void Task::set_key_channel(::google::protobuf::int32 value) {
 
 // optional bool has_key = 9 [default = false];
 inline bool Task::has_has_key() const {
-  return (_has_bits_[0] & 0x00000100u) != 0;
+  return (_has_bits_[0] & 0x00000200u) != 0;
 }
 inline void Task::set_has_has_key() {
-  _has_bits_[0] |= 0x00000100u;
+  _has_bits_[0] |= 0x00000200u;
 }
 inline void Task::clear_has_has_key() {
-  _has_bits_[0] &= ~0x00000100u;
+  _has_bits_[0] &= ~0x00000200u;
 }
 inline void Task::clear_has_key() {
   has_key_ = false;
@@ -1715,13 +1747,13 @@ inline void Task::set_has_key(bool value) {
 
 // optional .PS.Task.DataType key_type = 13;
 inline bool Task::has_key_type() const {
-  return (_has_bits_[0] & 0x00000200u) != 0;
+  return (_has_bits_[0] & 0x00000400u) != 0;
 }
 inline void Task::set_has_key_type() {
-  _has_bits_[0] |= 0x00000200u;
+  _has_bits_[0] |= 0x00000400u;
 }
 inline void Task::clear_has_key_type() {
-  _has_bits_[0] &= ~0x00000200u;
+  _has_bits_[0] &= ~0x00000400u;
 }
 inline void Task::clear_key_type() {
   key_type_ = 0;
@@ -1790,13 +1822,13 @@ Task::mutable_filter() {
 
 // optional bytes msg = 101;
 inline bool Task::has_msg() const {
-  return (_has_bits_[0] & 0x00001000u) != 0;
+  return (_has_bits_[0] & 0x00002000u) != 0;
 }
 inline void Task::set_has_msg() {
-  _has_bits_[0] |= 0x00001000u;
+  _has_bits_[0] |= 0x00002000u;
 }
 inline void Task::clear_has_msg() {
-  _has_bits_[0] &= ~0x00001000u;
+  _has_bits_[0] &= ~0x00002000u;
 }
 inline void Task::clear_msg() {
   if (msg_ != &::google::protobuf::internal::kEmptyString) {
@@ -1860,13 +1892,13 @@ inline void Task::set_allocated_msg(::std::string* msg) {
 
 // optional .PS.ManageNode mng_node = 102;
 inline bool Task::has_mng_node() const {
-  return (_has_bits_[0] & 0x00002000u) != 0;
+  return (_has_bits_[0] & 0x00004000u) != 0;
 }
 inline void Task::set_has_mng_node() {
-  _has_bits_[0] |= 0x00002000u;
+  _has_bits_[0] |= 0x00004000u;
 }
 inline void Task::clear_has_mng_node() {
-  _has_bits_[0] &= ~0x00002000u;
+  _has_bits_[0] &= ~0x00004000u;
 }
 inline void Task::clear_mng_node() {
   if (mng_node_ != NULL) mng_node_->::PS::ManageNode::Clear();
@@ -1898,13 +1930,13 @@ inline void Task::set_allocated_mng_node(::PS::ManageNode* mng_node) {
 
 // optional .PS.ManageApp mng_app = 103;
 inline bool Task::has_mng_app() const {
-  return (_has_bits_[0] & 0x00004000u) != 0;
+  return (_has_bits_[0] & 0x00008000u) != 0;
 }
 inline void Task::set_has_mng_app() {
-  _has_bits_[0] |= 0x00004000u;
+  _has_bits_[0] |= 0x00008000u;
 }
 inline void Task::clear_has_mng_app() {
-  _has_bits_[0] &= ~0x00004000u;
+  _has_bits_[0] &= ~0x00008000u;
 }
 inline void Task::clear_mng_app() {
   if (mng_app_ != NULL) mng_app_->::PS::ManageApp::Clear();
@@ -1936,13 +1968,13 @@ inline void Task::set_allocated_mng_app(::PS::ManageApp* mng_app) {
 
 // optional .PS.CallSharedPara shared_para = 201;
 inline bool Task::has_shared_para() const {
-  return (_has_bits_[0] & 0x00008000u) != 0;
+  return (_has_bits_[0] & 0x00010000u) != 0;
 }
 inline void Task::set_has_shared_para() {
-  _has_bits_[0] |= 0x00008000u;
+  _has_bits_[0] |= 0x00010000u;
 }
 inline void Task::clear_has_shared_para() {
-  _has_bits_[0] &= ~0x00008000u;
+  _has_bits_[0] &= ~0x00010000u;
 }
 inline void Task::clear_shared_para() {
   if (shared_para_ != NULL) shared_para_->::PS::CallSharedPara::Clear();
@@ -1974,13 +2006,13 @@ inline void Task::set_allocated_shared_para(::PS::CallSharedPara* shared_para) {
 
 // optional .PS.LM.Call linear_method = 301;
 inline bool Task::has_linear_method() const {
-  return (_has_bits_[0] & 0x00010000u) != 0;
+  return (_has_bits_[0] & 0x00020000u) != 0;
 }
 inline void Task::set_has_linear_method() {
-  _has_bits_[0] |= 0x00010000u;
+  _has_bits_[0] |= 0x00020000u;
 }
 inline void Task::clear_has_linear_method() {
-  _has_bits_[0] &= ~0x00010000u;
+  _has_bits_[0] &= ~0x00020000u;
 }
 inline void Task::clear_linear_method() {
   if (linear_method_ != NULL) linear_method_->::PS::LM::Call::Clear();
@@ -2012,13 +2044,13 @@ inline void Task::set_allocated_linear_method(::PS::LM::Call* linear_method) {
 
 // optional .PS.CallSketch sketch = 302;
 inline bool Task::has_sketch() const {
-  return (_has_bits_[0] & 0x00020000u) != 0;
+  return (_has_bits_[0] & 0x00040000u) != 0;
 }
 inline void Task::set_has_sketch() {
-  _has_bits_[0] |= 0x00020000u;
+  _has_bits_[0] |= 0x00040000u;
 }
 inline void Task::clear_has_sketch() {
-  _has_bits_[0] &= ~0x00020000u;
+  _has_bits_[0] &= ~0x00040000u;
 }
 inline void Task::clear_sketch() {
   if (sketch_ != NULL) sketch_->::PS::CallSketch::Clear();

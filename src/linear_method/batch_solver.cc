@@ -309,7 +309,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       push_key->task.set_key_channel(grp);
       push_key->addFilter(FilterConfig::KEY_CACHING);
       CHECK_EQ(time, w_->push(push_key));
+      pull_time[i] = time;
 
+#if 0
       // time 2: fetch initial value of w_
       MessagePtr pull_val(new Message(kServerGroup, time+2, time+1));
       pull_val->setKey(w_->key(grp));
@@ -324,6 +326,11 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       CHECK_EQ(init_w.second.size(), 1);
       CHECK_EQ(w_->key(grp).size(), init_w.first.size());
       w_->value(grp) = init_w.second[0];
+#endif
+
+      // reset value to zero
+      w_->value(grp).resize(w_->key(grp).size());
+      w_->value(grp).setValue(0);
 
       // set the local variable
       auto X = X_[grp];
@@ -344,7 +351,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
       // CHECK_EQ(y_->value().size(), info->num_ex());
     }
-    // wait until all weight pull finished
+    // wait until all weight push finished
     for (int i = 0; i < grp_size; ++i) {
       w_->waitOutMsg(kServerGroup, pull_time[i]);
     }
@@ -360,7 +367,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       int chl = fea_grp_[i];
       w_->keyFilter(chl).clear();
       w_->value(chl).resize(w_->key(chl).size());
-      w_->value(chl).setValue(conf_.init_w());
+      w_->value(chl).setValue(0);
       w_->finish(kWorkerGroup, time+1);
     }
   }
