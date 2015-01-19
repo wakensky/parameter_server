@@ -14,7 +14,7 @@ class FreqencyFilter {
   SArray<K> queryKeys(const SArray<K>& key, int freqency);
 
   bool empty() { return count_.empty(); }
-  void resize(int n, int k) { count_.resize(n,k); }
+  void resize(int n, int k) { count_.resize(n,k,255); }
   void clear() { map_.clear(); count_.clear(); }
 
  private:
