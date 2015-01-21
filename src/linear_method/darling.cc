@@ -108,6 +108,12 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     // Ocean Test: dump
     ocean_.dump(grp, w_->key(grp), w_->value(grp), delta_[grp],
       std::static_pointer_cast<SparseMatrix<uint32, double>>(X_[grp]));
+
+    // release memory resource
+    w_->key(grp).clear();
+    w_->value(grp).clear();
+    delta_[grp].clear();
+    X_[grp].reset();
   }
 }
 
@@ -129,7 +135,7 @@ void Darling::updateModel(const MessagePtr& msg) {
   CHECK_EQ(call.fea_grp_size(), 1);
   int grp = call.fea_grp(0);
   Range<Key> g_key_range(call.key());
-  auto seg_pos = w_->find(grp, g_key_range);
+  auto anchor = ocean_.fetchAnchor(grp, g_key_range);
 
   if (IamWorker()) {
     // compute local gradients
@@ -143,10 +149,15 @@ void Darling::updateModel(const MessagePtr& msg) {
 
     mu_.unlock();
 
+    // load data
+    Ocean::DataPack data_pack = ocean_.get(grp, g_key_range, msg->task.time());
+    SArray<Key> parameter_key(
+      data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
+    CHECK_EQ(anchor.size(), parameter_key.size());
+
     // time 0: push local gradients
     MessagePtr push_msg(new Message(kServerGroup, time));
-    auto local_keys = w_->key(grp).segment(seg_pos);
-    push_msg->setKey(local_keys);
+    push_msg->setKey(parameter_key);
     push_msg->addValue(local_gradients);
     g_key_range.to(push_msg->task.mutable_key_range());
     push_msg->task.set_key_channel(grp);
@@ -167,16 +178,16 @@ void Darling::updateModel(const MessagePtr& msg) {
     // time 2: pull the updated model from servers
     msg->finished = false; // not finished until model updates are pulled
     MessagePtr pull_msg(new Message(kServerGroup, time+2, time+1));
-    pull_msg->setKey(local_keys);
+    pull_msg->setKey(parameter_key);
     g_key_range.to(pull_msg->task.mutable_key_range());
     pull_msg->task.set_key_channel(grp);
     pull_msg->task.set_owner_time(msg->task.time());
     pull_msg->addFilter(FilterConfig::KEY_CACHING);
     // the callback for updating the local dual variable
-    pull_msg->fin_handle = [this, grp, seg_pos, time, msg, g_key_range] () {
-      if (!seg_pos.empty()) {
+    pull_msg->fin_handle = [this, grp, anchor, time, msg, g_key_range] () {
+      if (!anchor.empty()) {
         auto data = w_->received(time+2);
-        CHECK_EQ(seg_pos, data.first); CHECK_EQ(data.second.size(), 1);
+        CHECK_EQ(anchor, data.first); CHECK_EQ(data.second.size(), 1);
         mu_.lock();
 
         // wakensky
@@ -220,9 +231,9 @@ void Darling::updateModel(const MessagePtr& msg) {
     w_->waitInMsg(kWorkerGroup, time);
 
     // time 1: update model
-    if (!seg_pos.empty()) {
+    if (!anchor.empty()) {
       auto data = w_->received(time);
-      CHECK_EQ(seg_pos, data.first);
+      CHECK_EQ(anchor, data.first);
       CHECK_EQ(data.second.size(), 2);
 
       this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
