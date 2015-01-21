@@ -77,7 +77,7 @@ void Darling::runIteration() {
     double rel = g_progress_[iter].relative_objv();
     if (rel > 0 && rel <= sol_cf.epsilon()) {
       if (reset_kkt_filter) {
-        LI << "Stopped: relative objective <= " << sol_cf.epsilon();
+        LL << "Expected Stopped: relative objective <= " << sol_cf.epsilon();
         break;
       } else {
         reset_kkt_filter = true;
@@ -86,7 +86,7 @@ void Darling::runIteration() {
       reset_kkt_filter = false;
     }
     if (iter == max_iter - 1) {
-      LI << "Reached maximal " << max_iter << " data passes";
+      LL << "Expected Stopped: Reached maximal " << max_iter << " data passes";
     }
   }
 }
