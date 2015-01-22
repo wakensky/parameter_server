@@ -200,18 +200,25 @@ bool BatchSolver::dataCache(const string& name, bool load) {
 }
 
 int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
-  if (!IamWorker()) return 0;
   bool hit_cache = loadCache("train");
-  if (!hit_cache) {
+  const int starting_time = msg->task.time() + 1;
+  const int finishing_time = starting_time + 1000000;
+  if (IamWorker()) {
     CHECK(conf_.has_local_cache());
-    slot_reader_.init(conf_.training_data(), conf_.local_cache(), &pathPicker());
+    slot_reader_.init(
+      conf_.training_data(), conf_.local_cache(), &pathPicker(),
+      w_, starting_time, finishing_time,
+      conf_.solver().countmin_k(),
+      conf_.solver().countmin_n_ratio());
     slot_reader_.read(info);
+  } else {
+    w_->waitInMsg(kWorkerGroup, finishing_time);
   }
   return hit_cache;
 }
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
-  int time = msg->task.time() * kPace;
+  int time = msg->task.time() * 1000000;
   int grp_size = get(msg).fea_grp_size();
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
@@ -243,6 +250,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         LI << "counted unique key [" << i + 1 << "/" << grp_size << "]";
       }
 
+#if 0
       MessagePtr count(new Message(kServerGroup, time));
       count->setKey(uniq_key);
       count->addValue(key_cnt);
@@ -253,9 +261,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       arg->set_countmin_k(conf_.solver().countmin_k());
       arg->set_countmin_n((int)(uniq_key.size()*conf_.solver().countmin_n_ratio()));
       CHECK_EQ(time, w_->push(count));
+#endif
 
       // time 2: pull filered keys
-      MessagePtr filter(new Message(kServerGroup, time+2, time+1));
+      MessagePtr filter(new Message(kServerGroup, time+2/*, time+1*/));
       filter->setKey(uniq_key);
       filter->task.set_key_channel(grp);
       filter->addFilter(FilterConfig::KEY_CACHING)->set_clear_cache_if_done(true);
@@ -377,9 +386,11 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
     saveCache("train");
   } else {
     for (int i = 0; i < grp_size; ++i, time += kPace) {
+#if 0
       if (hit_cache) continue;
       w_->waitInMsg(kWorkerGroup, time);
       w_->finish(kWorkerGroup, time+1);
+#endif
     }
     for (int i = 0; i < grp_size; ++i, time += kPace) {
       w_->waitInMsg(kWorkerGroup, time);

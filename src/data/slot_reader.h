@@ -3,6 +3,7 @@
 #include "proto/example.pb.h"
 #include "data/common.h"
 #include "system/path_picker.h"
+#include "parameter/kv_vector.h"
 
 namespace PS {
 
@@ -11,12 +12,17 @@ class SlotReader {
  public:
   SlotReader() { }
   SlotReader(const DataConfig& data, const DataConfig& cache,
-    PathPicker* path_picker) {
-    init(data, cache, path_picker);
+    PathPicker* path_picker, KVVectorPtr<Key,double> w,
+    const int start_time, const int finishing_time,
+    const int count_min_k, const float count_min_n) {
+    init(data, cache, path_picker, w, start_time, finishing_time,
+         count_min_k, count_min_n);
   }
 
   void init(const DataConfig& data, const DataConfig& cache,
-    PathPicker* path_picker);
+    PathPicker* path_picker, KVVectorPtr<Key,double> w,
+    const int start_time, const int finishing_time,
+    const int count_min_k, const float count_min_n);
 
   // first read, then save
   int read(ExampleInfo* info = nullptr);
@@ -35,6 +41,13 @@ class SlotReader {
     index_cache_.erase(slot_id);
   }
 
+  // get all column partitions belong to slot_id
+  // type_str: colidx, value, rowsiz, colidx_sorted_uniq
+  void getAllPartitions(
+    const int slot_id,
+    const string& type_str,
+    std::vector<std::pair<string, SizeR>>& out_partitions);
+
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
   size_t nnzEle(int slot_id) const;
@@ -50,6 +63,11 @@ class SlotReader {
   std::unordered_map<int, SArray<size_t>> offset_cache_;
   std::unordered_map<int, SArray<uint64>> index_cache_;
   PathPicker* path_picker_;
+  KVVectorPtr<Key,double> w_;
+  std::atomic_int time_;
+  int finishing_time_;
+  int count_min_k_;
+  float count_min_n_;
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) const {

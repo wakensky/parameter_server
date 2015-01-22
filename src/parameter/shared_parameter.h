@@ -116,12 +116,14 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
     if (key_filter_ignore_chl_) chl = 0;
     if (call.insert_key_freq() && req && !msg->value.empty()) {
       auto& filter = key_filter_[chl];
-      if (filter.empty()) {
+      if (filter.empty() && !msg->key.empty()) {
         double w = (double)FLAGS_num_workers;
+        const int scale = static_cast<int>(
+          SArray<K>(msg->key).size() * call.countmin_n());
         filter.resize(
-            std::max((int)(w*call.countmin_n()/log(w+1)), 64), call.countmin_k());
+            std::max((int)(w*scale/log(w+1)), 64), call.countmin_k());
       }
-      filter.insertKeys(SArray<K>(msg->key), SArray<uint32>(msg->value[0]));
+      filter.insertKeys(SArray<K>(msg->key), SArray<uint8>(msg->value[0]));
     }
     if (call.has_query_key_freq()) {
       if (req) {

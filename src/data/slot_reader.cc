@@ -15,11 +15,19 @@ DEFINE_int32(num_downloading_threads,
 DECLARE_bool(verbose);
 
 void SlotReader::init(const DataConfig& data, const DataConfig& cache,
-  PathPicker* path_picker) {
+  PathPicker* path_picker, KVVectorPtr<Key,double> w,
+  const int start_time, const int finishing_time,
+  const int count_min_k, const float count_min_n) {
   CHECK(data.format() == DataConfig::TEXT);
   if (cache.file_size()) dump_to_disk_ = true;
   data_ = data;
   path_picker_ = path_picker;
+  w_ = w;
+  CHECK(w_);
+  time_ = start_time;
+  finishing_time_ = finishing_time;
+  count_min_k_ = count_min_k;
+  count_min_n_ = count_min_n;
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
@@ -61,6 +69,10 @@ int SlotReader::read(ExampleInfo* info) {
   for (int i = 0; i < info_.slot_size(); ++i) {
     slot_info_[info_.slot(i).id()] = info_.slot(i);
   }
+
+  // send the closing message to servers
+  MessagePtr boundary(new Message(kServerGroup, finishing_time_));
+  CHECK_EQ(finishing_time_, w_->push(boundary));
   return 0;
 }
 
@@ -115,7 +127,9 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     }
 
     bool appendToFile(
-      PathPicker* path_picker, const int slot_id, const string& prefix) {
+      PathPicker* path_picker, const int slot_id, const string& prefix,
+      KVVectorPtr<Key,double> w, const int push_time,
+      const int count_min_k, const float count_min_n) {
       const string kPartitionSuffix = ".partition";
       CHECK(nullptr != path_picker);
       // lambda: append "start\tsize\n" to the file that contains partition info
@@ -149,6 +163,54 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(path));
       appendPartitionInfo(start, row_compressed.activeMemSize(), path + kPartitionSuffix);
+
+      if (!col_idx.empty()) {
+        // sort
+        parallelSort(&col_idx, FLAGS_num_threads,
+          [](const uint64& a, const uint64& b) { return a < b; });
+
+        // unique and count
+        SArray<uint64> unique_key;
+        unique_key.reserve(col_idx.size() / 8 + 1);
+        SArray<uint8> count_key;
+        count_key.reserve(col_idx.size() / 8 + 1);
+
+        auto current_key = col_idx.front();
+        size_t current_cnt = 0;
+        for (size_t i = 0; i < col_idx.size(); ++i) {
+          if (current_key != col_idx[i]) {
+            unique_key.pushBack(current_key);
+            count_key.pushBack(current_cnt < kuint8max ? current_cnt : kuint8max);
+
+            // reset
+            current_key = col_idx[i];
+            current_cnt = 0;
+          }
+          ++current_cnt;
+        }
+        // the last key
+        unique_key.pushBack(current_key);
+        count_key.pushBack(current_cnt < kuint8max ? current_cnt : kuint8max);
+
+        // push unique keys with their counts to servers
+        MessagePtr count(new Message(kServerGroup, push_time));
+        count->setKey(unique_key);
+        count->addValue(count_key);
+        count->task.set_key_channel(slot_id);
+        Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
+          count->task.mutable_key_range());
+        w->set(count)->set_insert_key_freq(true);
+        w->set(count)->set_countmin_k(count_min_k);
+        w->set(count)->set_countmin_n(count_min_n);
+        CHECK_EQ(push_time, w->push(count));
+
+        // dump unique keys to disk
+        path = path_picker->getPath(prefix + ".colidx_sorted_uniq");
+        start = File::size(path);
+        auto unique_key_compressed = unique_key.compressTo();
+        CHECK(unique_key_compressed.appendToFile(path));
+        appendPartitionInfo(start, unique_key_compressed.activeMemSize(), path + kPartitionSuffix);
+      }
 
       return true;
     }
@@ -208,7 +270,9 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         continue;
       }
       // append to disk file
-      CHECK(slot.appendToFile(this->path_picker_, i, cacheName(data, i)));
+      CHECK(slot.appendToFile(
+        this->path_picker_, i, cacheName(data, i),
+        w_, time_++, count_min_k_, count_min_n_));
       slot.clear();
     }
 
@@ -231,7 +295,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       ++vslot.cumulative_row_siz_size;
     }
     CHECK(vslot.appendToFile(
-      this->path_picker_, i, cacheName(data, i)));
+      this->path_picker_, i, cacheName(data, i),
+      w_, time_++, count_min_k_, count_min_n_));
   }
 
   // generate info
@@ -298,8 +363,8 @@ SArray<size_t> SlotReader::offset(int slot_id) {
 
 bool SlotReader::assemblePartitions(
   SArray<char>& out, SArray<char>& in, const string& partition_file_name) const {
+  out.clear();
   if (in.empty()) {
-    out.clear();
     return true;
   }
 
@@ -336,5 +401,33 @@ bool SlotReader::assemblePartitions(
   }
 
   return true;
+}
+
+void SlotReader::getAllPartitions(
+  const int slot_id,
+  const string& type_str,
+  std::vector<std::pair<string, SizeR>>& out_partitions) {
+  out_partitions.clear();
+
+  for (int file_idx = 0; file_idx < data_.file_size(); ++file_idx) {
+    string data_path = path_picker_->getPath(cacheName(
+      ithFile(data_, file_idx), slot_id) + "." + type_str);
+
+    string partition_info_path = data_path + ".partition";
+    File* partition_info_file = File::openOrDie(partition_info_path, "r");
+    const size_t kLineMaxLen = 1024;
+    char line[kLineMaxLen + 1];
+    while (nullptr != partition_info_file->readLine(line, kLineMaxLen)) {
+      auto vec = split(line, '\t');
+      CHECK_EQ(2, vec.size());
+
+      out_partitions.push_back(std::make_pair(
+        data_path,
+        SizeR(
+          std::stoull(vec[0], nullptr),
+          std::stoull(vec[0], nullptr) + std::stoull(vec[1], nullptr))));
+    }
+    partition_info_file->close();
+  }
 }
 } // namespace PS

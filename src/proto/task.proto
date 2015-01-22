@@ -115,7 +115,7 @@ message CallSharedPara {
 
   optional bool insert_key = 5;
 
-  optional int32 countmin_n = 6;
+  optional double countmin_n = 6;
   optional int32 countmin_k = 7;
 
   // it's a replica request
