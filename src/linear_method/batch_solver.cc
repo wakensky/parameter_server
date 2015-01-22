@@ -361,6 +361,8 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // release
       w_->key(grp).clear();
       w_->value(grp).clear();
+      delta_[grp].clear();
+      { Lock l(mu_); X_[grp].reset(); }
     }
     // the label
     if (!hit_cache) {
@@ -402,6 +404,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // release
       w_->key(chl).clear();
       w_->value(chl).clear();
+      delta_[chl].clear();
 
       w_->finish(kWorkerGroup, time+1);
     }

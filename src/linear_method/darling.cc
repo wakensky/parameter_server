@@ -100,7 +100,6 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   }
   for (int grp : fea_grp_) {
     // release memory resource
-    delta_[grp].clear();
     X_[grp].reset();
   }
 }
