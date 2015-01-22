@@ -304,6 +304,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         CHECK(ocean_.dump(grp, w_->key(grp), w_->value(grp), delta_[grp],
           std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
 
+
         { Lock l(mu_); X_[grp] = X; }
       };
       CHECK_EQ(time+2, w_->pull(filter));
@@ -325,6 +326,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       push_key->addFilter(FilterConfig::KEY_CACHING);
       CHECK_EQ(time, w_->push(push_key));
       pull_time[i] = time;
+
 
 #if 0
       // time 2: fetch initial value of w_
@@ -355,6 +357,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
         dual_.eigenVector() = *X * w_->value(grp).eigenVector();
       }
+
+      // release
+      w_->key(grp).clear();
+      w_->value(grp).clear();
     }
     // the label
     if (!hit_cache) {
@@ -392,6 +398,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // dump to Ocean
       ocean_.dump(chl, w_->key(chl), w_->value(chl), delta_[chl],
         SparseMatrixPtr<uint32, double>(new SparseMatrix<uint32, double>()));
+
+      // release
+      w_->key(chl).clear();
+      w_->value(chl).clear();
 
       w_->finish(kWorkerGroup, time+1);
     }
