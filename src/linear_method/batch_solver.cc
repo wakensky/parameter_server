@@ -289,6 +289,21 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
         }
 
+        // reset delta
+        delta_[grp].resize(w_->key(grp).size());
+        delta_[grp].setValue(conf_.darling().delta_init_value());
+
+        // reset active_set
+        active_set_[grp].resize(w_->key(grp).size(), true);
+
+        // reset parameter_value
+        w_->value(grp).resize(w_->key(grp).size());
+        w_->value(grp).setValue(0);
+
+        // dump to Ocean
+        CHECK(ocean_.dump(grp, w_->key(grp), w_->value(grp), delta_[grp],
+          std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
+
         { Lock l(mu_); X_[grp] = X; }
       };
       CHECK_EQ(time+2, w_->pull(filter));
@@ -328,10 +343,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->value(grp) = init_w.second[0];
 #endif
 
-      // reset value to zero
-      w_->value(grp).resize(w_->key(grp).size());
-      w_->value(grp).setValue(0);
-
       // set the local variable
       auto X = X_[grp];
       if (!X) continue;
@@ -366,8 +377,22 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->waitInMsg(kWorkerGroup, time);
       int chl = fea_grp_[i];
       w_->keyFilter(chl).clear();
+
+      // reset parameter_value
       w_->value(chl).resize(w_->key(chl).size());
       w_->value(chl).setValue(0);
+
+      // reset delta
+      delta_[chl].resize(w_->key(chl).size());
+      delta_[chl].setValue(conf_.darling().delta_init_value());
+
+      // reset active_set
+      active_set_[chl].resize(w_->key(chl).size(), true);
+
+      // dump to Ocean
+      ocean_.dump(chl, w_->key(chl), w_->value(chl), delta_[chl],
+        SparseMatrixPtr<uint32, double>(new SparseMatrix<uint32, double>()));
+
       w_->finish(kWorkerGroup, time+1);
     }
   }

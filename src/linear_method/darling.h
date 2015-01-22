@@ -45,8 +45,6 @@ class Darling : public BatchSolver {
     return std::min(conf_.darling().delta_max_value(), 2 * fabs(delta_w) + .1);
   }
 
-  std::unordered_map<int, Bitmap> active_set_;
-  std::unordered_map<int, SArray<double>> delta_;
   // {nnz_w, objv} for each column partitioned unit on servers
   std::unordered_map<
     Ocean::UnitID,

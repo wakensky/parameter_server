@@ -99,16 +99,6 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
   }
   for (int grp : fea_grp_) {
-    size_t n = w_->key(grp).size();
-    active_set_[grp].resize(n, true);
-    delta_[grp].resize(n);
-    delta_[grp].setValue(conf_.darling().delta_init_value());
-
-    // wakensky
-    // Ocean Test: dump
-    ocean_.dump(grp, w_->key(grp), w_->value(grp), delta_[grp],
-      std::static_pointer_cast<SparseMatrix<uint32, double>>(X_[grp]));
-
     // release memory resource
     w_->key(grp).clear();
     w_->value(grp).clear();

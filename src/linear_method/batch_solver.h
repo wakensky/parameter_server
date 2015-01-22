@@ -1,4 +1,5 @@
 #pragma once
+#include "base/bitmap.h"
 #include "linear_method/linear_method.h"
 #include "data/slot_reader.h"
 
@@ -53,6 +54,8 @@ class BatchSolver : public LinearMethod {
   // dual_ = X * w
   SArray<double> dual_;
   std::array<MatrixInfo, 2048> matrix_info_;
+  std::unordered_map<int, Bitmap> active_set_;
+  std::unordered_map<int, SArray<double>> delta_;
 
 
   std::mutex mu_;
