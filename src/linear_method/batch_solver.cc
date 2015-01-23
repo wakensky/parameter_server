@@ -222,8 +222,8 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
 }
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
-  int time = msg->task.time() * 1000000;
-  int push_initial_key_time = time + 1000000;
+  int pull_time = msg->task.time() * 1000000;
+  int push_initial_key_time = pull_time + 1000000;
   const int grp_size = get(msg).fea_grp_size();
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
@@ -231,6 +231,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
   if (IamWorker()) {
     std::vector<std::promise<void>> wait_dual(grp_size);
     std::vector<std::shared_ptr<PreprocessHelper>> preprocess_helpers;
+    std::vector<int> pushed_initial_time(grp_size);
 
     // initialize preprocess helper
     for (int i = 0; i < grp_size; ++i) {
@@ -245,7 +246,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       1, conf_.solver().max_num_parallel_groups_in_preprocessing());
 
     // whether the associated group could run
-    auto groupCouldGo =
+    auto groupCouldPull =
       [this, max_parallel](
       std::vector<std::shared_ptr<PreprocessHelper>>& helpers,
       const int grp_order) -> bool {
@@ -269,7 +270,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       }
     };
 
-    auto allGroupFinished = [](std::vector<std::shared_ptr<PreprocessHelper>>& preprocess_helpers) -> bool {
+    auto allPullFinished = [](std::vector<std::shared_ptr<PreprocessHelper>>& preprocess_helpers) -> bool {
       for (auto helper : preprocess_helpers) {
         if (PreprocessHelper::Status::FINISHED != helper->getStatus()) {
           return false;
@@ -278,22 +279,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       return true;
     };
 
-    auto actionOnGroupFinish =
+    auto compute =
       [this, grp_size](
-      const int grp_order, int& push_initial_key_time,
-      std::shared_ptr<PreprocessHelper> preprocess_helper,
-      std::promise<void>& wait_dual) {
+      const int grp_order, SArray<Key> keys) {
       const int grp_id = fea_grp_.at(grp_order);
-
-      // push initial keys to servers
-      MessagePtr push_initial_key(
-        new Message(kServerGroup, push_initial_key_time));
-      push_initial_key->setKey(w_->key(grp_id));
-      push_initial_key->task.set_key_channel(grp_id);
-      push_initial_key->fin_handle = [this, &wait_dual] () mutable {
-        wait_dual.set_value();
-      };
-      CHECK_EQ(push_initial_key_time++, w_->push(push_initial_key));
 
       // global -> local
       Localizer<Key, double> *localizer = new Localizer<Key, double>();
@@ -306,7 +295,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       }
       this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
       auto X = localizer->remapIndex(
-        grp_id, w_->key(grp_id), &slot_reader_);
+        grp_id, keys, &slot_reader_);
       delete localizer;
       slot_reader_.clear(grp_id);
       this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
@@ -341,51 +330,98 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       }
 
       // reset active_set
-      active_set_[grp_id].resize(w_->key(grp_id).size(), true);
+      active_set_[grp_id].resize(keys.size(), true);
 
       // reset parameter_value
-      w_->value(grp_id).resize(w_->key(grp_id).size());
-      w_->value(grp_id).setValue(0);
+      SArray<double> values;
+      values.resize(keys.size());
+      values.setValue(0);
 
       // reset delta
-      delta_[grp_id].resize(w_->key(grp_id).size());
+      delta_[grp_id].resize(keys.size());
       delta_[grp_id].setValue(conf_.darling().delta_init_value());
 
       // dump to Ocean
-      CHECK(ocean_.dump(grp_id, w_->key(grp_id), w_->value(grp_id),
+      CHECK(ocean_.dump(grp_id, keys, values,
         delta_[grp_id],
         std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
 
       // release memory resource
-      w_->clear(grp_id);
       delta_[grp_id].clear();
-
-      // mark as finished
-      preprocess_helper->setStatus(PreprocessHelper::Status::FINISHED);
-      // wait_dual.set_value();
     };
 
+    // pull loop
     while (true) {
       for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
         auto helper = preprocess_helpers.at(grp_order);
-        if (!groupCouldGo(preprocess_helpers, grp_order)) {
+        if (!groupCouldPull(preprocess_helpers, grp_order)) {
           continue;
         }
 
-        time = helper->pullNextFilter(time);
+        pull_time = helper->pullNextFilter(pull_time);
         if (helper->allFiltersFinished()) {
-          actionOnGroupFinish(
-            grp_order, push_initial_key_time, helper, wait_dual.at(grp_order));
-        }
-      }  // group loop
+          // stash w_->key(grp_id) on disk
+          std::stringstream ss;
+          ss << "key_stash." << fea_grp_.at(grp_order);
+          const string key_path = path_picker_.getPath(ss.str());
+          CHECK(w_->key(fea_grp_.at(grp_order)).writeToFile(key_path));
 
-      if (allGroupFinished(preprocess_helpers)) {
+          // release w_->key
+          w_->key(fea_grp_.at(grp_order)).clear();
+
+          // finish tag
+          helper->setStatus(PreprocessHelper::Status::FINISHED);
+        }
+      }
+
+      if (allPullFinished(preprocess_helpers)) {
         break;
       } else {
         // not all groups finished, sleep for a while
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
       }
-    } // preprocess cycle for worker
+    } // pull loop for worker
+
+    // computation loop
+    for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
+      // load keys from disk
+      std::stringstream ss;
+      ss << "key_stash." << fea_grp_.at(grp_order);
+      const string key_path = path_picker_.getPath(ss.str());
+      SArray<char> stash;
+      CHECK(stash.readFromFile(key_path));
+      SArray<Key> keys(stash);
+
+      // compute and dump
+      compute(grp_order, keys);
+    }
+
+    // push initial keys
+    for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
+      if (grp_order >= max_parallel) {
+        w_->waitOutMsg(kServerGroup, pushed_initial_time.at(grp_order - max_parallel));
+      }
+
+      // load keys from disk
+      std::stringstream ss;
+      ss << "key_stash." << fea_grp_.at(grp_order);
+      const string key_path = path_picker_.getPath(ss.str());
+      SArray<char> stash;
+      CHECK(stash.readFromFile(key_path));
+      SArray<Key> keys(stash);
+
+      MessagePtr push_initial_key(
+        new Message(kServerGroup, push_initial_key_time));
+      push_initial_key->setKey(keys);
+      push_initial_key->task.set_key_channel(fea_grp_.at(grp_order));
+      push_initial_key->fin_handle = [this, &wait_dual, grp_order] {
+        wait_dual.at(grp_order).set_value();
+      };
+      CHECK_EQ(push_initial_key_time, w_->push(push_initial_key));
+      pushed_initial_time.at(grp_order) = push_initial_key_time++;
+    }
+
+    // wait until all initial keys push finished
     for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
       wait_dual.at(grp_order).get_future().wait();
     }

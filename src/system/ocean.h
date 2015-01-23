@@ -182,6 +182,14 @@ class Ocean {
     // save {parameter_key, parameter_value} pairs to path
     bool saveModel(const string& path);
 
+    // save blockcache and anchor information to disk
+    // NOT THREAD SAFE
+    bool snapshot();
+
+    // read blockcache and anchor information from disk, then Ocean can run
+    // NOT THREAD SAFE
+    bool resume();
+
   private: // internal types
     enum class UnitStatus: unsigned char {
       INIT = 0,

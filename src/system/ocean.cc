@@ -291,6 +291,145 @@ bool Ocean::saveModel(const string& path) {
   return true;
 }
 
+bool Ocean::snapshot() {
+  // blockcache
+  std::stringstream ss;
+  ss << identity_ << ".blockcache.ocean.guide";
+  const string blockcache_guide_path = path_picker_->getPath(ss.str());
+  File* blockcache_file = File::openOrDie(blockcache_guide_path, "w");
+  for (const auto& unit : units_) {
+    size_t data_source = 0;
+    for (const auto& path : unit.second.path_pack.path) {
+      if (!path.empty()) {
+        std::stringstream line;
+        line << unit.first.grp_id << "\t" <<
+          unit.first.global_range.begin() << "\t" <<
+          unit.first.global_range.end() << "\t" <<
+          data_source << "\t" <<
+          path << "\t" <<
+          File::size(path) << "\n";
+        CHECK_EQ(blockcache_file->writeString(line.str()), line.str().size());
+      }
+      data_source++;
+    }
+  }
+  CHECK(blockcache_file->close());
+
+  // anchor
+  ss.str("");
+  ss << identity_ << ".anchor.ocean.guide";
+  const string anchor_guide_path = path_picker_->getPath(ss.str());
+  File* anchor_file = File::openOrDie(anchor_guide_path, "w");
+  for (const auto& anchor : anchors_) {
+    std::stringstream line;
+    line << anchor.first.grp_id << "\t" <<
+      anchor.first.global_range.begin() << "\t" <<
+      anchor.first.global_range.end() << "\t" <<
+      anchor.second.begin() << "\t" <<
+      anchor.second.end() << "\n";
+    CHECK_EQ(anchor_file->writeString(line.str()), line.str().size());
+  }
+  CHECK(anchor_file->close());
+
+  return true;
+}
+
+bool Ocean::resume() {
+  // blockcache
+  std::stringstream ss;
+  ss << identity_ << ".blockcache.ocean.guide";
+  const string blockcache_guide_path = path_picker_->getPath(ss.str());
+  File* blockcache_file = File::openOrDie(blockcache_guide_path, "r");
+
+  const size_t kBufLen = 2048;
+  char buf[kBufLen + 1];
+  while (nullptr != blockcache_file->readLine(buf, kBufLen)) {
+    string line(buf);
+
+    // remove tailing line-break
+    if (!line.empty() && '\n' == line.back()) {
+      line.resize(line.size() - 1);
+    }
+
+    try {
+      const auto vec = split(line, '\t');
+      if (6 != vec.size()) {
+        throw std::runtime_error("wrong column number (blockcache)");
+      }
+
+      UnitID unit_id;
+      unit_id.grp_id = std::stoul(vec.at(0));
+      unit_id.global_range.set(std::stoull(vec.at(1)), std::stoull(vec.at(2)));
+      const size_t data_source = std::stoul(vec.at(3));
+      const string path = vec.at(4);
+      const size_t size = std::stoull(vec.at(5));
+      if (data_source >= static_cast<size_t>(DataSource::NUM)) {
+        throw std::runtime_error("illegal data source");
+      }
+      if (DataSource::PARAMETER_VALUE != static_cast<DataSource>(data_source) &&
+          DataSource::DELTA != static_cast<DataSource>(data_source)) {
+        if (size != File::size(path)) {
+          throw std::runtime_error(
+            std::to_string(size) + " vs " + std::to_string(File::size(path)) +
+            " file size does not match");
+        }
+      } else {
+        // truncate mutable files to empty
+        File *truncate_file = File::openOrDie(path, "w");
+        truncate_file->close();
+      }
+
+      UnitHashMap::accessor accessor;
+      if (units_.find(accessor, unit_id)) {
+      } else {
+        units_.insert(accessor, unit_id);
+      }
+      accessor->second.path_pack.path.at(data_source) = path;
+    } catch (std::exception& e) {
+      LL << "Ocean::resume encountered wrong blockcache info [" << line << "]";
+      blockcache_file->close();
+      return false;
+    }
+  }
+  blockcache_file->close();
+
+  // anchor
+  anchors_.clear();
+  ss.str("");
+  ss << identity_ << ".anchor.ocean.guide";
+  const string anchor_guide_path = path_picker_->getPath(ss.str());
+  File* anchor_file = File::openOrDie(anchor_guide_path, "r");
+  while (nullptr != anchor_file->readLine(buf, kBufLen)) {
+    string line(buf);
+
+    // remove tailing line-break
+    if (!line.empty() && '\n' == line.back()) {
+      line.resize(line.size() - 1);
+    }
+
+    try {
+      const auto vec = split(line, '\t');
+      if (5 !=vec.size()) {
+        throw std::runtime_error("wrong column number (anchor)");
+      }
+
+      UnitID unit_id;
+      unit_id.grp_id = std::stoul(vec.at(0));
+      unit_id.global_range.set(std::stoul(vec.at(1)), std::stoul(vec.at(2)));
+      SizeR anchor(std::stoull(vec.at(3)), std::stoull(vec.at(4)));
+
+      anchors_[unit_id] = anchor;
+    } catch (std::exception& e) {
+      LL << "Ocean::resume encountered wrong anchor info [" << line << "]";
+      anchor_file->close();
+      return false;
+    }
+  }
+  anchor_file->close();
+
+  return true;
+}
+
 void Ocean::prefetchThreadFunc() {
   while (go_on_) {
     // take out a UnitID which needs prefetch
