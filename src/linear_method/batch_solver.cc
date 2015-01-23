@@ -284,6 +284,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // global -> local
       Localizer<Key, double> *localizer = new Localizer<Key, double>();
+#if 0
       // wakensky: old remapIndex
       SArray<Key> uniq_key;
       SArray<uint32> key_cnt;
@@ -294,6 +295,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
       auto X = localizer->remapIndex(
         grp_id, keys, &slot_reader_);
+#endif
+      auto X = localizer->remapIndex(
+        grp_id, keys, &slot_reader_, &path_picker_, myNodeID());
       delete localizer;
       slot_reader_.clear(grp_id);
       this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);

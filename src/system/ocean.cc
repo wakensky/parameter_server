@@ -387,7 +387,7 @@ bool Ocean::resume() {
       !File::exists(anchor_guide_path.c_str()) ||
       !File::exists(count_guide_path.c_str()) ||
       !File::exists(matrix_summary_path.c_str())) {
-    LL << "Ocean::resume failed: key guide files not found";
+    LL << "Ocean::resume: key guide files not found";
     return false;
   }
 

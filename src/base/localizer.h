@@ -1,4 +1,5 @@
 #pragma once
+#include <tbb/concurrent_vector.h>
 #include "base/shared_array_inl.h"
 #include "base/sparse_matrix.h"
 #include "util/parallel_sort.h"
@@ -27,6 +28,9 @@ class Localizer {
       const MatrixInfo& info, const SArray<size_t>& offset,
       const SArray<I>& index, const SArray<V>& value,
       const SArray<I>& idx_dict) const;
+  MatrixPtr<V> remapIndex(
+    int grp_id, const SArray<I>& idx_dict, SlotReader* slot_reader,
+    PathPicker* path_picker, const string& node_id) const;
   void clear() { pair_.clear(); }
  private:
 #pragma pack(4)
@@ -84,6 +88,156 @@ void Localizer<I,V>::countUniqIndex(
   // index_.writeToFile("index");
   // uniq_idx->writeToFile("uniq");
   // idx_frq->writeToFile("cnt");
+}
+
+template<typename I, typename V>
+MatrixPtr<V> Localizer<I,V>::remapIndex(
+  int grp_id, const SArray<I>& idx_dict, SlotReader* slot_reader,
+  PathPicker* path_picker, const string& node_id) const {
+  if (idx_dict.empty()) {
+    return MatrixPtr<V>();
+  }
+  CHECK(nullptr != slot_reader);
+  CHECK(nullptr != path_picker);
+
+  auto info = slot_reader->info<V>(grp_id);
+  CHECK_NE(info.type(), MatrixInfo::DENSE)
+      << "dense matrix already have compact indeces\n" << info.DebugString();
+
+  // all global key partitions associated with the group
+  std::vector<std::pair<string, SizeR>> global_key_partitions;
+  slot_reader->getAllPartitions(grp_id, "colidx", global_key_partitions);
+
+  // sub thread function, generate local keys partition by partition
+  std::atomic_size_t partition_idx(0);
+  std::atomic_size_t global_matched(0);
+  tbb::concurrent_vector<string> remapped_idx_path(global_key_partitions.size());
+  auto thr_generate_remapped_idx =
+    [this, &global_key_partitions, &partition_idx, &remapped_idx_path,
+     &idx_dict, &node_id, path_picker, &global_matched]() {
+    while (true) {
+      size_t my_partition_idx = partition_idx++;
+      if (my_partition_idx >= global_key_partitions.size()) {
+        // all partitions done
+        break;
+      }
+      size_t in_partition_matched = 0;
+
+      // fetch next partition
+      std::pair<string, SizeR> partition;
+      partition = global_key_partitions.at(my_partition_idx);
+
+      // load from disk
+      SArray<char> compressed;
+      compressed.readFromFile(partition.second, partition.first);
+      SArray<Key> global_keys;
+      global_keys.uncompressFrom(compressed);
+      compressed.clear();
+
+      // sorted pair: {global key, its index}
+      SArray<Pair> pair;
+      pair.resize(global_keys.size());
+      for (size_t i = 0; i < global_keys.size(); ++i) {
+        pair[i].k = global_keys[i];
+        pair[i].i = i;
+      }
+      global_keys.clear();
+      parallelSort(&pair, FLAGS_num_threads, [](const Pair& a, const Pair& b) {
+        return a.k < b.k;});
+
+      // generate local keys
+      SArray<uint32> remapped_idx(pair.size(), 0);
+      const I* cur_dict = idx_dict.begin();
+      const Pair* cur_pair = pair.begin();
+      while (cur_dict != idx_dict.end() && cur_pair != pair.end()) {
+        if (*cur_dict < cur_pair->k) {
+          ++cur_dict;
+        } else {
+          if (*cur_dict == cur_pair->k) {
+            remapped_idx[cur_pair->i] = (uint32)(cur_dict - idx_dict.begin()) + 1;
+            ++in_partition_matched;
+          }
+          ++cur_pair;
+        }
+      };
+
+      // dump local keys
+      string path = path_picker->getPath(
+        node_id + ".partitioned_remapped_idx." + std::to_string(my_partition_idx));
+      CHECK(remapped_idx.writeToFile(path));
+      remapped_idx_path[my_partition_idx] = path;
+      global_matched += in_partition_matched;
+    };
+  };
+
+  {
+    ThreadPool pool(FLAGS_num_threads);
+    for (size_t i = 0; i < FLAGS_num_threads; ++i) {
+      pool.add(thr_generate_remapped_idx);
+    }
+    pool.startWorkers();
+  }
+
+  // construct new Sparsematrix with single thread
+  SArray<uint32> new_index(global_matched);
+  SArray<size_t> new_offset(
+    SizeR(slot_reader->info<V>(grp_id).row()).size() + 1);
+  new_offset[0] = 0;
+  size_t k = 0; // number of survival keys
+  size_t row_count = 0; // examples number across partitions
+  std::vector<std::pair<string, SizeR>> rowsiz_partitions;
+  slot_reader->getAllPartitions(grp_id, "rowsiz", rowsiz_partitions);
+  for (size_t partition_idx = 0;
+       partition_idx < rowsiz_partitions.size(); ++partition_idx) {
+    // load remapped_idx from disk
+    SArray<char> remapped_idx_stash;
+    CHECK(remapped_idx_stash.readFromFile(remapped_idx_path.at(partition_idx)));
+    SArray<uint32> remapped_idx(remapped_idx_stash);
+
+    // load partitioned rowsiz from disk
+    SArray<char> compressed;
+    CHECK(compressed.readFromFile(
+      rowsiz_partitions[partition_idx].second,
+      rowsiz_partitions[partition_idx].first));
+    SArray<uint16> rowsiz;
+    rowsiz.uncompressFrom(compressed);
+
+    // skip empty partition
+    if (rowsiz.empty()) {
+      continue;
+    }
+
+    // fill new_index and new_offset
+    size_t col_start = 0;
+    for (size_t i = 0; i < rowsiz.size(); ++i) {
+      size_t n = 0;
+      for (size_t j = 0; j < rowsiz[i]; ++j) {
+        if (0 == remapped_idx[j + col_start]) {
+          continue;
+        }
+        ++n;
+        new_index[k++] = remapped_idx[j + col_start] - 1;
+      }
+      new_offset[row_count + 1] = new_offset[row_count] + n;
+      col_start += rowsiz[i];
+      row_count++;
+    }
+  }
+  CHECK_EQ(k, global_matched);
+
+  // establish matrix info
+  auto new_info = info;
+  new_info.set_sizeof_index(sizeof(uint32));
+  new_info.set_nnz(new_index.size());
+  new_info.clear_ins_info();
+  SizeR local(0, idx_dict.size());
+  if (new_info.row_major()) {
+    local.to(new_info.mutable_col());
+  } else {
+    local.to(new_info.mutable_row());
+  }
+  return MatrixPtr<V>(new SparseMatrix<uint32, V>(
+    new_info, new_offset, new_index, SArray<V>()));
 }
 
 template<typename I, typename V>
