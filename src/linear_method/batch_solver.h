@@ -32,11 +32,6 @@ class BatchSolver : public LinearMethod {
   bool saveCache(const string& name) { return dataCache(name, false); }
   bool dataCache(const string& name, bool load);
 
-  // whether training data for grp_id is in binary format
-  bool binary(const int grp_id) const;
-  // row number of matrix on the group
-  size_t rows(const int grp_id) const;
-
   typedef shared_ptr<KVVector<Key, double>> KVVectorPtr;
   KVVectorPtr w_;
 

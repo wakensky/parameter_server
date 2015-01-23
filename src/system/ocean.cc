@@ -57,6 +57,7 @@ bool Ocean::dump(
   SArray<Value> parameter_value,
   SArray<Value> delta,
   SparseMatrixPtr<ShortKey, Value> matrix) {
+  group_key_count_[grp_id] = parameter_key.size();
   if (parameter_key.empty()) {
     LL << "parameter_key empty in group [" << grp_id << "]";
     return false;
@@ -84,6 +85,7 @@ bool Ocean::dump(
       SArray<char>(delta), UnitID(grp_id, global_range),
       in_group_anchor, DataSource::DELTA, &unit_body);
 
+    if (matrix) { matrix_info_[grp_id] = matrix->info(); };
     if (matrix && !matrix->empty()) {
       SizeR feature_in_group_anchor(
         matrix->offset()[in_group_anchor.begin()],
@@ -199,8 +201,8 @@ Ocean::DataPack Ocean::get(
     return accessor->second.data_pack;
   } else if (UnitStatus::LOADING == accessor->second.status) {
     // should not happen
-    // since tbb::concurrent_hash_map::accessor would block
-    //   if prefetch thread is loading this UnitBody
+    // since tbb::concurrent_hash_map::accessor would block,
+    //   while prefetch thread is loading this UnitBody
     CHECK(false) << "Ocean::get got LOADING status wrongly";
   } else {
     // record
@@ -331,18 +333,69 @@ bool Ocean::snapshot() {
   }
   CHECK(anchor_file->close());
 
+  // group key count
+  ss.str("");
+  ss << identity_ << ".group_key_count.ocean.guide";
+  const string count_guide_path = path_picker_->getPath(ss.str());
+  File* count_file = File::openOrDie(count_guide_path, "w");
+  for (const auto& count : group_key_count_) {
+    std::stringstream line;
+    line << count.first << "\t" << count.second << "\n";
+    CHECK_EQ(count_file->writeString(line.str()), line.str().size());
+  }
+  CHECK(count_file->close());
+
+  // MatrixInfo
+  // one summary file
+  // some proto files
+  ss.str("");
+  ss << identity_ << ".matrix_info.ocean.guide.summary";
+  const string matrix_summary_path = path_picker_->getPath(ss.str());
+  File* matrix_summary_file = File::openOrDie(matrix_summary_path, "w");
+  for (const auto& matrix_info : matrix_info_) {
+    // matrix proto file
+    ss.str("");
+    ss << identity_ << ".matrix_info.ocean.guide." << matrix_info.first;
+    const string proto_path = path_picker_->getPath(ss.str());
+    writeProtoToASCIIFileOrDie(matrix_info.second, proto_path);
+
+    // record in matrix summary file
+    ss.str("");
+    ss << matrix_info.first << "\t" << proto_path << "\n";
+    CHECK_EQ(matrix_summary_file->writeString(ss.str()), ss.str().size());
+  }
+  CHECK(matrix_summary_file->close());
+
   return true;
 }
 
 bool Ocean::resume() {
-  // blockcache
   std::stringstream ss;
   ss << identity_ << ".blockcache.ocean.guide";
   const string blockcache_guide_path = path_picker_->getPath(ss.str());
-  File* blockcache_file = File::openOrDie(blockcache_guide_path, "r");
+  ss.str("");
+  ss << identity_ << ".anchor.ocean.guide";
+  const string anchor_guide_path = path_picker_->getPath(ss.str());
+  ss.str("");
+  ss << identity_ << ".group_key_count.ocean.guide";
+  const string count_guide_path = path_picker_->getPath(ss.str());
+  ss.str("");
+  ss << identity_ << ".matrix_info.ocean.guide.summary";
+  const string matrix_summary_path = path_picker_->getPath(ss.str());
+
+  if (!File::exists(blockcache_guide_path.c_str()) ||
+      !File::exists(anchor_guide_path.c_str()) ||
+      !File::exists(count_guide_path.c_str()) ||
+      !File::exists(matrix_summary_path.c_str())) {
+    LL << "Ocean::resume failed: key guide files not found";
+    return false;
+  }
 
   const size_t kBufLen = 2048;
   char buf[kBufLen + 1];
+
+  // blockcache
+  File* blockcache_file = File::openOrDie(blockcache_guide_path, "r");
   while (nullptr != blockcache_file->readLine(buf, kBufLen)) {
     string line(buf);
 
@@ -386,7 +439,8 @@ bool Ocean::resume() {
       }
       accessor->second.path_pack.path.at(data_source) = path;
     } catch (std::exception& e) {
-      LL << "Ocean::resume encountered wrong blockcache info [" << line << "]";
+      LL << "Ocean::resume encountered wrong blockcache info [" << line <<
+        "] [" << e.what() << "]";
       blockcache_file->close();
       return false;
     }
@@ -394,11 +448,8 @@ bool Ocean::resume() {
   blockcache_file->close();
 
   // anchor
-  anchors_.clear();
-  ss.str("");
-  ss << identity_ << ".anchor.ocean.guide";
-  const string anchor_guide_path = path_picker_->getPath(ss.str());
   File* anchor_file = File::openOrDie(anchor_guide_path, "r");
+  anchors_.clear();
   while (nullptr != anchor_file->readLine(buf, kBufLen)) {
     string line(buf);
 
@@ -420,14 +471,93 @@ bool Ocean::resume() {
 
       anchors_[unit_id] = anchor;
     } catch (std::exception& e) {
-      LL << "Ocean::resume encountered wrong anchor info [" << line << "]";
+      LL << "Ocean::resume encountered wrong anchor info [" << line <<
+        "] [" << e.what() << "]";
       anchor_file->close();
       return false;
     }
   }
   anchor_file->close();
 
+  // group key count
+  File* count_file = File::openOrDie(count_guide_path, "r");
+  group_key_count_.clear();
+  while (nullptr != count_file->readLine(buf, kBufLen)) {
+    string line(buf);
+
+    // remove tailing line-break
+    if (!line.empty() && '\n' == line.back()) {
+      line.resize(line.size() - 1);
+    }
+
+    try {
+      const auto vec = split(line, '\t');
+      if (2 != vec.size()) {
+        throw std::runtime_error("wrong column number (group key count)");
+      }
+
+      const GroupID grp_id = std::stoul(vec.at(0));
+      const size_t count = std::stoull(vec.at(1));
+
+      group_key_count_[grp_id] = count;
+    } catch (std::exception& e) {
+      LL << "Ocean::resume encountered wrong group key count info [" << line <<
+        "] [" << e.what() << "]";
+      count_file->close();
+      return false;
+    }
+  }
+  count_file->close();
+
+  // matrix info files
+  File* matrix_summary_file = File::openOrDie(matrix_summary_path, "r");
+  matrix_info_.clear();
+  while (nullptr != matrix_summary_file->readLine(buf, kBufLen)) {
+    string line(buf);
+
+    // remove tailing line-break
+    if (!line.empty() && '\n' == line.back()) {
+      line.resize(line.size() - 1);
+    }
+
+    try {
+      const auto vec = split(line, '\t');
+      if (2 != vec.size()) {
+        throw std::runtime_error("wrong column number (matrix info summary)");
+      }
+
+      const GroupID grp_id = std::stoul(vec.at(0));
+      const string proto_path = vec.at(1);
+
+      MatrixInfo info;
+      readFileToProtoOrDie(proto_path, &info);
+      matrix_info_[grp_id] = info;
+    } catch (std::exception& e) {
+      LL << "Ocean::resume encountered wrong matrix summary info [" <<
+        line << "] [" << e.what() << "]";
+      matrix_summary_file->close();
+      return false;
+    }
+  }
+  matrix_summary_file->close();
+
   return true;
+}
+
+size_t Ocean::getGroupKeyCount(const GroupID grp_id) {
+  auto iter = group_key_count_.find(grp_id);
+  if (group_key_count_.end() != iter) {
+    return iter->second;
+  }
+  return 0;
+}
+
+bool Ocean::matrix_binary(const GroupID grp_id) {
+  return MatrixInfo::SPARSE_BINARY == matrix_info_[grp_id].type();
+}
+
+size_t Ocean::matrix_rows(const GroupID grp_id) {
+  return matrix_info_[grp_id].row().end() - matrix_info_[grp_id].row().begin();
 }
 
 void Ocean::prefetchThreadFunc() {
@@ -512,6 +642,23 @@ bool Ocean::loadFromDiskSynchronously(
     CHECK(data_pack->arrays[data_source].readFromFile(path));
   }
 
+  // adjust
+  // If mutable data got empty dump file and associated parameter_key is NOT empty,
+  // I should allocate mutable data on the fly
+  SArray<FullKey> parameter_key(data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_KEY)]);
+  SArray<Value> parameter_value(data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_VALUE)]);
+  SArray<Value> delta(data_pack->arrays[static_cast<size_t>(DataSource::DELTA)]);
+  if (!parameter_key.empty() && parameter_value.empty()) {
+    parameter_value.resize(parameter_key.size());
+    parameter_value.setValue(0);
+    data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_VALUE)] = parameter_value;
+  }
+  if (!parameter_key.empty() && delta.empty()) {
+    delta.resize(parameter_key.size());
+    delta.setValue(conf_.darling().delta_init_value());
+    data_pack->arrays[static_cast<size_t>(DataSource::DELTA)] = delta;
+  }
+
   // check
   SArray<Offset> offset(
     data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_OFFSET)]);
@@ -520,6 +667,8 @@ bool Ocean::loadFromDiskSynchronously(
       data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_KEY)]);
     CHECK_EQ(offset.back() - offset.front(), feature_key.size());
   }
+  CHECK_EQ(parameter_key.size(), parameter_value.size());
+  CHECK_EQ(parameter_key.size(), delta.size());
 
   in_memory_unit_count_++;
   return true;

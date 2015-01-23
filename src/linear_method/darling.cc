@@ -92,16 +92,32 @@ void Darling::runIteration() {
 }
 
 void Darling::preprocessData(const MessageCPtr& msg) {
+  const int grp_size = get(msg).fea_grp_size();
+  fea_grp_.clear();
+  for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
+
   ocean_.init(myNodeID(), conf_, msg->task, &path_picker_);
-  BatchSolver::preprocessData(msg);
   if (IamWorker()) {
     // load labels
     y_ = MatrixPtr<double>(new DenseMatrix<double>(
       slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
 
     // dual_ = exp(y.*(X_*w_))
+    dual_.resize(y_->rows());
+    dual_.setZero();
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
   }
+
+  if (!ocean_.resume()) {
+    BatchSolver::preprocessData(msg);
+    ocean_.snapshot();
+  }
+
+  // reset active_set_
+  for (int grp_id : fea_grp_) {
+    active_set_[grp_id].resize(ocean_.getGroupKeyCount(grp_id), true);
+  }
+
 }
 
 void Darling::updateModel(const MessagePtr& msg) {
@@ -310,7 +326,7 @@ void Darling::computeGradients(
   uint32* index = feature_key.data() + (offset[0] - feature_offset.front());
   double* value = feature_value.data() + (offset[0] - feature_offset.front());
 
-  bool is_binary = binary(grp);
+  bool is_binary = ocean_.matrix_binary(grp);
   // j: column id, i: row id
   for (size_t j = 0; j < thr_anchor.size(); ++j) {
     size_t k = j + thr_anchor.begin();
@@ -390,7 +406,7 @@ void Darling::updateDual(
     cw = nw;
   }
 
-  SizeR row_range(0, rows(grp));
+  SizeR row_range(0, ocean_.matrix_rows(grp));
   ThreadPool pool(FLAGS_num_threads);
   int npart = FLAGS_num_threads;
   for (int i = 0; i < npart; ++i) {
@@ -421,7 +437,7 @@ void Darling::updateDual(
   uint32* index = feature_index.data();
   double* value = feature_value.data();
 
-  bool is_binary = binary(grp);
+  bool is_binary = ocean_.matrix_binary(grp);
   // j: column id, i: row id
   for (size_t j = 0; j < anchor.size(); ++j) {
     size_t k = j + anchor.begin();

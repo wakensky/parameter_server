@@ -224,9 +224,7 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
   int pull_time = msg->task.time() * 1000000;
   int push_initial_key_time = pull_time + 1000000;
-  const int grp_size = get(msg).fea_grp_size();
-  fea_grp_.clear();
-  for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
+  const int grp_size = fea_grp_.size();
 
   if (IamWorker()) {
     std::vector<std::promise<void>> wait_dual(grp_size);
@@ -320,17 +318,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // record MatrixInfo
       matrix_info_[grp_id] = X->info();
-
-      // reset dual_
-      if (dual_.empty()) {
-        dual_.resize(X->rows());
-        dual_.setZero();
-      } else {
-        CHECK_EQ(dual_.size(), X->rows());
-      }
-
-      // reset active_set
-      active_set_[grp_id].resize(keys.size(), true);
 
       // reset parameter_value
       SArray<double> values;
@@ -432,9 +419,6 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // wait initial keys from workers
       w_->waitInMsg(kWorkerGroup, push_initial_key_time++);
 
-      // reset active_set
-      active_set_[grp_id].resize(w_->key(grp_id).size(), true);
-
       // reset parameter_value
       w_->value(grp_id).resize(w_->key(grp_id).size());
       w_->value(grp_id).setValue(0);
@@ -446,7 +430,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // dump to Ocean
       ocean_.dump(grp_id, w_->key(grp_id), w_->value(grp_id),
         delta_[grp_id],
-        SparseMatrixPtr<uint32, double>(new SparseMatrix<uint32, double>()));
+        SparseMatrixPtr<uint32, double>());
 
       // release memory resource
       w_->clear(grp_id);
@@ -494,14 +478,6 @@ void BatchSolver::showProgress(int iter) {
     showNNZ(i);
     showTime(i);
   }
-}
-
-bool BatchSolver::binary(const int grp_id) const {
-  return MatrixInfo::SPARSE_BINARY == matrix_info_[grp_id].type();
-}
-
-size_t BatchSolver::rows(const int grp_id) const {
-  return matrix_info_[grp_id].row().end() - matrix_info_[grp_id].row().begin();
 }
 
 void BatchSolver::computeEvaluationAUC(AUCData *data) {

@@ -190,6 +190,18 @@ class Ocean {
     // NOT THREAD SAFE
     bool resume();
 
+    // how many parameter keys one group has
+    // return 0 if group does not exist
+    size_t getGroupKeyCount(const GroupID grp_id);
+
+    // query matrix info
+    // whether binary feature?
+    bool matrix_binary(const GroupID grp_id);
+
+    // query matrix info
+    // how many rows the matrix has
+    size_t matrix_rows(const GroupID grp_id);
+
   private: // internal types
     enum class UnitStatus: unsigned char {
       INIT = 0,
@@ -260,6 +272,12 @@ class Ocean {
     std::vector<std::thread> prefetch_threads_;
 
     std::unordered_map<UnitID, SizeR, UnitIDHash> anchors_;
+
+    // how many parameter keys a group has
+    std::unordered_map<GroupID, size_t> group_key_count_;
+
+    // matrix information for each group
+    std::unordered_map<GroupID, MatrixInfo> matrix_info_;
 
     // switch for asynchronized threads
     std::atomic_bool go_on_;
