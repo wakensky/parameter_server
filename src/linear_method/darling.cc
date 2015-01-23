@@ -95,12 +95,12 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   ocean_.init(myNodeID(), conf_, msg->task, &path_picker_);
   BatchSolver::preprocessData(msg);
   if (IamWorker()) {
+    // load labels
+    y_ = MatrixPtr<double>(new DenseMatrix<double>(
+      slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+
     // dual_ = exp(y.*(X_*w_))
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
-  }
-  for (int grp : fea_grp_) {
-    // release memory resource
-    X_[grp].reset();
   }
 }
 

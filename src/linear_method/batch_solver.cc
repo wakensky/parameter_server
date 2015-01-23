@@ -7,6 +7,10 @@
 
 namespace PS {
 
+DEFINE_int32(preprocess_mem_limit, 1024 * 1024 * 1024,
+  "approximate memory usage while preprocessing in Bytes for each group; "
+  "1GB in default");
+DECLARE_bool(verbose);
 DECLARE_bool(verbose);
 
 namespace LM {
@@ -219,205 +223,198 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {
   int time = msg->task.time() * 1000000;
-  int grp_size = get(msg).fea_grp_size();
+  int push_initial_key_time = time + 1000000;
+  const int grp_size = get(msg).fea_grp_size();
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
-  bool hit_cache = get(msg).hit_cache();
-
-  int max_parallel = std::max(1, conf_.solver().max_num_parallel_groups_in_preprocessing());
 
   if (IamWorker()) {
-    std::vector<int> pull_time(grp_size);
-    for (int i = 0; i < grp_size; ++i, time += kPace) {
-      if (hit_cache) continue;
-      int grp = fea_grp_[i];
+    std::vector<std::promise<void>> wait_dual(grp_size);
+    std::vector<std::shared_ptr<PreprocessHelper>> preprocess_helpers;
 
-      // Time 0: send all unique keys with their count to servers
-      SArray<Key> uniq_key;
-      SArray<uint32> key_cnt;
-      // Localizer
-      Localizer<Key, double> *localizer = new Localizer<Key, double>();
-
-      if (FLAGS_verbose) {
-        LI << "counting unique key [" << i + 1 << "/" << grp_size << "]";
-      }
-
-      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-      localizer->countUniqIndex(slot_reader_.index(grp), &uniq_key, &key_cnt);
-      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-
-      if (FLAGS_verbose) {
-        LI << "counted unique key [" << i + 1 << "/" << grp_size << "]";
-      }
-
-#if 0
-      MessagePtr count(new Message(kServerGroup, time));
-      count->setKey(uniq_key);
-      count->addValue(key_cnt);
-      count->task.set_key_channel(grp);
-      count->addFilter(FilterConfig::KEY_CACHING);
-      auto arg = w_->set(count);
-      arg->set_insert_key_freq(true);
-      arg->set_countmin_k(conf_.solver().countmin_k());
-      arg->set_countmin_n((int)(uniq_key.size()*conf_.solver().countmin_n_ratio()));
-      CHECK_EQ(time, w_->push(count));
-#endif
-
-      // time 2: pull filered keys
-      MessagePtr filter(new Message(kServerGroup, time+2/*, time+1*/));
-      filter->setKey(uniq_key);
-      filter->task.set_key_channel(grp);
-      filter->addFilter(FilterConfig::KEY_CACHING)->set_clear_cache_if_done(true);
-      w_->set(filter)->set_query_key_freq(conf_.solver().tail_feature_freq());
-      filter->fin_handle = [this, grp, localizer, i, grp_size]() mutable {
-        // localize the training matrix
-        if (FLAGS_verbose) {
-          LI << "started remapIndex [" << i + 1 << "/" << grp_size << "]";
-        }
-
-        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        auto X = localizer->remapIndex(grp, w_->key(grp), &slot_reader_);
-        delete localizer;
-        slot_reader_.clear(grp);
-        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-        if (!X) return;
-
-        if (FLAGS_verbose) {
-          LI << "finished remapIndex [" << i + 1 << "/" << grp_size << "]";
-          LI << "started toColMajor [" << i + 1 << "/" << grp_size << "]";
-        }
-
-        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-        if (conf_.solver().has_feature_block_ratio()) X = X->toColMajor();
-        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
-
-        // record MatrixInfo
-        matrix_info_[grp] = X->info();
-
-        if (FLAGS_verbose) {
-          LI << "finished toColMajor [" << i + 1 << "/" << grp_size << "]";
-        }
-
-        // reset delta
-        delta_[grp].resize(w_->key(grp).size());
-        delta_[grp].setValue(conf_.darling().delta_init_value());
-
-        // reset active_set
-        active_set_[grp].resize(w_->key(grp).size(), true);
-
-        // reset parameter_value
-        w_->value(grp).resize(w_->key(grp).size());
-        w_->value(grp).setValue(0);
-
-        // dump to Ocean
-        CHECK(ocean_.dump(grp, w_->key(grp), w_->value(grp), delta_[grp],
-          std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
-
-
-        { Lock l(mu_); X_[grp] = X; }
-      };
-      CHECK_EQ(time+2, w_->pull(filter));
-      pull_time[i] = time + 2;
-
-      // wait
-      if (!hit_cache && i >= max_parallel) w_->waitOutMsg(kServerGroup, pull_time[i-max_parallel]);
+    // initialize preprocess helper
+    for (int i = 0; i < grp_size; ++i) {
+      preprocess_helpers.push_back(std::shared_ptr<PreprocessHelper>(
+        new PreprocessHelper(
+          w_, &slot_reader_,
+          conf_.solver().tail_feature_freq(), fea_grp_[i])));
     }
 
-    for (int i = 0; i < grp_size; ++i, time += kPace) {
-      // wait
-      if (!hit_cache && i >= grp_size - max_parallel) w_->waitOutMsg(kServerGroup, pull_time[i]);
+    // how many groups could run concurrently
+    const int max_parallel = std::max(
+      1, conf_.solver().max_num_parallel_groups_in_preprocessing());
 
-      // time 0: push the filtered keys to servers
-      MessagePtr push_key(new Message(kServerGroup, time));
-      int grp = fea_grp_[i];
-      push_key->setKey(w_->key(grp));
-      push_key->task.set_key_channel(grp);
-      push_key->addFilter(FilterConfig::KEY_CACHING);
-      CHECK_EQ(time, w_->push(push_key));
-      pull_time[i] = time;
+    // whether the associated group could run
+    auto groupCouldGo =
+      [this, max_parallel](
+      std::vector<std::shared_ptr<PreprocessHelper>>& helpers,
+      const int grp_order) -> bool {
+      if (PreprocessHelper::Status::GOING == helpers.at(grp_order)->getStatus()) {
+        return true;
+      } else if (PreprocessHelper::Status::FINISHED == helpers.at(grp_order)->getStatus()) {
+        return false;
+      } else {
+        if (grp_order >= max_parallel) {
+          // concurrency control
+          for (int i = 0; i <= grp_order - max_parallel; ++i) {
+            if (PreprocessHelper::Status::FINISHED !=
+                helpers.at(i)->getStatus()) {
+              // Not all former groups finished
+              return false;
+            }
+          }
+        }
+        helpers.at(grp_order)->setStatus(PreprocessHelper::Status::GOING);
+        return true;
+      }
+    };
 
+    auto allGroupFinished = [](std::vector<std::shared_ptr<PreprocessHelper>>& preprocess_helpers) -> bool {
+      for (auto helper : preprocess_helpers) {
+        if (PreprocessHelper::Status::FINISHED != helper->getStatus()) {
+          return false;
+        }
+      }
+      return true;
+    };
 
-#if 0
-      // time 2: fetch initial value of w_
-      MessagePtr pull_val(new Message(kServerGroup, time+2, time+1));
-      pull_val->setKey(w_->key(grp));
-      pull_val->task.set_key_channel(grp);
-      push_key->addFilter(FilterConfig::KEY_CACHING)->set_clear_cache_if_done(true);
-      pull_val->wait = true;
-      CHECK_EQ(time+2, w_->pull(pull_val));
-      pull_time[i] = time + 2;
-      if (pull_val->key.empty()) continue; // otherwise received(time+2) will return error
+    auto actionOnGroupFinish =
+      [this, grp_size](
+      const int grp_order, int& push_initial_key_time,
+      std::shared_ptr<PreprocessHelper> preprocess_helper,
+      std::promise<void>& wait_dual) {
+      const int grp_id = fea_grp_.at(grp_order);
 
-      auto init_w = w_->received(time+2);
-      CHECK_EQ(init_w.second.size(), 1);
-      CHECK_EQ(w_->key(grp).size(), init_w.first.size());
-      w_->value(grp) = init_w.second[0];
-#endif
+      // push initial keys to servers
+      MessagePtr push_initial_key(
+        new Message(kServerGroup, push_initial_key_time));
+      push_initial_key->setKey(w_->key(grp_id));
+      push_initial_key->task.set_key_channel(grp_id);
+      push_initial_key->fin_handle = [this, &wait_dual] () mutable {
+        wait_dual.set_value();
+      };
+      CHECK_EQ(push_initial_key_time++, w_->push(push_initial_key));
 
-      // set the local variable
-      auto X = X_[grp];
-      if (!X) continue;
+      // global -> local
+      Localizer<Key, double> *localizer = new Localizer<Key, double>();
+      // wakensky: old remapIndex
+      SArray<Key> uniq_key;
+      SArray<uint32> key_cnt;
+      localizer->countUniqIndex(slot_reader_.index(grp_id), &uniq_key, &key_cnt);
+      if (FLAGS_verbose) {
+        LI << "started remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
+      }
+      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+      auto X = localizer->remapIndex(
+        grp_id, w_->key(grp_id), &slot_reader_);
+      delete localizer;
+      slot_reader_.clear(grp_id);
+      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+      if (FLAGS_verbose) {
+        LI << "finished remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
+      }
+
+      // matrix transforms to column major
+      if (FLAGS_verbose) {
+        LI << "started toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
+      }
+      if (X) {
+        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+        if (conf_.solver().has_feature_block_ratio()) {
+          X = X->toColMajor();
+        }
+        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+      }
+      if (FLAGS_verbose) {
+        LI << "finished toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
+      }
+
+      // record MatrixInfo
+      matrix_info_[grp_id] = X->info();
+
+      // reset dual_
       if (dual_.empty()) {
         dual_.resize(X->rows());
         dual_.setZero();
       } else {
         CHECK_EQ(dual_.size(), X->rows());
       }
-      if (conf_.init_w().type() != ParameterInitConfig::ZERO) {
-        dual_.eigenVector() = *X * w_->value(grp).eigenVector();
-      }
-
-      // release
-      w_->key(grp).clear();
-      w_->value(grp).clear();
-      delta_[grp].clear();
-      { Lock l(mu_); X_[grp].reset(); }
-    }
-    // the label
-    if (!hit_cache) {
-      y_ = MatrixPtr<double>(new DenseMatrix<double>(
-          slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
-      // CHECK_EQ(y_->value().size(), info->num_ex());
-    }
-    // wait until all weight push finished
-    for (int i = 0; i < grp_size; ++i) {
-      w_->waitOutMsg(kServerGroup, pull_time[i]);
-    }
-    saveCache("train");
-  } else {
-    for (int i = 0; i < grp_size; ++i, time += kPace) {
-#if 0
-      if (hit_cache) continue;
-      w_->waitInMsg(kWorkerGroup, time);
-      w_->finish(kWorkerGroup, time+1);
-#endif
-    }
-    for (int i = 0; i < grp_size; ++i, time += kPace) {
-      w_->waitInMsg(kWorkerGroup, time);
-      int chl = fea_grp_[i];
-      w_->keyFilter(chl).clear();
-
-      // reset parameter_value
-      w_->value(chl).resize(w_->key(chl).size());
-      w_->value(chl).setValue(0);
-
-      // reset delta
-      delta_[chl].resize(w_->key(chl).size());
-      delta_[chl].setValue(conf_.darling().delta_init_value());
 
       // reset active_set
-      active_set_[chl].resize(w_->key(chl).size(), true);
+      active_set_[grp_id].resize(w_->key(grp_id).size(), true);
+
+      // reset parameter_value
+      w_->value(grp_id).resize(w_->key(grp_id).size());
+      w_->value(grp_id).setValue(0);
+
+      // reset delta
+      delta_[grp_id].resize(w_->key(grp_id).size());
+      delta_[grp_id].setValue(conf_.darling().delta_init_value());
 
       // dump to Ocean
-      ocean_.dump(chl, w_->key(chl), w_->value(chl), delta_[chl],
+      CHECK(ocean_.dump(grp_id, w_->key(grp_id), w_->value(grp_id),
+        delta_[grp_id],
+        std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
+
+      // release memory resource
+      w_->clear(grp_id);
+      delta_[grp_id].clear();
+
+      // mark as finished
+      preprocess_helper->setStatus(PreprocessHelper::Status::FINISHED);
+      // wait_dual.set_value();
+    };
+
+    while (true) {
+      for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
+        auto helper = preprocess_helpers.at(grp_order);
+        if (!groupCouldGo(preprocess_helpers, grp_order)) {
+          continue;
+        }
+
+        time = helper->pullNextFilter(time);
+        if (helper->allFiltersFinished()) {
+          actionOnGroupFinish(
+            grp_order, push_initial_key_time, helper, wait_dual.at(grp_order));
+        }
+      }  // group loop
+
+      if (allGroupFinished(preprocess_helpers)) {
+        break;
+      } else {
+        // not all groups finished, sleep for a while
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      }
+    } // preprocess cycle for worker
+    for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
+      wait_dual.at(grp_order).get_future().wait();
+    }
+  } else {
+    for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
+      const int grp_id = fea_grp_.at(grp_order);
+
+      // wait initial keys from workers
+      w_->waitInMsg(kWorkerGroup, push_initial_key_time++);
+
+      // reset active_set
+      active_set_[grp_id].resize(w_->key(grp_id).size(), true);
+
+      // reset parameter_value
+      w_->value(grp_id).resize(w_->key(grp_id).size());
+      w_->value(grp_id).setValue(0);
+
+      // reset delta
+      delta_[grp_id].resize(w_->key(grp_id).size());
+      delta_[grp_id].setValue(conf_.darling().delta_init_value());
+
+      // dump to Ocean
+      ocean_.dump(grp_id, w_->key(grp_id), w_->value(grp_id),
+        delta_[grp_id],
         SparseMatrixPtr<uint32, double>(new SparseMatrix<uint32, double>()));
 
-      // release
-      w_->key(chl).clear();
-      w_->value(chl).clear();
-      delta_[chl].clear();
-
-      w_->finish(kWorkerGroup, time+1);
+      // release memory resource
+      w_->clear(grp_id);
+      delta_[grp_id].clear();
     }
   }
 }
