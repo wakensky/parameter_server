@@ -98,6 +98,11 @@ bool File::flush() {
   return (is_gz_ ? gzflush(gz_f_, Z_FINISH) == Z_OK : fflush(f_) == 0);
 }
 
+bool File::syncToDevice() {
+  CHECK(!is_gz_) << __PRETTY_FUNCTION__ << " not implemented for gz files";
+  return 0 == fsync(fileno(f_));
+}
+
 bool File::close() {
   bool ret = is_gz_ ? gzclose(gz_f_) == Z_OK : fclose(f_) == 0;
   gz_f_ = NULL; f_ = NULL;

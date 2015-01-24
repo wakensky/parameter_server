@@ -142,13 +142,11 @@ void Darling::updateModel(const MessagePtr& msg) {
 
   // prefetch column partitioned data
   LI << "pending prefetch count: " << ocean_.pendingPrefetchCount();
-  if (ocean_.pendingPrefetchCount() <
-      conf_.solver().max_block_delay() + 8) {
+  if (ocean_.pendingPrefetchCount() < FLAGS_in_memory_unit_limit) {
     auto current_time = msg->task.time();
-    auto max_delay = conf_.solver().max_block_delay();
-    auto judge = [current_time, max_delay](const Task& task) -> bool {
+    auto judge = [current_time](const Task& task) -> bool {
       if (Call::UPDATE_MODEL == task.linear_method().cmd() &&
-          task.time() < current_time + 16 * max_delay) {
+          task.time() < current_time + 4 * FLAGS_in_memory_unit_limit) {
         return true;
       }
       return false;
@@ -256,6 +254,9 @@ void Darling::updateModel(const MessagePtr& msg) {
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
       sys_.reply(msg->sender, msg->task);
+
+      // ocean drop
+      ocean_.drop(grp, g_key_range, msg->task.time());
     };
     CHECK_EQ(time+2, w_->pull(pull_msg));
   } else if (IamServer()) {

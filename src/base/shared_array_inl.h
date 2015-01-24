@@ -205,15 +205,20 @@ bool SArray<V>::readFromFile(SizeR range, const DataConfig& data) {
 }
 
 template <typename V>
-bool SArray<V>::writeToFile(SizeR range, const string& file_name) const {
+bool SArray<V>::writeToFile(SizeR range, const string& file_name, const bool sync_to_device) const {
   if (range.empty()) return true;
   CHECK(range.valid());
   CHECK_LE(range.end(), size_);
 
   File* file = File::open(file_name, "w");
   size_t length = range.size() * sizeof(V);
-  return (file->write(data_, length) == length
-          && file->flush() && file->close());
+  if (sync_to_device) {
+    return (file->write(data_, length) == length
+      && file->syncToDevice() && file->close());
+  } else {
+    return (file->write(data_, length) == length
+      && file->flush() && file->close());
+  }
 }
 
 template <typename V>

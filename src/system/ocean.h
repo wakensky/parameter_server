@@ -250,6 +250,7 @@ class Ocean {
   private: // methods
     Ocean();
     void prefetchThreadFunc();
+    void writeThreadFunc();
     // dump column partitioned SArray
     bool dumpColumnPartitionedSArray(
       SArray<char> in, const UnitID unit_id,
@@ -273,9 +274,12 @@ class Ocean {
 
     using UnitPrefetchQueue = tbb::concurrent_bounded_queue<std::pair<UnitID, TaskID>>;
     UnitPrefetchQueue prefetch_queue_;
-    // tbb::concurrent_queue only provides unsafe_size(),
-    //   so we must maintain the size by ourselves.
     std::vector<std::thread> prefetch_threads_;
+
+    using UnitWriteQueue =
+      tbb::concurrent_bounded_queue<std::shared_ptr<UnitHashMap::accessor>>;
+    UnitWriteQueue write_queue_;
+    std::vector<std::thread> write_threads_;
 
     std::unordered_map<UnitID, SizeR, UnitIDHash> anchors_;
 

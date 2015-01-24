@@ -22,6 +22,11 @@ Ocean::Ocean() :
     prefetch_threads_.push_back(std::move(
       std::thread(&Ocean::prefetchThreadFunc, this)));
   }
+  // launch write threads
+  for (int i = 0; i < FLAGS_num_threads; ++i) {
+    write_threads_.push_back(std::move(
+      std::thread(&Ocean::writeThreadFunc, this)));
+  }
 }
 
 Ocean::~Ocean() {
@@ -32,6 +37,15 @@ Ocean::~Ocean() {
       // pump in some illegal prefetch jobs
       //  push threads moving on
       prefetch(0, Range<FullKey>(), kFakeTaskID);
+    }
+    thread.join();
+  }
+  // join write threads
+  for (auto& thread : write_threads_) {
+    // pump in some illegal write jobs
+    //   push threads moving on
+    for (int i = 0; i < FLAGS_num_threads + 1; ++i) {
+      write_queue_.push(nullptr);
     }
     thread.join();
   }
@@ -232,21 +246,19 @@ void Ocean::drop(
   const Range<FullKey>& global_range,
   const TaskID task_id) {
   UnitID unit_id(grp_id, global_range);
-  UnitHashMap::accessor accessor;
-  if (!units_.find(accessor, unit_id)) {
+  std::shared_ptr<UnitHashMap::accessor> accessor_ptr(new UnitHashMap::accessor());
+  if (!units_.find(*accessor_ptr, unit_id)) {
     LL << "Ocean::drop cannot find unit [" << unit_id.toString() << "]";
     return;
   }
 
   // remove finished task_id from in_use_tasks
-  accessor->second.in_use_tasks.erase(task_id);
+  (*accessor_ptr)->second.in_use_tasks.erase(task_id);
 
   // dump back to disk, release memory
-  if (accessor->second.in_use_tasks.empty()) {
-    accessor->second.setStatus(UnitStatus::DROPPING);
-    accessor->second.setStatus(UnitStatus::DROPPED);
-    in_memory_unit_count_--;
-    // TODO write back to disk synchronously; write back to disk asynchronously
+  if ((*accessor_ptr)->second.in_use_tasks.empty()) {
+    (*accessor_ptr)->second.setStatus(UnitStatus::DROPPING);
+    write_queue_.push(accessor_ptr);
   }
 }
 
@@ -629,6 +641,40 @@ void Ocean::prefetchThreadFunc() {
       LI << "prefetch thread finishes prefetching unit [" <<
         unit_id.toString() << "]";
     }
+  };
+}
+
+void Ocean::writeThreadFunc() {
+  while (go_on_) {
+    // take out an UnitHash::accessor which needs write mutable data back to disk
+    std::shared_ptr<UnitHashMap::accessor> accessor_ptr;
+    write_queue_.pop(accessor_ptr);
+    if (!accessor_ptr) {
+      continue;
+    }
+
+    UnitBody& unit_body = (*accessor_ptr)->second;
+    // write back parameter_value and delta
+    for (size_t data_source = 0;
+         data_source < static_cast<size_t>(DataSource::NUM);
+         ++data_source) {
+      if (DataSource::PARAMETER_VALUE == static_cast<DataSource>(data_source) ||
+          DataSource::DELTA == static_cast<DataSource>(data_source)) {
+        SArray<char> array = unit_body.data_pack.arrays.at(data_source);
+        if (!array.empty()) {
+          CHECK(array.writeToFile(unit_body.path_pack.path.at(data_source), true));
+        }
+        CHECK_EQ(array.size(), File::size(unit_body.path_pack.path.at(data_source)));
+      }
+    }
+
+    // memory release
+    unit_body.data_pack.clear();
+    in_memory_unit_count_--;
+    in_memory_unit_not_full_cv_.notify_all();
+
+    // mark as dropped
+    unit_body.setStatus(UnitStatus::DROPPED);
   };
 }
 

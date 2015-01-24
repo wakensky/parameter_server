@@ -92,12 +92,17 @@ class SharedParameter : public Customer {
 
   // add key_range in the future, it is not necessary now
   std::unordered_map<NodeID, std::vector<int> > clock_replica_;
+
+  // task_id -> (push_count - pull_count)
+  // That is how many pulls remaining for each task
+  std::unordered_map<int, int> push_pull_count_;
 };
 
 template <typename K>
 void SharedParameter<K>::process(const MessagePtr& msg) {
   bool req = msg->task.request();
   int chl = msg->task.key_channel();
+  Range<K> g_key_range(msg->task.key_range());
   auto call = get(msg);
   bool push = call.cmd() == CallSharedPara::PUSH;
   bool pull = call.cmd() == CallSharedPara::PULL;
@@ -144,8 +149,14 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
   } else {
     if ((push && req) || (pull && !req)) {
       setValue(msg);
+      if (IamServer()) {
+        ++push_pull_count_[chl];
+      }
     } else if (pull && req) {
       getValue(reply);
+      if (IamServer() && (--push_pull_count_[chl]) <= 0) {
+        this->ocean().drop(chl, g_key_range, msg->task.owner_time());
+      }
     }
   }
   milli_timer.stop();
