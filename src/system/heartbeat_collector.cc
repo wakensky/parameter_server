@@ -1,43 +1,38 @@
 #include <chrono>
-#include "system/heartbeat_info.h"
+#include "system/heartbeat_collector.h"
 
 namespace PS {
-HeartbeatInfo::HeartbeatInfo() :
-  timers_(static_cast<size_t>(HeartbeatInfo::TimerType::NUM)),
+HeartbeatCollector::HeartbeatCollector() :
+  milli_seconds_(0),
   in_bytes_(0),
   out_bytes_(0) {
   // get cpu core number
-  char buffer[1024];
+  const size_t kBufLen = 1024;
+  char buffer[kBufLen + 1];
   FILE *fp_pipe = popen("grep 'processor' /proc/cpuinfo | wc -l", "r");
   CHECK(nullptr != fp_pipe);
-  CHECK(nullptr != fgets(buffer, sizeof(buffer), fp_pipe));
+  CHECK(nullptr != fgets(buffer, kBufLen, fp_pipe));
+  pclose(fp_pipe);
+
   string core_str(buffer);
   core_str.resize(core_str.size() - 1);
   cpu_core_number_ = std::stoul(core_str);
-  pclose(fp_pipe);
 
   // initialize internal status
-  get();
+  produceReport();
 }
 
-HeartbeatInfo::~HeartbeatInfo() {
+HeartbeatCollector::~HeartbeatCollector() {
   // do nothing
 }
 
-void HeartbeatInfo::startTimer(const HeartbeatInfo::TimerType type) {
-  Lock l(mu_);
-  timers_.at(static_cast<size_t>(type)).start();
-}
+HeartbeatCollector::Snapshot HeartbeatCollector::snapshot() {
+  HeartbeatCollector::Snapshot ret;
 
-void HeartbeatInfo::stopTimer(const HeartbeatInfo::TimerType type) {
-  Lock l(mu_);
-  timers_.at(static_cast<size_t>(type)).stop();
-}
+  // time stamp
+  ret.time_point = std::chrono::system_clock::now();
 
-HeartbeatInfo::Snapshot HeartbeatInfo::dump() {
-  HeartbeatInfo::Snapshot ret;
-
-  // process cpu
+  // cpu usage under current process
   std::ifstream my_cpu_stat("/proc/self/stat", std::ifstream::in);
   CHECK(my_cpu_stat) << "open /proc/self/stat failed [" << strerror(errno) << "]";
   string pid, comm, state, ppid, pgrp, session, tty_nr;
@@ -50,7 +45,7 @@ HeartbeatInfo::Snapshot HeartbeatInfo::dump() {
   ret.process_user = std::stoull(utime);
   ret.process_sys = std::stoull(stime);
 
-  // host cpu
+  // cpu usage under current host
   std::ifstream host_cpu_stat("/proc/stat", std::ifstream::in);
   CHECK(host_cpu_stat) << "open /proc/stat failed [" << strerror(errno) << "]";
   string label, host_user, host_nice, host_sys, host_idle, host_iowait;
@@ -59,7 +54,7 @@ HeartbeatInfo::Snapshot HeartbeatInfo::dump() {
   host_cpu_stat.close();
   ret.host_user = std::stoull(host_user);
   ret.host_sys = std::stoull(host_sys);
-  ret.host_cpu = std::stoull(host_user) + std::stoull(host_nice) +
+  ret.host_cpu_base = std::stoull(host_user) + std::stoull(host_nice) +
     std::stoull(host_sys) + std::stoull(host_idle) + std::stoull(host_iowait);
 
   // host network bandwidth usage
@@ -94,67 +89,73 @@ HeartbeatInfo::Snapshot HeartbeatInfo::dump() {
   return ret;
 }
 
-HeartbeatReport HeartbeatInfo::get() {
+HeartbeatReport HeartbeatCollector::produceReport() {
   Lock l(mu_);
   HeartbeatReport report;
-  HeartbeatInfo::Snapshot snapshot_now = dump();
+  Snapshot snapshot_now = snapshot();
 
-  // interval between invocations of get()
-  double total_milli = total_timer_.stop();
-  if (total_milli < 1.0) {
-    total_milli = 1.0;
-  }
-
+  // hostname
   report.set_hostname(hostname_);
 
-  report.set_seconds_since_epoch(std::chrono::duration_cast<std::chrono::seconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count());
-
+  // interval between invocations
+  uint32 total_milli = std::chrono::duration_cast<std::chrono::milliseconds>(
+    snapshot_now.time_point - snapshot_last_.time_point).count();
+  if (0 == total_milli) {
+    total_milli = 1;
+  }
   report.set_total_time_milli(total_milli);
-  report.set_busy_time_milli(
-    timers_.at(static_cast<size_t>(HeartbeatInfo::TimerType::BUSY)).get());
 
-  report.set_net_in_mb(in_bytes_ / 1024 / 1024);
-  in_bytes_ = 0;
-  report.set_net_out_mb(out_bytes_ / 1024 / 1024);
-  out_bytes_ = 0;
+  // busy time
+  report.set_busy_time_milli(milli_seconds_);
 
-  uint32 process_now = snapshot_now.process_user + snapshot_now.process_sys;
-  uint32 process_last = last_.process_user + last_.process_sys;
+  // transfered bytes under current process
+  report.set_process_in_mb(in_bytes_ / 1024 / 1024);
+  report.set_process_out_mb(out_bytes_ / 1024 / 1024);
+
+  // network bandwidth used on the host
+  report.set_host_net_in_bw(static_cast<uint32>(
+    (snapshot_now.host_in_bytes - snapshot_last_.host_in_bytes) /
+    (total_milli / 1e3) / 1024 / 1024));
+  report.set_host_net_out_bw(static_cast<uint32>(
+    (snapshot_now.host_out_bytes - snapshot_last_.host_out_bytes) /
+    (total_milli / 1e3) / 1024 / 1024));
+
+  // cpu under current process
+  uint32 process_usage_now =
+    snapshot_now.process_user +
+    snapshot_now.process_sys;
+  uint32 process_usage_last =
+    snapshot_last_.process_user +
+    snapshot_last_.process_sys;
   report.set_process_cpu_usage(cpu_core_number_ *
-    100 * static_cast<float>(process_now - process_last) /
-    (snapshot_now.host_cpu - last_.host_cpu));
+    100 * static_cast<float>(process_usage_now - process_usage_last) /
+    (snapshot_now.host_cpu_base - snapshot_last_.host_cpu_base));
 
-  uint32 host_now = snapshot_now.host_user + snapshot_now.host_sys;
-  uint32 host_last = last_.host_user + last_.host_sys;
+  // cpu under current host
+  uint32 host_usage_now =
+    snapshot_now.host_user +
+    snapshot_now.host_sys;
+  uint32 host_usage_last = snapshot_last_.host_user + snapshot_last_.host_sys;
   report.set_host_cpu_usage(cpu_core_number_ *
-    100 * static_cast<float>(host_now - host_last) /
-    (snapshot_now.host_cpu - last_.host_cpu));
+    100 * static_cast<float>(host_usage_now - host_usage_last) /
+    (snapshot_now.host_cpu_base - snapshot_last_.host_cpu_base));
 
+  // memory statistic
   report.set_process_rss_mb(ResUsage::myPhyMem());
   report.set_process_virt_mb(ResUsage::myVirMem());
   report.set_host_in_use_gb(ResUsage::hostInUseMem() / 1024);
   report.set_host_in_use_percentage(
     100 * ResUsage::hostInUseMem() / ResUsage::hostTotalMem());
 
-  report.set_host_net_in_bw(static_cast<uint32>(
-    (snapshot_now.host_in_bytes - last_.host_in_bytes) / (total_milli / 1e3) / 1024 / 1024));
-  report.set_host_net_out_bw(static_cast<uint32>(
-    (snapshot_now.host_out_bytes - last_.host_out_bytes) / (total_milli / 1e3) / 1024 / 1024));
+  milli_seconds_ = 0;
+  in_bytes_ = 0;
+  out_bytes_ = 0;
+  snapshot_last_ = snapshot_now;
 
-  // reset all timers
-  for (auto& timer : timers_) {
-    timer.reset();
-    timer.start();
-  }
-  total_timer_.reset();
-  total_timer_.start();
-
-  last_ = snapshot_now;
   return report;
 }
 
-void HeartbeatInfo::init(const string& interface, const string& hostname) {
+void HeartbeatCollector::init(const string& interface, const string& hostname) {
   interface_ = interface;
   hostname_ = hostname;
 }

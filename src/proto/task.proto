@@ -4,6 +4,7 @@ import "proto/range.proto";
 import "proto/app.proto";
 import "proto/linear_method.proto";
 import "proto/filter.proto";
+import "proto/heartbeat.proto";
 
 message PartitionInfo {
   optional int32 fea_grp = 1;
@@ -74,6 +75,8 @@ message Task {
 
   // column partition information
   repeated PartitionInfo partition_info = 401;
+
+  optional HeartbeatReport heartbeat_report = 601;
 }
 
 message ManageNode {

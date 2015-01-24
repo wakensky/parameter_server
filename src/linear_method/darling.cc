@@ -144,11 +144,12 @@ void Darling::updateModel(const MessagePtr& msg) {
     // compute local gradients
     mu_.lock();
 
-    this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+    MilliTimer grad_milli_timer; grad_milli_timer.start();
     busy_timer_.start();
     auto local_gradients = computeGradients(grp, g_key_range, msg->task.time());
     busy_timer_.stop();
-    this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+    grad_milli_timer.stop();
+    this->sys_.hb_collector().increaseTime(grad_milli_timer.get());
 
     mu_.unlock();
 
@@ -203,11 +204,12 @@ void Darling::updateModel(const MessagePtr& msg) {
               "; new_wei: " << SArray<double>(data.second[0])[0];
         }
 
-        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+        MilliTimer dual_milli_timer; dual_milli_timer.start();
         busy_timer_.start();
         updateDual(grp, g_key_range, data.second[0], msg->task.time());
         busy_timer_.stop();
-        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+        dual_milli_timer.stop();
+        this->sys_.hb_collector().increaseTime(dual_milli_timer.get());
 
         // wakensky
         if (1023 == grp) {
@@ -239,9 +241,10 @@ void Darling::updateModel(const MessagePtr& msg) {
       CHECK_EQ(anchor, data.first);
       CHECK_EQ(data.second.size(), 2);
 
-      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+      MilliTimer weight_milli_timer; weight_milli_timer.start();
       updateWeight(grp, g_key_range, data.second[0], data.second[1], msg->task.time());
-      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
+      weight_milli_timer.stop();
+      this->sys_.hb_collector().increaseTime(weight_milli_timer.get());
     }
     w_->finish(kWorkerGroup, time+1);
 

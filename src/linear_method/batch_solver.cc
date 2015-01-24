@@ -283,24 +283,15 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       const int grp_id = fea_grp_.at(grp_order);
 
       // global -> local
+      MilliTimer compute_milli_timer; compute_milli_timer.start();
       Localizer<Key, double> *localizer = new Localizer<Key, double>();
-#if 0
-      // wakensky: old remapIndex
-      SArray<Key> uniq_key;
-      SArray<uint32> key_cnt;
-      localizer->countUniqIndex(slot_reader_.index(grp_id), &uniq_key, &key_cnt);
       if (FLAGS_verbose) {
         LI << "started remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
-      this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
-      auto X = localizer->remapIndex(
-        grp_id, keys, &slot_reader_);
-#endif
       auto X = localizer->remapIndex(
         grp_id, keys, &slot_reader_, &path_picker_, myNodeID());
       delete localizer;
       slot_reader_.clear(grp_id);
-      this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
       if (FLAGS_verbose) {
         LI << "finished remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
@@ -310,15 +301,17 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         LI << "started toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
       if (X) {
-        this->sys_.hb().startTimer(HeartbeatInfo::TimerType::BUSY);
+        // TODO toColMajor is necessary since I have assumed that
+        //   training data could be partition column-wise
         if (conf_.solver().has_feature_block_ratio()) {
           X = X->toColMajor();
         }
-        this->sys_.hb().stopTimer(HeartbeatInfo::TimerType::BUSY);
       }
       if (FLAGS_verbose) {
         LI << "finished toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
+      compute_milli_timer.stop();
+      this->sys_.hb_collector().increaseTime(compute_milli_timer.get());
 
       // record MatrixInfo
       matrix_info_[grp_id] = X->info();

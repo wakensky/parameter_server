@@ -98,6 +98,13 @@ class HeartbeatReport : public ::google::protobuf::Message {
   inline ::google::protobuf::int32 task_id() const;
   inline void set_task_id(::google::protobuf::int32 value);
 
+  // optional int32 time_stamp = 16 [default = 0];
+  inline bool has_time_stamp() const;
+  inline void clear_time_stamp();
+  static const int kTimeStampFieldNumber = 16;
+  inline ::google::protobuf::int32 time_stamp() const;
+  inline void set_time_stamp(::google::protobuf::int32 value);
+
   // optional string hostname = 14;
   inline bool has_hostname() const;
   inline void clear_hostname();
@@ -109,13 +116,6 @@ class HeartbeatReport : public ::google::protobuf::Message {
   inline ::std::string* mutable_hostname();
   inline ::std::string* release_hostname();
   inline void set_allocated_hostname(::std::string* hostname);
-
-  // optional uint32 seconds_since_epoch = 2;
-  inline bool has_seconds_since_epoch() const;
-  inline void clear_seconds_since_epoch();
-  static const int kSecondsSinceEpochFieldNumber = 2;
-  inline ::google::protobuf::uint32 seconds_since_epoch() const;
-  inline void set_seconds_since_epoch(::google::protobuf::uint32 value);
 
   // optional uint32 total_time_milli = 13;
   inline bool has_total_time_milli() const;
@@ -131,19 +131,19 @@ class HeartbeatReport : public ::google::protobuf::Message {
   inline ::google::protobuf::uint32 busy_time_milli() const;
   inline void set_busy_time_milli(::google::protobuf::uint32 value);
 
-  // optional uint32 net_in_mb = 4;
-  inline bool has_net_in_mb() const;
-  inline void clear_net_in_mb();
-  static const int kNetInMbFieldNumber = 4;
-  inline ::google::protobuf::uint32 net_in_mb() const;
-  inline void set_net_in_mb(::google::protobuf::uint32 value);
+  // optional uint32 process_in_mb = 4;
+  inline bool has_process_in_mb() const;
+  inline void clear_process_in_mb();
+  static const int kProcessInMbFieldNumber = 4;
+  inline ::google::protobuf::uint32 process_in_mb() const;
+  inline void set_process_in_mb(::google::protobuf::uint32 value);
 
-  // optional uint32 net_out_mb = 5;
-  inline bool has_net_out_mb() const;
-  inline void clear_net_out_mb();
-  static const int kNetOutMbFieldNumber = 5;
-  inline ::google::protobuf::uint32 net_out_mb() const;
-  inline void set_net_out_mb(::google::protobuf::uint32 value);
+  // optional uint32 process_out_mb = 5;
+  inline bool has_process_out_mb() const;
+  inline void clear_process_out_mb();
+  static const int kProcessOutMbFieldNumber = 5;
+  inline ::google::protobuf::uint32 process_out_mb() const;
+  inline void set_process_out_mb(::google::protobuf::uint32 value);
 
   // optional uint32 process_cpu_usage = 6;
   inline bool has_process_cpu_usage() const;
@@ -205,18 +205,18 @@ class HeartbeatReport : public ::google::protobuf::Message {
  private:
   inline void set_has_task_id();
   inline void clear_has_task_id();
+  inline void set_has_time_stamp();
+  inline void clear_has_time_stamp();
   inline void set_has_hostname();
   inline void clear_has_hostname();
-  inline void set_has_seconds_since_epoch();
-  inline void clear_has_seconds_since_epoch();
   inline void set_has_total_time_milli();
   inline void clear_has_total_time_milli();
   inline void set_has_busy_time_milli();
   inline void clear_has_busy_time_milli();
-  inline void set_has_net_in_mb();
-  inline void clear_has_net_in_mb();
-  inline void set_has_net_out_mb();
-  inline void clear_has_net_out_mb();
+  inline void set_has_process_in_mb();
+  inline void clear_has_process_in_mb();
+  inline void set_has_process_out_mb();
+  inline void clear_has_process_out_mb();
   inline void set_has_process_cpu_usage();
   inline void clear_has_process_cpu_usage();
   inline void set_has_host_cpu_usage();
@@ -236,13 +236,13 @@ class HeartbeatReport : public ::google::protobuf::Message {
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
-  ::std::string* hostname_;
   ::google::protobuf::int32 task_id_;
-  ::google::protobuf::uint32 seconds_since_epoch_;
+  ::google::protobuf::int32 time_stamp_;
+  ::std::string* hostname_;
   ::google::protobuf::uint32 total_time_milli_;
   ::google::protobuf::uint32 busy_time_milli_;
-  ::google::protobuf::uint32 net_in_mb_;
-  ::google::protobuf::uint32 net_out_mb_;
+  ::google::protobuf::uint32 process_in_mb_;
+  ::google::protobuf::uint32 process_out_mb_;
   ::google::protobuf::uint32 process_cpu_usage_;
   ::google::protobuf::uint32 host_cpu_usage_;
   ::google::protobuf::uint32 process_rss_mb_;
@@ -291,15 +291,37 @@ inline void HeartbeatReport::set_task_id(::google::protobuf::int32 value) {
   task_id_ = value;
 }
 
-// optional string hostname = 14;
-inline bool HeartbeatReport::has_hostname() const {
+// optional int32 time_stamp = 16 [default = 0];
+inline bool HeartbeatReport::has_time_stamp() const {
   return (_has_bits_[0] & 0x00000002u) != 0;
 }
-inline void HeartbeatReport::set_has_hostname() {
+inline void HeartbeatReport::set_has_time_stamp() {
   _has_bits_[0] |= 0x00000002u;
 }
-inline void HeartbeatReport::clear_has_hostname() {
+inline void HeartbeatReport::clear_has_time_stamp() {
   _has_bits_[0] &= ~0x00000002u;
+}
+inline void HeartbeatReport::clear_time_stamp() {
+  time_stamp_ = 0;
+  clear_has_time_stamp();
+}
+inline ::google::protobuf::int32 HeartbeatReport::time_stamp() const {
+  return time_stamp_;
+}
+inline void HeartbeatReport::set_time_stamp(::google::protobuf::int32 value) {
+  set_has_time_stamp();
+  time_stamp_ = value;
+}
+
+// optional string hostname = 14;
+inline bool HeartbeatReport::has_hostname() const {
+  return (_has_bits_[0] & 0x00000004u) != 0;
+}
+inline void HeartbeatReport::set_has_hostname() {
+  _has_bits_[0] |= 0x00000004u;
+}
+inline void HeartbeatReport::clear_has_hostname() {
+  _has_bits_[0] &= ~0x00000004u;
 }
 inline void HeartbeatReport::clear_hostname() {
   if (hostname_ != &::google::protobuf::internal::kEmptyString) {
@@ -361,28 +383,6 @@ inline void HeartbeatReport::set_allocated_hostname(::std::string* hostname) {
   }
 }
 
-// optional uint32 seconds_since_epoch = 2;
-inline bool HeartbeatReport::has_seconds_since_epoch() const {
-  return (_has_bits_[0] & 0x00000004u) != 0;
-}
-inline void HeartbeatReport::set_has_seconds_since_epoch() {
-  _has_bits_[0] |= 0x00000004u;
-}
-inline void HeartbeatReport::clear_has_seconds_since_epoch() {
-  _has_bits_[0] &= ~0x00000004u;
-}
-inline void HeartbeatReport::clear_seconds_since_epoch() {
-  seconds_since_epoch_ = 0u;
-  clear_has_seconds_since_epoch();
-}
-inline ::google::protobuf::uint32 HeartbeatReport::seconds_since_epoch() const {
-  return seconds_since_epoch_;
-}
-inline void HeartbeatReport::set_seconds_since_epoch(::google::protobuf::uint32 value) {
-  set_has_seconds_since_epoch();
-  seconds_since_epoch_ = value;
-}
-
 // optional uint32 total_time_milli = 13;
 inline bool HeartbeatReport::has_total_time_milli() const {
   return (_has_bits_[0] & 0x00000008u) != 0;
@@ -427,48 +427,48 @@ inline void HeartbeatReport::set_busy_time_milli(::google::protobuf::uint32 valu
   busy_time_milli_ = value;
 }
 
-// optional uint32 net_in_mb = 4;
-inline bool HeartbeatReport::has_net_in_mb() const {
+// optional uint32 process_in_mb = 4;
+inline bool HeartbeatReport::has_process_in_mb() const {
   return (_has_bits_[0] & 0x00000020u) != 0;
 }
-inline void HeartbeatReport::set_has_net_in_mb() {
+inline void HeartbeatReport::set_has_process_in_mb() {
   _has_bits_[0] |= 0x00000020u;
 }
-inline void HeartbeatReport::clear_has_net_in_mb() {
+inline void HeartbeatReport::clear_has_process_in_mb() {
   _has_bits_[0] &= ~0x00000020u;
 }
-inline void HeartbeatReport::clear_net_in_mb() {
-  net_in_mb_ = 0u;
-  clear_has_net_in_mb();
+inline void HeartbeatReport::clear_process_in_mb() {
+  process_in_mb_ = 0u;
+  clear_has_process_in_mb();
 }
-inline ::google::protobuf::uint32 HeartbeatReport::net_in_mb() const {
-  return net_in_mb_;
+inline ::google::protobuf::uint32 HeartbeatReport::process_in_mb() const {
+  return process_in_mb_;
 }
-inline void HeartbeatReport::set_net_in_mb(::google::protobuf::uint32 value) {
-  set_has_net_in_mb();
-  net_in_mb_ = value;
+inline void HeartbeatReport::set_process_in_mb(::google::protobuf::uint32 value) {
+  set_has_process_in_mb();
+  process_in_mb_ = value;
 }
 
-// optional uint32 net_out_mb = 5;
-inline bool HeartbeatReport::has_net_out_mb() const {
+// optional uint32 process_out_mb = 5;
+inline bool HeartbeatReport::has_process_out_mb() const {
   return (_has_bits_[0] & 0x00000040u) != 0;
 }
-inline void HeartbeatReport::set_has_net_out_mb() {
+inline void HeartbeatReport::set_has_process_out_mb() {
   _has_bits_[0] |= 0x00000040u;
 }
-inline void HeartbeatReport::clear_has_net_out_mb() {
+inline void HeartbeatReport::clear_has_process_out_mb() {
   _has_bits_[0] &= ~0x00000040u;
 }
-inline void HeartbeatReport::clear_net_out_mb() {
-  net_out_mb_ = 0u;
-  clear_has_net_out_mb();
+inline void HeartbeatReport::clear_process_out_mb() {
+  process_out_mb_ = 0u;
+  clear_has_process_out_mb();
 }
-inline ::google::protobuf::uint32 HeartbeatReport::net_out_mb() const {
-  return net_out_mb_;
+inline ::google::protobuf::uint32 HeartbeatReport::process_out_mb() const {
+  return process_out_mb_;
 }
-inline void HeartbeatReport::set_net_out_mb(::google::protobuf::uint32 value) {
-  set_has_net_out_mb();
-  net_out_mb_ = value;
+inline void HeartbeatReport::set_process_out_mb(::google::protobuf::uint32 value) {
+  set_has_process_out_mb();
+  process_out_mb_ = value;
 }
 
 // optional uint32 process_cpu_usage = 6;

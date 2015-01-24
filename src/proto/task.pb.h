@@ -30,6 +30,7 @@
 #include "proto/app.pb.h"
 #include "proto/linear_method.pb.h"
 #include "proto/filter.pb.h"
+#include "proto/heartbeat.pb.h"
 // @@protoc_insertion_point(includes)
 
 namespace PS {
@@ -566,6 +567,15 @@ class Task : public ::google::protobuf::Message {
   inline ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo >*
       mutable_partition_info();
 
+  // optional .PS.HeartbeatReport heartbeat_report = 601;
+  inline bool has_heartbeat_report() const;
+  inline void clear_heartbeat_report();
+  static const int kHeartbeatReportFieldNumber = 601;
+  inline const ::PS::HeartbeatReport& heartbeat_report() const;
+  inline ::PS::HeartbeatReport* mutable_heartbeat_report();
+  inline ::PS::HeartbeatReport* release_heartbeat_report();
+  inline void set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbeat_report);
+
   // @@protoc_insertion_point(class_scope:PS.Task)
  private:
   inline void set_has_type();
@@ -602,6 +612,8 @@ class Task : public ::google::protobuf::Message {
   inline void clear_has_linear_method();
   inline void set_has_sketch();
   inline void clear_has_sketch();
+  inline void set_has_heartbeat_report();
+  inline void clear_has_heartbeat_report();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -624,10 +636,11 @@ class Task : public ::google::protobuf::Message {
   ::PS::LM::Call* linear_method_;
   ::PS::CallSketch* sketch_;
   ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo > partition_info_;
+  ::PS::HeartbeatReport* heartbeat_report_;
   int key_type_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(20 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(21 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -2103,6 +2116,44 @@ Task::partition_info() const {
 inline ::google::protobuf::RepeatedPtrField< ::PS::PartitionInfo >*
 Task::mutable_partition_info() {
   return &partition_info_;
+}
+
+// optional .PS.HeartbeatReport heartbeat_report = 601;
+inline bool Task::has_heartbeat_report() const {
+  return (_has_bits_[0] & 0x00100000u) != 0;
+}
+inline void Task::set_has_heartbeat_report() {
+  _has_bits_[0] |= 0x00100000u;
+}
+inline void Task::clear_has_heartbeat_report() {
+  _has_bits_[0] &= ~0x00100000u;
+}
+inline void Task::clear_heartbeat_report() {
+  if (heartbeat_report_ != NULL) heartbeat_report_->::PS::HeartbeatReport::Clear();
+  clear_has_heartbeat_report();
+}
+inline const ::PS::HeartbeatReport& Task::heartbeat_report() const {
+  return heartbeat_report_ != NULL ? *heartbeat_report_ : *default_instance_->heartbeat_report_;
+}
+inline ::PS::HeartbeatReport* Task::mutable_heartbeat_report() {
+  set_has_heartbeat_report();
+  if (heartbeat_report_ == NULL) heartbeat_report_ = new ::PS::HeartbeatReport;
+  return heartbeat_report_;
+}
+inline ::PS::HeartbeatReport* Task::release_heartbeat_report() {
+  clear_has_heartbeat_report();
+  ::PS::HeartbeatReport* temp = heartbeat_report_;
+  heartbeat_report_ = NULL;
+  return temp;
+}
+inline void Task::set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbeat_report) {
+  delete heartbeat_report_;
+  heartbeat_report_ = heartbeat_report;
+  if (heartbeat_report) {
+    set_has_heartbeat_report();
+  } else {
+    clear_has_heartbeat_report();
+  }
 }
 
 // -------------------------------------------------------------------

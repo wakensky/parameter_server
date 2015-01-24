@@ -2,19 +2,15 @@ package PS;
 
 message HeartbeatReport {
   optional int32 task_id = 1 [default = 0];
+  optional int32 time_stamp = 16 [default = 0];
   optional string hostname = 14;
-
-  // time stamp
-  // latest heartbeat report the scheduler has ever received
-  //    from a specified worker/server
-  optional uint32 seconds_since_epoch = 2;
 
   optional uint32 total_time_milli = 13;
   optional uint32 busy_time_milli = 3;
 
-  // recv/sent bytes via zmq
-  optional uint32 net_in_mb = 4;
-  optional uint32 net_out_mb = 5;
+  // recv/sent bytes via zmq under current process
+  optional uint32 process_in_mb = 4;
+  optional uint32 process_out_mb = 5;
 
   // user+sys (percentage)
   optional uint32 process_cpu_usage = 6;

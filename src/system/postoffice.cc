@@ -35,7 +35,7 @@ void Postoffice::run() {
   // omp_set_dynamic(0);
   // omp_set_num_threads(FLAGS_num_threads);
   yellow_pages_.init();
-  heartbeat_info_.init(FLAGS_interface, myNode().hostname());
+  heartbeat_collector_.init(FLAGS_interface, myNode().hostname());
 
   if (FLAGS_log_to_file) {
     google::SetLogDestination(google::INFO, ("./log_" + myNode().id() + "_").c_str());
@@ -131,7 +131,7 @@ void Postoffice::send() {
     if (!stat.ok()) {
       LL << "sending " << *msg << " failed. error: " << stat.ToString();
     }
-    heartbeat_info_.increaseOutBytes(send_bytes);
+    heartbeat_collector_.increaseOutBytes(send_bytes);
   }
 }
 
@@ -142,7 +142,7 @@ void Postoffice::recv() {
     size_t recv_bytes = 0;
     auto stat = yellow_pages_.van().recv(msg, &recv_bytes);
     CHECK(stat.ok()) << stat.ToString();
-    heartbeat_info_.increaseInBytes(recv_bytes);
+    heartbeat_collector_.increaseInBytes(recv_bytes);
 
     // process it
     auto& tk = msg->task;
@@ -163,10 +163,11 @@ void Postoffice::recv() {
 
     if (type == Task::HEARTBEATING) {
       // newly arrived heartbeat pack
-      dashboard_.addReport(msg->sender, tk.msg());
+      dashboard_.addReport(msg->sender, tk.heartbeat_report());
     } else if (type == Task::MANAGE) {
       if (request && tk.has_mng_app()) manageApp(tk);
       if (request && tk.has_mng_node()) manageNode(tk);
+      manage_task_done_ = true;
     } else if (type == Task::TERMINATE) {
       // yellow_pages_.van().statistic();
       done_ = true;
@@ -230,16 +231,12 @@ void Postoffice::heartbeat() {
   while (!done_) {
     // heartbeat won't work until I have connected to the scheduler
     std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
-    if (yellow_pages_.van().connected(scheduler())) {
-      // serialize heartbeat report
-      string report;
-      heartbeat_info_.get().SerializeToString(&report);
-
+    if (manage_task_done_) {
       // pack msg
       Task task;
       task.set_type(Task::HEARTBEATING);
+      *task.mutable_heartbeat_report() = heartbeat_collector_.produceReport();
       task.set_request(true);
-      task.set_msg(report);
       task.set_do_not_reply(true);
       MessagePtr msg(new Message(task));
       msg->recver = scheduler().id();

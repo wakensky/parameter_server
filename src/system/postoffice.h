@@ -2,7 +2,7 @@
 #include "util/common.h"
 #include "system/message.h"
 #include "system/yellow_pages.h"
-#include "system/heartbeat_info.h"
+#include "system/heartbeat_collector.h"
 #include "util/threadsafe_queue.h"
 #include "dashboard.h"
 
@@ -40,11 +40,14 @@ class Postoffice {
   Node& myNode() { return yellow_pages_.van().myNode(); }
   Node& scheduler() { return yellow_pages_.van().scheduler(); }
 
-  HeartbeatInfo& hb() { return heartbeat_info_; };
+  HeartbeatCollector& hb_collector() { return heartbeat_collector_; };
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Postoffice);
-  Postoffice() { }
+  Postoffice():
+    manage_task_done_(false) {
+    // do nothing
+  }
 
   void manageApp(const Task& pt);
   void send();
@@ -53,11 +56,6 @@ class Postoffice {
   void heartbeat();
   // monitor thread function only used by scheduler
   void monitor();
-
-  // void addMyNode(const string& name, const Node& recver);
-
-  string printDashboardTitle();
-  string printHeartbeatReport(const string& node_id, const HeartbeatReport& report);
 
   std::mutex mutex_;
   bool done_ = false;
@@ -72,8 +70,10 @@ class Postoffice {
   // yp_ should stay behind sending_queue_ so it will be destroied earlier
   YellowPages yellow_pages_;
 
-  // heartbeat info for workers/servers
-  HeartbeatInfo heartbeat_info_;
+  // heartbeat reporter for workers/servers
+  HeartbeatCollector heartbeat_collector_;
+  // If I have finished MANAGE task, I have connected to the scheduler certainly
+  bool manage_task_done_;
   Dashboard dashboard_;
 };
 

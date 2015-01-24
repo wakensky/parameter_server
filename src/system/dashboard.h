@@ -12,7 +12,7 @@ struct NodeIDCmp {
 class Dashboard {
  public:
   void addTask(const NodeID& node, int task_id);
-  void addReport(const NodeID& node, const string& report);
+  void addReport(const NodeID& node, const HeartbeatReport& report);
   string report();
  private:
   string title();

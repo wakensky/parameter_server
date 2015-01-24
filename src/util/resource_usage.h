@@ -7,6 +7,7 @@
 #include <ctime>
 #include <ratio>
 #include <chrono>
+#include <sstream>
 
 namespace PS {
 
@@ -90,15 +91,23 @@ class ResUsage {
       getLine("/proc/meminfo", "Buffers:") -
       getLine("/proc/meminfo", "Cached:")) / 1024;
   }
+  // in Mb
   static double hostTotalMem() {
     return getLine("/proc/meminfo", "MemTotal:") / 1024;
   }
  private:
   static double getLine(const char *filename, const char *name) {
     FILE* file = fopen(filename, "r");
-    char line[128];
+    if (nullptr == file) {
+      std::stringstream ss;
+      ss << "getLine open file failed. [" << filename <<
+        "] [" << strerror(errno) << "]";
+      throw std::runtime_error(ss.str());
+    }
+    const size_t kLineLen = 1024;
+    char line[kLineLen + 1];
     int result = -1;
-    while (fgets(line, 128, file) != NULL){
+    while (fgets(line, kLineLen, file) != NULL){
       if (strncmp(line, name, strlen(name)) == 0){
         result = parseLine(line);
         break;
@@ -111,7 +120,9 @@ class ResUsage {
   static int parseLine(char* line){
     int i = strlen(line);
     while (*line < '0' || *line > '9') line++;
-    line[i-3] = '\0';
+    char* tail = line + i;
+    while (*tail < '0' || *tail > '9') tail--;
+    *(tail + 1) = '\0';
     i = atoi(line);
     return i;
   }

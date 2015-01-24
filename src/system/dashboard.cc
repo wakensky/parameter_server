@@ -32,14 +32,16 @@ void NodeIDCmp::splitNodeID(const NodeID& in, string& primary, string& secondary
 void Dashboard::addTask(const NodeID& node, int task_id) {
   Lock l(mu_);
   data_[node].set_task_id(task_id);
+  data_[node].set_time_stamp(time(nullptr));
 }
 
-void Dashboard::addReport(const NodeID& node, const string& report) {
-  HeartbeatReport hb; CHECK(hb.ParseFromString(report));
+void Dashboard::addReport(const NodeID& node, const HeartbeatReport& report) {
+  HeartbeatReport hb = report;
   {
     Lock l(mu_);
     auto& rp = data_[node];
     hb.set_task_id(rp.task_id());
+    hb.set_time_stamp(rp.time_stamp());
     rp = hb;
   }
 }
@@ -49,7 +51,9 @@ string Dashboard::title() {
   std::time_t now_time = std::chrono::system_clock::to_time_t(
       std::chrono::system_clock::now());
   string time_str = ctime(&now_time);
-  time_str.resize(time_str.size() - 1);
+  if (!time_str.empty() && '\n' == time_str.back()) {
+    time_str.resize(time_str.size() - 1);
+  }
   std::stringstream ss;
   ss << std::setiosflags(std::ios::left) <<
       std::setw(WIDTH * 2) << std::setfill('=') << "" << " Dashboard " <<
@@ -57,6 +61,7 @@ string Dashboard::title() {
   ss << std::setfill(' ') <<
       std::setw(WIDTH) << "Node" <<
       std::setw(WIDTH) << "Task" <<
+      std::setw(WIDTH) << "TP" <<
       std::setw(WIDTH) << "MyCPU(%)" <<
       std::setw(WIDTH) << "MyRSS(M)" <<
       std::setw(WIDTH) << "MyVir(M)" <<
@@ -93,29 +98,35 @@ string Dashboard::report(const NodeID& node, const HeartbeatReport& report) {
           100 * (static_cast<float>(report.busy_time_milli()) / report.total_time_milli())) <<
       "%)";
 
-  std::stringstream net_in_mb_with_speed;
-  net_in_mb_with_speed << report.net_in_mb() <<
-      "(" << static_cast<uint32>(report.net_in_mb() / (report.total_time_milli() / 1e3)) <<
+  std::stringstream process_net_in_mb_with_speed;
+  process_net_in_mb_with_speed << report.process_in_mb() <<
+      "(" << static_cast<uint32>(report.process_in_mb() / (report.total_time_milli() / 1e3)) <<
       ")";
 
-  std::stringstream net_out_mb_with_speed;
-  net_out_mb_with_speed << report.net_out_mb() <<
-      "(" << static_cast<uint32>(report.net_out_mb() / (report.total_time_milli() / 1e3)) <<
+  std::stringstream process_net_out_mb_with_speed;
+  process_net_out_mb_with_speed << report.process_out_mb() <<
+      "(" << static_cast<uint32>(report.process_out_mb() / (report.total_time_milli() / 1e3)) <<
       ")";
 
   std::stringstream host_memory_usage;
   host_memory_usage << report.host_in_use_gb() << "(" <<
       report.host_in_use_percentage() << "%)";
 
+  const size_t kBufLen = 256;
+  char time_stamp[kBufLen + 1];
+  time_t tp = static_cast<time_t>(report.time_stamp());
+  strftime(time_stamp, kBufLen, "%H:%M:%S", localtime(&tp));
+
   ss << std::setiosflags(std::ios::left) <<
       std::setw(WIDTH) << node <<
       std::setw(WIDTH) << report.task_id() <<
+      std::setw(WIDTH) << time_stamp <<
       std::setw(WIDTH) << report.process_cpu_usage() <<
       std::setw(WIDTH) << report.process_rss_mb() <<
       std::setw(WIDTH) << report.process_virt_mb() <<
       std::setw(WIDTH) << busy_time_with_ratio.str() <<
-      std::setw(WIDTH) << net_in_mb_with_speed.str() <<
-      std::setw(WIDTH) << net_out_mb_with_speed.str() <<
+      std::setw(WIDTH) << process_net_in_mb_with_speed.str() <<
+      std::setw(WIDTH) << process_net_out_mb_with_speed.str() <<
       std::setw(WIDTH) << report.host_cpu_usage() <<
       std::setw(WIDTH) << host_memory_usage.str() <<
       std::setw(WIDTH) << (
