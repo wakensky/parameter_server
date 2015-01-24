@@ -202,6 +202,10 @@ class Ocean {
     // how many rows the matrix has
     size_t matrix_rows(const GroupID grp_id);
 
+    // how many tasks still reside in prefetch pending queue
+    // may return negative if some pops are waiting
+    int pendingPrefetchCount();
+
   private: // internal types
     enum class UnitStatus: unsigned char {
       INIT = 0,
@@ -241,6 +245,8 @@ class Ocean {
       }
     };
 
+    const TaskID kFakeTaskID = -1;
+
   private: // methods
     Ocean();
     void prefetchThreadFunc();
@@ -265,10 +271,10 @@ class Ocean {
     std::unordered_map<GroupID, std::vector<Range<FullKey>>> group_partition_ranges_;
     UnitHashMap units_;
 
-    using UnitPrefetchQueue = tbb::concurrent_queue<std::pair<UnitID, TaskID>>;
+    using UnitPrefetchQueue = tbb::concurrent_bounded_queue<std::pair<UnitID, TaskID>>;
     UnitPrefetchQueue prefetch_queue_;
-    std::mutex prefetch_queue_mu_;
-    std::condition_variable prefetch_queue_not_empty_cv_;
+    // tbb::concurrent_queue only provides unsafe_size(),
+    //   so we must maintain the size by ourselves.
     std::vector<std::thread> prefetch_threads_;
 
     std::unordered_map<UnitID, SizeR, UnitIDHash> anchors_;
@@ -288,6 +294,10 @@ class Ocean {
 
     PathPicker* path_picker_;
     LM::Config conf_;
+
+    // all tasks that have been prefetched
+    // Ocean will not prefetch the same task twice
+    std::unordered_set<TaskID> prefetched_tasks_;
 
 
 

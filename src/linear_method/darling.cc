@@ -140,6 +140,36 @@ void Darling::updateModel(const MessagePtr& msg) {
   Range<Key> g_key_range(call.key());
   auto anchor = ocean_.fetchAnchor(grp, g_key_range);
 
+  // prefetch column partitioned data
+  LI << "pending prefetch count: " << ocean_.pendingPrefetchCount();
+  if (ocean_.pendingPrefetchCount() <
+      conf_.solver().max_block_delay() + 8) {
+    auto current_time = msg->task.time();
+    auto max_delay = conf_.solver().max_block_delay();
+    auto judge = [current_time, max_delay](const Task& task) -> bool {
+      if (Call::UPDATE_MODEL == task.linear_method().cmd() &&
+          task.time() < current_time + 16 * max_delay) {
+        return true;
+      }
+      return false;
+    };
+    std::vector<Task> in_coming_tasks;
+    exec().peek(judge, in_coming_tasks);
+
+    // sort by task->time(), ascending
+    std::sort(
+      in_coming_tasks.begin(), in_coming_tasks.end(),
+      [](const Task& a, const Task& b) {return a.time() < b.time();});
+
+    // prefetch
+    for (const auto& task : in_coming_tasks) {
+      ocean_.prefetch(
+        task.linear_method().fea_grp(0),
+        task.linear_method().key(),
+        task.time());
+    }
+  }
+
   if (IamWorker()) {
     // compute local gradients
     mu_.lock();

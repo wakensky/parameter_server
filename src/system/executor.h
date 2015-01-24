@@ -79,6 +79,11 @@ class Executor {
   string lastRecvReply();
 
   Customer& obj() { return obj_; }
+
+  // peek the qualified tasks which reside in recved_msgs_
+  using PeekJudge = std::function<bool(const Task& task)>;
+  void peek(PeekJudge judge, std::vector<Task>& task_vector);
+
  private:
   Customer& obj_;
   // Temporal buffer for received messages

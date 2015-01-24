@@ -31,7 +31,7 @@ Ocean::~Ocean() {
     for (int i = 0; i < FLAGS_num_threads + 1; ++i) {
       // pump in some illegal prefetch jobs
       //  push threads moving on
-      prefetch(0, Range<FullKey>(), 0);
+      prefetch(0, Range<FullKey>(), kFakeTaskID);
     }
     thread.join();
   }
@@ -179,11 +179,18 @@ void Ocean::prefetch(
   const GroupID grp_id,
   const Range<FullKey>& global_range,
   const TaskID task_id) {
+  if (kFakeTaskID != task_id && prefetched_tasks_.count(task_id) > 0) {
+    return;
+  }
+  prefetched_tasks_.insert(task_id);
   UnitID unit_id(grp_id, global_range);
 
   // enqueue
   prefetch_queue_.push(std::make_pair(unit_id, task_id));
-  prefetch_queue_not_empty_cv_.notify_all();
+
+  // wakensky
+  LI << "prefetch added [" << unit_id.toString() <<
+    "] [" << task_id << "]";
 }
 
 Ocean::DataPack Ocean::get(
@@ -560,15 +567,15 @@ size_t Ocean::matrix_rows(const GroupID grp_id) {
   return matrix_info_[grp_id].row().end() - matrix_info_[grp_id].row().begin();
 }
 
+int Ocean::pendingPrefetchCount() {
+  return prefetch_queue_.size();
+}
+
 void Ocean::prefetchThreadFunc() {
   while (go_on_) {
     // take out a UnitID which needs prefetch
     std::pair<UnitID, TaskID> prefetch_job;
-    {
-      std::unique_lock<std::mutex> l(prefetch_queue_mu_);
-      prefetch_queue_not_empty_cv_.wait(
-        l, [this, &prefetch_job]{return prefetch_queue_.try_pop(prefetch_job);});
-    }
+    prefetch_queue_.pop(prefetch_job);
     UnitID unit_id = prefetch_job.first;
     TaskID task_id = prefetch_job.second;
 
@@ -602,7 +609,7 @@ void Ocean::prefetchThreadFunc() {
         UnitStatus::LOADED == accessor->second.getStatus()) {
       if (FLAGS_verbose) {
         LI << "prefetch thread finishes unit [" << unit_id.toString() <<
-          "] since already LOADING/LOADED";
+          "] [" << task_id << "] since already LOADING/LOADED";
       }
       continue;
     }
