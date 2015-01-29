@@ -130,10 +130,18 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
       auto& filter = key_filter_[chl];
       if (filter.empty() && !msg->key.empty()) {
         double w = (double)FLAGS_num_workers;
-        const int scale = static_cast<int>(
+        int scale = static_cast<int>(
           SArray<K>(msg->key).size() * call.countmin_n());
-        filter.resize(
-            std::max((int)(w*scale/log(w+1)), 64), call.countmin_k());
+        scale = w * scale / log(w+1);
+        if (scale < 0) {
+          LL << "bloomfilter size overflow " << myNodeID() << " chl:" << chl <<
+            " keycount: " << SArray<K>(msg->key).size() <<
+            " countmin_n: " << call.countmin_n() <<
+            " w: " << w << " log(w+1): " << log(w+1) <<
+            " scale: " << scale <<
+            " [bloomfilter size will be restricted to 64, which leaves a lot of filtered features]";
+        }
+        filter.resize(std::max(scale, 64), call.countmin_k());
       }
       filter.insertKeys(SArray<K>(msg->key), SArray<uint8>(msg->value[0]));
     }

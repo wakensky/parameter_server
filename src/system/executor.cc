@@ -94,7 +94,7 @@ void Executor::run() {
 
     if (FLAGS_verbose) {
       LI << obj_.name() << " before entering task loop; recved_msgs_. size [" <<
-        recved_msgs_.size() << "]";
+        /*recved_msgs_.size() <<*/ "]";
     }
 
     {
@@ -119,7 +119,7 @@ void Executor::run() {
 
           if (FLAGS_verbose) {
             LI << obj_.name() << " picked up an active_msg_ from recved_msgs_. " <<
-              "remaining size [" << recved_msgs_.size() << "]; msg [" <<
+              "remaining size [" << /*recved_msgs_.size() <<*/ "]; msg [" <<
               active_msg_->shortDebugString() << "]";
           }
 
@@ -129,7 +129,7 @@ void Executor::run() {
       if (!do_process) {
         if (FLAGS_verbose) {
           LI << obj_.name() << " picked nothing from recved_msgs_. size [" <<
-            recved_msgs_.size() << "] waiting Executor::accept";
+            /*recved_msgs_.size() <<*/ "] waiting Executor::accept";
         }
 
         dag_cond_.wait(lk);
