@@ -5,6 +5,7 @@
 #include <array>
 #include <tbb/concurrent_queue.h>
 #include <tbb/concurrent_hash_map.h>
+#include <tbb/concurrent_unordered_set.h>
 #include "proto/task.pb.h"
 #include "util/common.h"
 #include "util/threadpool.h"
@@ -262,6 +263,7 @@ class Ocean {
     // output to corresponding UnitBody's data_pack
     bool loadFromDiskSynchronously(
       const UnitID unit_id,
+      const TaskID task_id,
       const PathPack& path_pack,
       DataPack* data_pack);
 
@@ -302,6 +304,12 @@ class Ocean {
     // all tasks that have been prefetched
     // Ocean will not prefetch the same task twice
     std::unordered_set<TaskID> prefetched_tasks_;
+
+    // All tasks that have been loaded/dropped,
+    //   Ocean will not reload these tasks twice
+    // If Ocean prefetch these tasks again,
+    //   nobody will invoke Ocean::drop on them.
+    tbb::concurrent_unordered_set<TaskID> tasks_do_not_prefetch_;
 
 
 

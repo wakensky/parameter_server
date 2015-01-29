@@ -1,3 +1,4 @@
+#include <gperftools/malloc_extension.h>
 #include "linear_method/darling.h"
 #include "base/matrix_io.h"
 #include "base/sparse_matrix.h"
@@ -142,11 +143,14 @@ void Darling::updateModel(const MessagePtr& msg) {
 
   // prefetch column partitioned data
   LI << "pending prefetch count: " << ocean_.pendingPrefetchCount();
-  if (ocean_.pendingPrefetchCount() < FLAGS_in_memory_unit_limit) {
+  if (ocean_.pendingPrefetchCount() < 64 * FLAGS_in_memory_unit_limit) {
     auto current_time = msg->task.time();
     auto judge = [current_time](const Task& task) -> bool {
+      if (Call::UPDATE_MODEL == task.linear_method().cmd()) return true;
+      return false;
+
       if (Call::UPDATE_MODEL == task.linear_method().cmd() &&
-          task.time() < current_time + 4 * FLAGS_in_memory_unit_limit) {
+          task.time() < current_time + 64 * FLAGS_in_memory_unit_limit) {
         return true;
       }
       return false;
@@ -194,7 +198,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     g_key_range.to(push_msg->task.mutable_key_range());
     push_msg->task.set_key_channel(grp);
     push_msg->task.set_owner_time(msg->task.time());
-    push_msg->addFilter(FilterConfig::KEY_CACHING);
+    // push_msg->addFilter(FilterConfig::KEY_CACHING);
     CHECK_EQ(time, w_->push(push_msg));
 
     // wakensky
@@ -214,7 +218,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     g_key_range.to(pull_msg->task.mutable_key_range());
     pull_msg->task.set_key_channel(grp);
     pull_msg->task.set_owner_time(msg->task.time());
-    pull_msg->addFilter(FilterConfig::KEY_CACHING);
+    // pull_msg->addFilter(FilterConfig::KEY_CACHING);
     // the callback for updating the local dual variable
     pull_msg->fin_handle = [this, grp, anchor, time, msg, g_key_range] () {
       if (!anchor.empty()) {
@@ -261,7 +265,10 @@ void Darling::updateModel(const MessagePtr& msg) {
     CHECK_EQ(time+2, w_->pull(pull_msg));
   } else if (IamServer()) {
     // none of my bussiness
-    if (w_->myKeyRange().setIntersection(g_key_range).empty()) return;
+    if (w_->myKeyRange().setIntersection(g_key_range).empty()) {
+      ocean_.drop(grp, g_key_range, msg->task.time());
+      return;
+    }
 
     // time 0: aggregate all workers' local gradients
     w_->waitInMsg(kWorkerGroup, time);
@@ -281,6 +288,10 @@ void Darling::updateModel(const MessagePtr& msg) {
 
     // time 2: let the workers pull from me
   }
+
+#ifdef TCMALLOC
+  MallocExtension::instance()->ReleaseFreeMemory();
+#endif
 }
 
 SArrayList<double> Darling::computeGradients(int grp, SizeR global_range, int task_id) {

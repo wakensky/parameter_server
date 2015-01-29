@@ -1,3 +1,4 @@
+#include <gperftools/malloc_extension.h>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
 #include "base/matrix_io_inl.h"
@@ -432,6 +433,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // release memory resource
       w_->clear(grp_id);
       delta_[grp_id].clear();
+      w_->keyFilter(grp_id).clear();
+#ifdef TCMALLOC
+      MallocExtension::instance()->ReleaseFreeMemory();
+#endif
     }
   }
 }

@@ -23,7 +23,7 @@ Ocean::Ocean() :
       std::thread(&Ocean::prefetchThreadFunc, this)));
   }
   // launch write threads
-  for (int i = 0; i < FLAGS_num_threads; ++i) {
+  for (int i = 0; i < 4 * FLAGS_num_threads; ++i) {
     write_threads_.push_back(std::move(
       std::thread(&Ocean::writeThreadFunc, this)));
   }
@@ -218,6 +218,8 @@ Ocean::DataPack Ocean::get(
     return DataPack();
   }
 
+  LI << "Ocean::get tries to read unit [" << unit_id.toString() <<
+    "] [" << task_id << "]";
   if (UnitStatus::LOADED == accessor->second.status) {
     return accessor->second.data_pack;
   } else if (UnitStatus::LOADING == accessor->second.status) {
@@ -231,12 +233,14 @@ Ocean::DataPack Ocean::get(
     accessor->second.in_use_tasks.insert(task_const_accessor, task_id);
 
     // load
-    LI << "Ocean::get loading unit [" << unit_id.toString() << "] synchronously";
+    LI << "Ocean::get loading unit [" << unit_id.toString() <<
+      "] [" << task_id << "] synchronously";
     accessor->second.setStatus(UnitStatus::LOADING);
     CHECK(loadFromDiskSynchronously(
-      unit_id, accessor->second.path_pack, &accessor->second.data_pack));
+      unit_id, task_id, accessor->second.path_pack, &accessor->second.data_pack));
     accessor->second.setStatus(UnitStatus::LOADED);
-    LI << "Ocean::get loaded unit [" << unit_id.toString() << "] synchronously";
+    LI << "Ocean::get loaded unit [" << unit_id.toString() <<
+      "] [" << task_id << "] synchronously";
   }
   return accessor->second.data_pack;
 }
@@ -252,6 +256,9 @@ void Ocean::drop(
     return;
   }
 
+  // mark as loaded
+  tasks_do_not_prefetch_.insert(task_id);
+
   // remove finished task_id from in_use_tasks
   (*accessor_ptr)->second.in_use_tasks.erase(task_id);
 
@@ -259,6 +266,8 @@ void Ocean::drop(
   if ((*accessor_ptr)->second.in_use_tasks.empty()) {
     (*accessor_ptr)->second.setStatus(UnitStatus::DROPPING);
     write_queue_.push(accessor_ptr);
+    LI << "Ocean::drop added unit to write queue [" << unit_id.toString() <<
+      "] [" << task_id << "]";
   }
 }
 
@@ -590,8 +599,16 @@ void Ocean::prefetchThreadFunc() {
     prefetch_queue_.pop(prefetch_job);
     UnitID unit_id = prefetch_job.first;
     TaskID task_id = prefetch_job.second;
+    if (tasks_do_not_prefetch_.count(task_id) > 0) {
+      if (FLAGS_verbose) {
+        LI << "prefetch thread skipped unit since associated task has been loaded [" <<
+          unit_id.toString() << "] [" << task_id << "]";
+      }
+      continue;
+    }
 
     // hang on if in-memory unit count limit reached
+    LI << "in_memory_unit_count_: " << in_memory_unit_count_;
     {
       std::unique_lock<std::mutex> l(in_memory_limit_mu_);
       in_memory_unit_not_full_cv_.wait(
@@ -600,14 +617,15 @@ void Ocean::prefetchThreadFunc() {
 
     if (FLAGS_verbose) {
       LI << "prefetch thread ready to prefetch unit [" <<
-        unit_id.toString() << "]";
+        unit_id.toString() << "] [" << task_id << "]";
     }
 
     // make sure {grp_id, global_range} has already resides in units_
     // otherwise, I do not know how to load it
     UnitHashMap::accessor accessor;
     if (!units_.find(accessor, unit_id)) {
-      LL << "prefetch thread cannot prefetch unit [" << unit_id.toString() << "]";
+      LL << "prefetch thread cannot prefetch unit [" <<
+        unit_id.toString() << "] [" << task_id << "]";
       continue;
     }
 
@@ -628,18 +646,18 @@ void Ocean::prefetchThreadFunc() {
 
     if (FLAGS_verbose) {
       LI << "prefetch thread starts prefetching unit [" <<
-        unit_id.toString() << "]";
+        unit_id.toString() << "] [" << task_id << "]";
     }
 
     // load from disk
     accessor->second.setStatus(UnitStatus::LOADING);
     loadFromDiskSynchronously(
-      unit_id, accessor->second.path_pack, &accessor->second.data_pack);
+      unit_id, task_id, accessor->second.path_pack, &accessor->second.data_pack);
     accessor->second.setStatus(UnitStatus::LOADED);
 
     if (FLAGS_verbose) {
       LI << "prefetch thread finishes prefetching unit [" <<
-        unit_id.toString() << "]";
+        unit_id.toString() << "] [" << task_id << "]";
     }
   };
 }
@@ -675,11 +693,15 @@ void Ocean::writeThreadFunc() {
 
     // mark as dropped
     unit_body.setStatus(UnitStatus::DROPPED);
+
+    LI << "Ocean::writeThreadFunc dropped unit: [" <<
+      (*accessor_ptr)->first.toString() << "]";
   };
 }
 
 bool Ocean::loadFromDiskSynchronously(
   const UnitID unit_id,
+  const TaskID task_id,
   const PathPack& path_pack,
   Ocean::DataPack* data_pack) {
   CHECK(nullptr != data_pack);
@@ -724,6 +746,7 @@ bool Ocean::loadFromDiskSynchronously(
   CHECK_EQ(parameter_key.size(), delta.size());
 
   in_memory_unit_count_++;
+  tasks_do_not_prefetch_.insert(task_id);
   return true;
 }
 
