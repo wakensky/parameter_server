@@ -1,6 +1,6 @@
 #include "system/postoffice.h"
 #include "proto/heartbeat.pb.h"
-// #include <omp.h>
+#include <omp.h>
 #include "system/customer.h"
 #include "system/app.h"
 #include "util/file.h"
@@ -32,8 +32,8 @@ Postoffice::~Postoffice() {
 
 // TODO run a console if it is a Node::MANAGER
 void Postoffice::run() {
-  // omp_set_dynamic(0);
-  // omp_set_num_threads(FLAGS_num_threads);
+  omp_set_dynamic(0);
+  omp_set_num_threads(FLAGS_num_threads);
   yellow_pages_.init();
   heartbeat_collector_.init(FLAGS_interface, myNode().hostname());
 

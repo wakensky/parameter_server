@@ -356,6 +356,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
           // finish tag
           helper->setStatus(PreprocessHelper::Status::FINISHED);
+
+#ifdef TCMALLOC
+          MallocExtension::instance()->ReleaseFreeMemory();
+#endif
         }
       }
 
@@ -379,6 +383,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // compute and dump
       compute(grp_order, keys);
+
+#ifdef TCMALLOC
+      MallocExtension::instance()->ReleaseFreeMemory();
+#endif
     }
 
     // push initial keys
@@ -404,6 +412,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       };
       CHECK_EQ(push_initial_key_time, w_->push(push_initial_key));
       pushed_initial_time.at(grp_order) = push_initial_key_time++;
+
+#ifdef TCMALLOC
+      MallocExtension::instance()->ReleaseFreeMemory();
+#endif
     }
 
     // wait until all initial keys push finished

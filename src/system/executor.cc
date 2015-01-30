@@ -206,6 +206,7 @@ void Executor::run() {
 }
 
 void Executor::peek(PeekJudge judge, std::vector<Task>& task_vector) {
+  Lock l(recved_msg_mu_);
   task_vector.clear();
   for (const auto& msg_ptr : recved_msgs_) {
     if (judge(msg_ptr->task)) {

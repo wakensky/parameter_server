@@ -1,4 +1,5 @@
 #pragma once
+#include <parallel/algorithm>
 #include "base/shared_array.h"
 #include "base/dense_matrix.h"
 #include <random>
@@ -155,8 +156,12 @@ SArray<V> SArray<V>::setIntersection(const SArray<V>& other) const {
 template <typename V>
 SArray<V> SArray<V>::setUnion(const SArray<V>& other) const {
   SArray<V> result(other.size() + size());
+#if 0
   V* last = std::set_union(
       begin(), end(), other.begin(), other.end(), result.begin());
+#endif
+  V* last = __gnu_parallel::set_union(
+    (V*)begin(), (V*)end(), (V*)other.begin(), (V*)other.end(), (V*)result.begin());
   result.size_ = last - result.begin();
   return result;
 }

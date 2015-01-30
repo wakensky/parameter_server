@@ -252,7 +252,7 @@ void Ocean::drop(
   UnitID unit_id(grp_id, global_range);
   std::shared_ptr<UnitHashMap::accessor> accessor_ptr(new UnitHashMap::accessor());
   if (!units_.find(*accessor_ptr, unit_id)) {
-    LL << "Ocean::drop cannot find unit [" << unit_id.toString() << "]";
+    // LL << "Ocean::drop cannot find unit [" << unit_id.toString() << "]";
     return;
   }
 
