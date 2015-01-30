@@ -282,10 +282,21 @@ SizeR Ocean::fetchAnchor(
 }
 
 bool Ocean::saveModel(const string& path) {
+  // waiting all write threads
+  LI << "Ocean::saveModel is waiting write threads... ";
+  while (1) {
+    if (write_queue_.size() <= static_cast<ssize_t>(0 - write_threads_.size())) {
+      // write_queue_ is empty now. All write threads hangs on write_queue_::pop()
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+
   // open file
   std::ofstream out(path);
   CHECK(out.good());
 
+  LI << "Ocean::saveModel is dumping model... ";
   // traverse all column partitioned units
   for (auto iterator = units_.begin();
        iterator != units_.end(); ++iterator) {
@@ -318,6 +329,7 @@ bool Ocean::saveModel(const string& path) {
       }
     }
   }
+  LI << "Ocean::saveModel dumped model";
   return true;
 }
 

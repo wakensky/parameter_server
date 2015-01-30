@@ -181,6 +181,7 @@ class Ocean {
       const GroupID grp_id, const Range<FullKey>& global_range);
 
     // save {parameter_key, parameter_value} pairs to path
+    // NOT THREAD SAFE
     bool saveModel(const string& path);
 
     // save blockcache and anchor information to disk
