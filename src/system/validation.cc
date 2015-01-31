@@ -254,4 +254,26 @@ bool Validation::dumpPackages() {
   }
 }
 
+SArray<FullKey> Validation::getUniqueKeys(const BatchID& batch_id) {
+  SArray<FullKey> ret;
+
+  // merge all packages together under the specified batch
+  DumpedBatchHashMap::accessor dumped_batch_accessor;
+  if (!dumped_batches_.find(dumped_batch_accessor, batch_id)) {
+    // TODO
+    LL << "cannot find batch_id when merging unique keys";
+    return ret;
+  }
+
+  for (const auto& dumped_package : dumped_batch_accessor->second) {
+    SArray<char> stash;
+    CHECK(stash.readFromFile(dumped_package.uniq_keys_path));
+    SArray<FullKey> sub_unique_keys(stash);
+
+    ret.setUnion(sub_unique_keys);
+  }
+
+  return ret;
+}
+
 };  // namespace PS

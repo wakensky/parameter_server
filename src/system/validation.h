@@ -46,6 +46,14 @@ class Validation {
     // download validation data to disk
     bool download(const Task& preprocess_task);
 
+    SArray<FullKey> getUniqueKeys(const BatchID& batch_id);
+
+    // predict examples under the batch
+    void predictBatch(
+      const BatchID& batch_id,
+      SArray<FullKey> keys,
+      SArray<Value> weight);
+
   private:
     class LineReader {
       public:
