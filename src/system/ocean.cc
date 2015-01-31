@@ -282,56 +282,53 @@ SizeR Ocean::fetchAnchor(
 }
 
 bool Ocean::saveModel(const string& path) {
-  // waiting all write threads
-  LI << "Ocean::saveModel is waiting write threads... ";
-  while (1) {
-    if (write_queue_.size() <= static_cast<ssize_t>(0 - write_threads_.size())) {
-      // write_queue_ is empty now. All write threads hangs on write_queue_::pop()
-      break;
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  }
-  // wakensky
-  std::this_thread::sleep_for(std::chrono::seconds(10));
-
   // open file
   std::ofstream out(path);
   CHECK(out.good());
-
   LI << "Ocean::saveModel is dumping model... ";
-  // traverse all column partitioned units
-  for (auto iterator = units_.begin();
-       iterator != units_.end(); ++iterator) {
-    SArray<FullKey> parameter_key;
-    SArray<Value> parameter_value;
 
-    if (UnitStatus::LOADED == iterator->second.status) {
-      parameter_key = iterator->second.data_pack.arrays[
-        static_cast<size_t>(DataSource::PARAMETER_KEY)];
-      parameter_value = iterator->second.data_pack.arrays[
-        static_cast<size_t>(DataSource::PARAMETER_VALUE)];
-    } else {
-      // load from disk
-      SArray<char> key_stash;
-      CHECK(key_stash.readFromFile(iterator->second.path_pack.path[
-        static_cast<size_t>(DataSource::PARAMETER_KEY)]));
-      parameter_key = key_stash;
+  // traverse all possible UnitID
+  for (const auto& gid_ranges : group_partition_ranges_) {
+    const GroupID group_id = gid_ranges.first;
+    for (const auto& global_range : gid_ranges.second) {
+      UnitID unit_id(group_id, global_range);
+      UnitHashMap::accessor accessor;
+      if (!units_.find(accessor, unit_id)) {
+        continue;
+      }
 
-      SArray<char> value_stash;
-      CHECK(value_stash.readFromFile(iterator->second.path_pack.path[
-        static_cast<size_t>(DataSource::PARAMETER_VALUE)]));
-      parameter_value = value_stash;
-    }
-    CHECK_EQ(parameter_key.size(), parameter_value.size());
+      // read model
+      SArray<FullKey> parameter_key;
+      SArray<Value> parameter_value;
+      if (UnitStatus::LOADED == accessor->second.status) {
+        parameter_key = accessor->second.data_pack.arrays[
+          static_cast<size_t>(DataSource::PARAMETER_KEY)];
+        parameter_value = accessor->second.data_pack.arrays[
+          static_cast<size_t>(DataSource::PARAMETER_VALUE)];
+      } else {
+        SArray<char> key_stash;
+        CHECK(key_stash.readFromFile(accessor->second.path_pack.path[
+          static_cast<size_t>(DataSource::PARAMETER_KEY)]));
+        parameter_key = key_stash;
 
-    for (size_t i = 0; i < parameter_key.size(); ++i) {
-      double v = parameter_value[i];
-      if (!(v != v || 0 == v)) {
-        out << parameter_key[i] << "\t" << v << "\n";
+        SArray<char> value_stash;
+        CHECK(value_stash.readFromFile(accessor->second.path_pack.path[
+          static_cast<size_t>(DataSource::PARAMETER_VALUE)]));
+        parameter_value = value_stash;
+      }
+      CHECK_EQ(parameter_key.size(), parameter_value.size());
+
+      // save model
+      for (size_t i = 0; i < parameter_key.size(); ++i) {
+        double v = parameter_value[i];
+        if (!(v != v || 0 == v)) {
+          out << parameter_key[i] << "\t" << v << "\n";
+        }
       }
     }
   }
   LI << "Ocean::saveModel dumped model";
+
   return true;
 }
 
@@ -696,7 +693,7 @@ void Ocean::writeThreadFunc() {
           DataSource::DELTA == static_cast<DataSource>(data_source)) {
         SArray<char> array = unit_body.data_pack.arrays.at(data_source);
         if (!array.empty()) {
-          CHECK(array.writeToFile(unit_body.path_pack.path.at(data_source), true));
+          CHECK(array.writeToFile(unit_body.path_pack.path.at(data_source), false));
         }
         CHECK_EQ(array.size(), File::size(unit_body.path_pack.path.at(data_source)));
       }

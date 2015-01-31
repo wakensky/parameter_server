@@ -149,6 +149,7 @@ void Darling::updateModel(const MessagePtr& msg) {
   Range<Key> g_key_range(call.key());
   auto anchor = ocean_.fetchAnchor(grp, g_key_range);
 
+#if 0
   // prefetch column partitioned data
   LI << "pending prefetch count: " << ocean_.pendingPrefetchCount();
   if (ocean_.pendingPrefetchCount() < 64 * FLAGS_in_memory_unit_limit) {
@@ -179,6 +180,7 @@ void Darling::updateModel(const MessagePtr& msg) {
         task.time());
     }
   }
+#endif
 
   if (IamWorker()) {
     // compute local gradients

@@ -1,3 +1,4 @@
+#include "proto/linear_method.pb.h"
 #include "system/executor.h"
 #include "system/customer.h"
 #include <thread>
@@ -219,6 +220,15 @@ void Executor::accept(const MessagePtr& msg) {
   Lock l(recved_msg_mu_);
   auto sender = rnode(msg->sender); CHECK(sender) << msg->shortDebugString();
   sender->decodeFilter(msg);
+
+  // Ocean prefetch
+  if (LM::Call::UPDATE_MODEL == msg->task.linear_method().cmd()) {
+    ocean_.prefetch(
+      msg->task.linear_method().fea_grp(0),
+      msg->task.linear_method().key(),
+      msg->task.time());
+  }
+
   recved_msgs_.push_back(msg);
   dag_cond_.notify_one();
 }

@@ -295,7 +295,7 @@ class Ocean {
     // switch for asynchronized threads
     std::atomic_bool go_on_;
 
-    std::atomic_size_t in_memory_unit_count_;
+    std::atomic_int in_memory_unit_count_;
     std::condition_variable in_memory_unit_not_full_cv_;
     std::mutex in_memory_limit_mu_;
 

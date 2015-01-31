@@ -1,6 +1,7 @@
 #pragma once
 #include "system/remote_node.h"
 #include "system/message.h"
+#include "system/ocean.h"
 
 namespace PS {
 
@@ -21,7 +22,9 @@ const static NodeID kLiveGroup = Van::id("all_lives");
 // received tasks.
 class Executor {
  public:
-  Executor(Customer& obj) : obj_(obj) {
+  Executor(Customer& obj) :
+    obj_(obj),
+    ocean_(Ocean::instance()) {
     my_node_ = Postoffice::instance().myNode();
   }
   ~Executor() { }
@@ -98,6 +101,7 @@ class Executor {
   Node my_node_;
   std::mutex node_mu_;
   bool done_ = false;
+  Ocean& ocean_;
 };
 
 
