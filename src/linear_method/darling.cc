@@ -74,6 +74,13 @@ void Darling::runIteration() {
     double ratio = conf_.darling().kkt_filter_threshold_ratio();
     kkt_filter_threshold_ = vio / (double)g_train_info_.num_ex() * ratio;
 
+    // save model each iteration
+    Task save_model = newTask(Call::SAVE_MODEL);
+    save_model.set_wait_time(time);
+    save_model.mutable_linear_method()->set_iteration(iter);
+    time = pool->submitAndWait(save_model);
+    LL << "H has dumped model for iteration " << iter;
+
     // check if finished
     double rel = g_progress_[iter].relative_objv();
     if (rel > 0 && rel <= sol_cf.epsilon()) {

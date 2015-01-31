@@ -291,6 +291,8 @@ bool Ocean::saveModel(const string& path) {
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
+  // wakensky
+  std::this_thread::sleep_for(std::chrono::seconds(10));
 
   // open file
   std::ofstream out(path);
@@ -636,8 +638,10 @@ void Ocean::prefetchThreadFunc() {
     // otherwise, I do not know how to load it
     UnitHashMap::accessor accessor;
     if (!units_.find(accessor, unit_id)) {
+#if 0
       LL << "prefetch thread cannot prefetch unit [" <<
         unit_id.toString() << "] [" << task_id << "]";
+#endif
       continue;
     }
 

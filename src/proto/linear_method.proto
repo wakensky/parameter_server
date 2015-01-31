@@ -139,6 +139,7 @@ message Call {
 
   repeated int32 fea_grp = 8;
   optional bool hit_cache = 9;
+  optional int32 iteration = 10;  // iteration ID
 }
 
 // deprecated

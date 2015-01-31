@@ -1,3 +1,4 @@
+#include <sys/stat.h>
 #include <gperftools/malloc_extension.h>
 #include "linear_method/batch_solver.h"
 #include "util/split.h"
@@ -127,8 +128,10 @@ void BatchSolver::run() {
        << ", auc: " << validation_auc.evaluate();
   }
 
+#if 0
   Task save_model = newTask(Call::SAVE_MODEL);
   active_nodes->submitAndWait(save_model);
+#endif
 }
 
 void BatchSolver::runIteration() {
@@ -477,9 +480,16 @@ void BatchSolver::saveModel(const MessageCPtr& msg) {
   auto output = conf_.model_output();
   if (output.format() == DataConfig::TEXT) {
     CHECK(output.file_size());
-    std::string file = output.file(0) + "_" + myNodeID();
-    CHECK(ocean_.saveModel(file));
-    LI << myNodeID() << " writes model to " << file;
+    CHECK(get(msg).has_iteration());
+
+    // make sure the corresponding directory exists
+    std::stringstream ss;
+    ss << output.file(0) << "/iter_" << get(msg).iteration();
+    system((std::string("mkdir -p ") + ss.str()).c_str());
+
+    ss << "/ctr_" << myNodeID();
+    CHECK(ocean_.saveModel(ss.str()));
+    LI << myNodeID() << " writes model to " << ss.str();
   } else {
     LL << "didn't implement yet";
   }

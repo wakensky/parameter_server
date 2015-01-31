@@ -1394,6 +1394,13 @@ class Call : public ::google::protobuf::Message {
   inline bool hit_cache() const;
   inline void set_hit_cache(bool value);
 
+  // optional int32 iteration = 10;
+  inline bool has_iteration() const;
+  inline void clear_iteration();
+  static const int kIterationFieldNumber = 10;
+  inline ::google::protobuf::int32 iteration() const;
+  inline void set_iteration(::google::protobuf::int32 value);
+
   // @@protoc_insertion_point(class_scope:PS.LM.Call)
  private:
   inline void set_has_cmd();
@@ -1406,6 +1413,8 @@ class Call : public ::google::protobuf::Message {
   inline void clear_has_kkt_filter_reset();
   inline void set_has_hit_cache();
   inline void clear_has_hit_cache();
+  inline void set_has_iteration();
+  inline void clear_has_iteration();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -1415,9 +1424,10 @@ class Call : public ::google::protobuf::Message {
   bool kkt_filter_reset_;
   bool hit_cache_;
   ::google::protobuf::RepeatedField< ::google::protobuf::int32 > fea_grp_;
+  ::google::protobuf::int32 iteration_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(6 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(7 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2flinear_5fmethod_2eproto();
   friend void protobuf_AssignDesc_proto_2flinear_5fmethod_2eproto();
@@ -3001,6 +3011,28 @@ inline bool Call::hit_cache() const {
 inline void Call::set_hit_cache(bool value) {
   set_has_hit_cache();
   hit_cache_ = value;
+}
+
+// optional int32 iteration = 10;
+inline bool Call::has_iteration() const {
+  return (_has_bits_[0] & 0x00000040u) != 0;
+}
+inline void Call::set_has_iteration() {
+  _has_bits_[0] |= 0x00000040u;
+}
+inline void Call::clear_has_iteration() {
+  _has_bits_[0] &= ~0x00000040u;
+}
+inline void Call::clear_iteration() {
+  iteration_ = 0;
+  clear_has_iteration();
+}
+inline ::google::protobuf::int32 Call::iteration() const {
+  return iteration_;
+}
+inline void Call::set_iteration(::google::protobuf::int32 value) {
+  set_has_iteration();
+  iteration_ = value;
 }
 
 // -------------------------------------------------------------------
