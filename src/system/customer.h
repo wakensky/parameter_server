@@ -12,7 +12,7 @@ class Customer {
  public:
   Customer() : sys_(Postoffice::instance()), exec_(*this),
     path_picker_(PathPicker::instance()),
-    ocean_(Ocean::instance()) {
+    ocean_(Postoffice::instance().trainingOcean()) {
     exec_thread_ = unique_ptr<std::thread>(new std::thread(&Executor::run, &exec_));
   }
   // process a message received from a remote node

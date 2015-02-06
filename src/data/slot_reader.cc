@@ -23,7 +23,6 @@ void SlotReader::init(const DataConfig& data, const DataConfig& cache,
   data_ = data;
   path_picker_ = path_picker;
   w_ = w;
-  CHECK(w_);
   time_ = start_time;
   finishing_time_ = finishing_time;
   count_min_k_ = count_min_k;
@@ -70,9 +69,11 @@ int SlotReader::read(ExampleInfo* info) {
     slot_info_[info_.slot(i).id()] = info_.slot(i);
   }
 
-  // send the closing message to servers
-  MessagePtr boundary(new Message(kServerGroup, finishing_time_));
-  CHECK_EQ(finishing_time_, w_->push(boundary));
+  if (w_) {
+    // send the closing message to servers
+    MessagePtr boundary(new Message(kServerGroup, finishing_time_));
+    CHECK_EQ(finishing_time_, w_->push(boundary));
+  }
   return 0;
 }
 
@@ -192,17 +193,19 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         unique_key.pushBack(current_key);
         count_key.pushBack(current_cnt < kuint8max ? current_cnt : kuint8max);
 
-        // push unique keys with their counts to servers
-        MessagePtr count(new Message(kServerGroup, push_time));
-        count->setKey(unique_key);
-        count->addValue(count_key);
-        count->task.set_key_channel(slot_id);
-        Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
-          count->task.mutable_key_range());
-        w->set(count)->set_insert_key_freq(true);
-        w->set(count)->set_countmin_k(count_min_k);
-        w->set(count)->set_countmin_n(count_min_n);
-        CHECK_EQ(push_time, w->push(count));
+        if (w) {
+          // push unique keys with their counts to servers
+          MessagePtr count(new Message(kServerGroup, push_time));
+          count->setKey(unique_key);
+          count->addValue(count_key);
+          count->task.set_key_channel(slot_id);
+          Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
+            count->task.mutable_key_range());
+          w->set(count)->set_insert_key_freq(true);
+          w->set(count)->set_countmin_k(count_min_k);
+          w->set(count)->set_countmin_n(count_min_n);
+          CHECK_EQ(push_time, w->push(count));
+        }
 
         // dump unique keys to disk
         path = path_picker->getPath(prefix + ".colidx_sorted_uniq");

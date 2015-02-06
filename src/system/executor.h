@@ -24,7 +24,7 @@ class Executor {
  public:
   Executor(Customer& obj) :
     obj_(obj),
-    ocean_(Ocean::instance()) {
+    ocean_(Postoffice::instance().trainingOcean()) {
     my_node_ = Postoffice::instance().myNode();
   }
   ~Executor() { }

@@ -7,273 +7,276 @@
 #include <stdexcept>
 #include <gperftools/malloc_extension.h>
 #include "base/shared_array_inl.h"
+#include "system/ocean.h"
 #include "system/validation.h"
 
 namespace PS {
 
-Validation::Validation() {
-  ;
+Validation::Validation(
+  const string& identity, const LM::Config& conf,
+  PathPicker* path_picker):
+  identity_(identity),
+  path_picker_(path_picker),
+  conf_(conf),
+  go_on_(true),
+  num_examples_(0u),
+  click_average_(0.0) {
 }
 
 Validation::~Validation() {
-  ;
 }
 
-void Validation::init(
-  const string& identity,
-  LM::DataConfig& file_list,
-  PathPicker* path_picker) {
-  CHECK(!identity.empty());
-  identity_ = identity;
-  path_picker_ = path_picker;
-  file_list_ = file_list;
+bool Validation::download() {
+  slot_reader_.init(
+    conf_.validation_data(), conf_.local_cache(),
+    path_picker_, nullptr,
+    0, 0, 0, 0);
+
+  ExampleInfo example_info;
+  return 0 == slot_reader_.read(&example_info);
 }
 
-bool Validation::download(const Task& preprocess_task) {
-  // fill group_ranges_
-  for (int i = 0; i < preprocess_task.partition_info_size(); ++i) {
-    const GroupID grp_id = preprocess_task.partition_info(i).fea_grp();
-    Range<FullKey> global_range(preprocess_task.partition_info(i).key());
-    group_ranges_[grp_id].push_back(global_range.begin());
-    group_ranges_[grp_id].push_back(global_range.end());
+bool Validation::preprocess(const Task& task) {
+  ocean_.init(identity_, conf_, task, path_picker_);
+
+  const int grp_size = task.linear_method().fea_grp_size();
+  std::vector<Ocean::GroupID> fea_grp;
+  for (int i = 0; i < grp_size; ++i) {
+    fea_grp.push_back(task.linear_method().fea_grp(i));
   }
 
-  // sort and unique
-  size_t number_of_blocks = 0;
-  for (auto& ranges : group_ranges_) {
-    std::sort(ranges.begin(), ranges.end());
-    auto last = std::unique(ranges.begin(), ranges.end());
-    ranges.erase(last, ranges.end());
+  // preprocess groups one by one
+  for (int group_order = 0; group_order < grp_size; ++group_order) {
+    Ocean::GroupID group_id = task.linear_method().fea_grp(group_order);
 
-    CHECK_GE(ranges.size(), 2);
-    if (!ranges.empty()) {
-      number_of_blocks += ranges.size() - 1;
-    }
-  }
-  CHECK_EQ(number_of_blocks, preprocess_task.partition_info_size());
+    // merge all unique keys
+    std::vector<std::pair<string, SizeR>> unique_keys_partitions;
+    slot_reader_.getAllPartitions(
+      group_id, "colidx_sorted_uniq", unique_keys_partitions);
 
-  // read training files line by line
-  LineReader line_reader(file_list, FLAGS_validation_line_limit);
-  string line;
-  // I restrict the number of lines in each package,
-  //   making memory usage controllable
-  size_t package_line_count = 0;
-  ExampleID example_id = 0;
-  ExampleText example_text;
-  while (!(example_text.text = line_reader.readLine()).empty()) {
-    example_text.id = example_id++;
-    pending_examples_.push(example_text);
-    package_line_count++;
+    SArray<Ocean::FullKey> merged_unique_keys;
+    for (const auto& partition : unique_keys_partitions) {
+      // read from disk (compressed)
+      SArray<char> compressed;
+      compressed.readFromFile(partition.second, partition.first);
 
-    if (package_line_count >= FLAGS_validation_package_volumn) {
-      // wait
-      LI << "Validation::download is waiting package [" << package_id << "]";
-      while (1) {
-        if (pending_lines_.size() <= 0 - FLAGS_validation_thread_num) {
-          break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      }
-      LI << "Validation::download finishes waiting package [" << package_id << "]";
-    }
+      // uncompress
+      SArray<Ocean::FullKey> uncompressed;
+      uncompressed.uncompressFrom(compressed);
 
-    // dump package
-    CHECK(dumpPackages());
-    package_line_count = 0;
-  }
-  CHECK(dumpPackages());
-  package_line_count = 0;
-}
-
-void Validation::exampleThreadFunc() {
-  ExampleParser parser;
-  parser.init(file_list_.text(), file_list_.ignore_feature_group());
-
-  auto group_ranges = group_ranges_;
-
-  // Separate one example to different batches
-  LivePackageHashMap separated_one_example;
-
-  auto separate = [](
-    const ExampleID example_id;
-    const Example& full_proto,
-    const std::unordered_map<GroupID, std::vector<FullKey>>& group_ranges,
-    LivePackageHashMap& separated_one_example) {
-    separated_one_example.clear();
-
-    ValidationPartialExample partial_proto;
-    std::vector<FullKey> partial_keys;
-
-    for (int i = 0; i < full_proto.slot_size(); ++i) {
-      const GroupID group_id = full_proto.slot(i).id();
-      auto& range_vec = group_ranges[group_id];
-
-      if (!range_vec.empty()) {
-        size_t last_range_idx = 0;
-        for (int j = 0; j < full_proto.slot(i).key_size(); ++j) {
-          FullKey key = full_proto.slot(i).key(j);
-
-          if (range_vec[last_range_idx] <= key) {
-            // store
-            if (!partial_keys.empty()) {
-              Range<FullKey> global_range(range_vec[last_range_idx - 1], range_vec[last_range_idx]);
-
-              separated_one_example[BatchID(group_id, global_range)].proto = partial_proto;
-              separated_one_example[BatchID(group_id, global_range)].keys = partial_keys;
-            }
-
-            // clear
-            partial_proto.Clear();
-            partial_keys.clear();
-
-            // set example id
-            partial_proto.set_id(example_id);
-          }
-
-          // locate
-          while (range_vec[last_range_idx] <= key &&
-                 last_range_idx < range_vec.size()) {
-            ++last_range_idx;
-          }
-
-          if (last_range_idx > 0 && last_range_idx < range_vec.size()) {
-            partial_proto.add_keys(key);
-            partial_keys.push_back(key);
-          } else {
-            // TODO
-            LL << "cannot locate key under group x";
-            break;
-          }
-        }
+      // merge and unique (already sorted)
+      if (!uncompressed.empty()) {
+        merged_unique_keys = merged_unique_keys.setUnion(uncompressed);
       }
     }
-  };
 
+    // localize
+    Localizer<Ocean::FullKey, Ocean::Value> *localizer =
+      new Localizer<Ocean::FullKey, Ocean::Value>();
+    if (FLAGS_verbose) {
+      LI << "Validation started remapIndex [" << group_order + 1 << "/" <<
+        grp_size << "]; grp: " << group_id;
+    }
+    auto X = localizer->remapIndex(
+      group_id, merged_unique_keys, &slot_reader_, path_picker_, identity_);
+    if (FLAGS_verbose) {
+      LI << "finished remapIndex [" << group_order + 1 << "/" << grp_size <<
+        "]; grp: " << group_id;
+    }
+    delete localizer;
+    slot_reader_.clear(group_id); // clear SlotReader's internal cache
+
+    // transformation
+    if (FLAGS_verbose) {
+        LI << "started toColMajor [" << group_order + 1 << "/" <<
+          grp_size << "]; grp: " << group_id;
+    }
+    if (X) {
+      // TODO toColMajor is necessary since I have assumed that
+      //   training data could be partition column-wise
+      if (conf_.solver().has_feature_block_ratio()) {
+        X = X->toColMajor();
+      }
+    }
+    if (FLAGS_verbose) {
+      LI << "finished toColMajor [" << group_order + 1 << "/" << grp_size <<
+        "]; grp: " << group_id;
+    }
+
+    // dump to Ocean
+    CHECK(ocean_.dump(group_id, merged_unique_keys, SArray<Ocean::Value>(),
+                      SArray<Ocean::Value>(),
+                      std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
+  }
+
+  // load labels
+  y_ = MatrixPtr<double>(new DenseMatrix<double>(
+    slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+
+  // statistic for clicks
+  num_examples_ = y_->value().size();
+  for (size_t i = 0; i < num_examples_; ++i) {
+    click_average_ += y_->value()[i];
+  }
+  if (num_examples_ > 0) { click_average_ /= num_examples_; }
+
+  // initialize predictions
+  prediction_ = MatrixPtr<double>(new DenseMatrix<double>(
+    slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+  prediction_->value().setZero();
+
+  return true;
+}
+
+void Validation::submit(
+  const Ocean::GroupID grp_id,
+  const Range<Ocean::FullKey> global_range,
+  const Ocean::TaskID task_id,
+  SArray<Ocean::FullKey> model_keys,
+  SArray<Ocean::Value> model_weights) {
+  CHECK_EQ(model_keys.size(), model_weights.size());
+  if (model_keys.empty()) {
+    return;
+  }
+
+  // generate key->weight lookup table
+  std::shared_ptr<WeightLookupTable> lookup_ptr(new WeightLookupTable());
+  CHECK(lookup_ptr);
+  {
+    ThreadPool pool(FLAGS_num_threads);
+    SizeR keys_index_range(0, model_keys.size());
+    for (int i = 0; i < FLAGS_num_threads; ++i) {
+      auto thr_keys_index_range = keys_index_range.evenDivide(FLAGS_num_threads, i);
+      pool.add([this, thr_keys_index_range,
+                &model_keys, &model_weights,
+                lookup_ptr](){
+                  for (size_t i = thr_keys_index_range.begin();
+                       i < thr_keys_index_range.end(); ++i) {
+                    WeightLookupTable::accessor accessor;
+                    lookup_ptr->insert(accessor, model_keys[i]);
+                    accessor->second = model_weights[i];
+                  }
+                });
+    }
+    pool.startWorkers();
+  }
+
+  // in-queue
+  prediction_pending_queue_.push(
+    PredictionRequest(Ocean::UnitID(grp_id, global_range), task_id, lookup_ptr));
+}
+
+void Validation::predictThreadFunc() {
   while (go_on_) {
-    // take out an example (plain text)
-    ExampleText example_text;
-    pending_examples_.pop(example_text);
+    // take out a Predictionrequest from pending queue
+    PredictionRequest prediction_request;
+    prediction_pending_queue_.pop(prediction_request);
+    queue_pop_cv_.notify_all();
 
-    // remove tailing line-break
-    if (!example_text.text.empty() && '\n' == example_text.text.back()) {
-      example_text.text.resize(example_text.text.size() - 1);
-    }
+    // load data
+    Ocean::DataPack data_pack = ocean_.get(
+      prediction_request.unit_id.grp_id,
+      prediction_request.unit_id.global_range,
+      prediction_request.task_id);
+    // on-demand usage
+    SArray<Ocean::FullKey> parameter_key(
+      data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
+    SArray<Ocean::ShortKey> feature_key(
+      data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_KEY)]);
+    SArray<Ocean::Offset> feature_offset(
+      data_pack.arrays[static_cast<size_t>(Ocean::DataSource::FEATURE_OFFSET)]);
+    SizeR anchor = ocean_.fetchAnchor(
+      prediction_request.unit_id.grp_id,
+      prediction_request.unit_id.global_range);
+    // check
+    CHECK_EQ(parameter_key.size(), anchor.size());
+    CHECK_EQ(feature_offset.size(), anchor.size() + 1);
+    CHECK_EQ(
+      feature_offset.back() - feature_offset.front(),
+      feature_key.size());
 
-    // parse to Example proto, which contains all features for an example
-    Example full_proto;
-    if (!parser.toProto(example_text.text, &full_proto)) {
-      LL << "Validation::exampleThreadFunc parses to full proto failed. [" <<
-        example_text.text << "]";
-      continue;
-    }
+    // multi-threaded prediction
+    // tasks are partitioned by row
+    SizeR row_range(0, ocean_.matrix_rows(prediction_request.unit_id.grp_id));
+    {
+      ThreadPool pool(FLAGS_num_threads);
+      for (int i = 0; i < FLAGS_num_threads; ++i) {
+        auto thr_row_range = row_range.evenDivide(FLAGS_num_threads, i);
+        if (thr_row_range.empty()) { continue; }
 
-    // separate keys into sub proto buffers
-    LivePackageHashMap separated_one_example;
-    separate(full_proto, group_ranges, separated_one_example);
-
-    // merge fragments to global live_packages_
-    for (const auto fragment : separated_one_example) {
-      LiveBatchHashMap::accessor accessor;
-      if (!live_packages_.find(accessor, fragment.first)) {
-        LL << ;
-        continue;
+        pool.add([this, thr_row_range, anchor,
+                  &parameter_key, &feature_key, &feature_offset,
+                  &prediction_request]() {
+                    prophet(thr_row_range, anchor,
+                            parameter_key,
+                            feature_key, feature_offset,
+                            prediction_request.lookup);
+                  });
       }
-
-      // merge partial proto
-      accessor->second.proto.add_partitial_examples(fragment.second.proto);
-
-      // merge partial keys
-      accessor->second.keys.insert(
-        accessor->second.keys.end(),
-        fragment.second.keys.begin(),
-        fragment.second.keys.end());
+      pool.startWorkers();
     }
   };
 }
 
-bool Validation::dumpPackages() {
-  // traverse all live packages and dump to disk
-  for (const auto& gid_ranges : group_ranges_) {
-    const GroupID group_id = gid_ranges.first;
-    if (gid_ranges.second.size() < 2) {
-      // TODO
-      LL << "ranges for group x not illegal";
-    }
-    for (size_t i = 0; i < gid_ranges.second.size() - 1; ++i) {
-      // produce batch_id
-      Range<FullKey> global_range(gid_ranges.second[i], gid_ranges.second[i + 1]);
-      BatchID batch_id(group_id, global_range);
+AUCData Validation::waitAndGetResult() {
+  // wait until prediction_pending_queue_ is empty
+  {
+    std::unique_lock<std::mutex> l(queue_pop_mu_);
+    queue_pop_cv_.wait(
+      l, [this]() { return prediction_pending_queue_.size() <= -1; });
+  }
 
-      LiveBatchHashMap::accessor live_accessor;
-      if (live_packages_.find(live_accessor, batch_id)) {
-        // proto file name
-        std::stringstream ss_proto;
-        ss_proto << "validation.proto." << identity_ << "." << group_id <<
-          "." << global_range.begin() << "-" << global_range.end();
-        const string proto_path = path_picker_->getPath(ss_proto.str());
+  AUCData auc_data;
+  auc_.compute<Ocean::Value>(y_->value(), prediction_->value(), &auc_data);
 
-        // dump proto file
-        std::ofstream out(proto_path, ios::out | ios::trunc | ios::binary);
-        CHECK(out.good());
-        CHECK(live_accessor->second.proto.SerializeToOstream(&out));
-        out.close();
+  // prediction average
+  double prediction_average = 0.0;
+  for (size_t i = 0; i < prediction_->value().size(); ++i) {
+    prediction_average += prediction_->value()[i];
+  }
+  prediction_average /= num_examples_;
 
-        // release proto
-        live_accessor->second.proto.Clear();
+  auc_data.set_num_example(num_examples_);
+  auc_data.set_click_average(click_average_);
+  auc_data.set_prediction_average(prediction_average);
 
-        // sort and unique
-        std::sort(live_accessor->second.keys.begin(), live_accessor->second.keys.end());
-        auto last = std::unique(merged.begin(), merged.end());
-        merged.erase(last, merged.end());
+  // clear prediction_
+  prediction_->value().setZero();
 
-        // dump unique keys
-        std::stringstream ss_uniq;
-        ss_uniq << "validation.uniq_key." << identity_ << "." << group_id <<
-          "." << global_range.begin() << "-" << global_range.end();
-        SArray<FullKey> uniq_keys({live_accessor->second.keys});
-        CHECK(uniq_keys.writeToFile(ss_uniq.str()));
+  return auc_data;
+}
 
-        // release keys
-        live_accessor->second.keys.clear();
+void Validation::prophet(
+  const SizeR& th_row_range,
+  const SizeR& anchor,
+  SArray<Ocean::FullKey> parameter_key,
+  SArray<Ocean::ShortKey> feature_key,
+  SArray<Ocean::Offset> feature_offset,
+  std::shared_ptr<WeightLookupTable> weight_lookup) {
+  double* prediction_result = prediction_->value().data();
+  Ocean::FullKey* keys = parameter_key.data();
+  Ocean::ShortKey* index = feature_key.data();
+  Ocean::Offset* offset = feature_offset.data();
 
-        // insert path into dumped_batches_
-        {
-          DumpedBatchHashMap::accessor dumped_accessor;
-          if (dumped_batches_.find(dumped_accessor, batch_id)) {
-            DumpedPackage new_package;
-            new_package.proto_path = proto_path;
-            new_package.uniq_keys_path = ss_uniq.str();
-
-            dumped_accessor->second.push_back(new_package);
-          } else {
-            LL << "critical lost";
-          }
-        }
+  // j: column id, i: row id
+  for (size_t j = 0; j < anchor.size(); ++j) {
+    // fetch weight
+    Ocean::FullKey key = keys[j];
+    double weight = 0.0;
+    {
+      WeightLookupTable::const_accessor const_accessor;
+      if (weight_lookup->find(const_accessor, key)) {
+        weight = const_accessor->second;
       }
     }
+
+    // accumulate the weight to corresponding examples
+    for (size_t o = offset[j]; o < offset[j + 1]; ++o) {
+      auto i = *(index++);
+      if (!th_row_range.contains(i)) { continue; }
+      prediction_result[i] += weight;
+    }
   }
 }
 
-SArray<FullKey> Validation::getUniqueKeys(const BatchID& batch_id) {
-  SArray<FullKey> ret;
-
-  // merge all packages together under the specified batch
-  DumpedBatchHashMap::accessor dumped_batch_accessor;
-  if (!dumped_batches_.find(dumped_batch_accessor, batch_id)) {
-    // TODO
-    LL << "cannot find batch_id when merging unique keys";
-    return ret;
-  }
-
-  for (const auto& dumped_package : dumped_batch_accessor->second) {
-    SArray<char> stash;
-    CHECK(stash.readFromFile(dumped_package.uniq_keys_path));
-    SArray<FullKey> sub_unique_keys(stash);
-
-    ret.setUnion(sub_unique_keys);
-  }
-
-  return ret;
-}
-
-};  // namespace PS
+};
