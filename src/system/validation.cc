@@ -236,7 +236,7 @@ AUCData Validation::waitAndGetResult() {
   }
   prediction_average /= num_examples_;
 
-  auc_data.set_num_example(num_examples_);
+  auc_data.set_num_examples(num_examples_);
   auc_data.set_click_average(click_average_);
   auc_data.set_prediction_average(prediction_average);
 
