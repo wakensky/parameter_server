@@ -8,7 +8,7 @@ message AUCData {
   repeated uint64 fp_count = 4;
 
   // number of validation examples
-  optional uint32 num_example = 5;
+  optional uint32 num_examples = 5;
 
   optional double click_average = 6;
   optional double prediction_average = 7;

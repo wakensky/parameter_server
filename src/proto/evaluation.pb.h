@@ -139,12 +139,12 @@ class AUCData : public ::google::protobuf::Message {
   inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
       mutable_fp_count();
 
-  // optional uint32 num_example = 5;
-  inline bool has_num_example() const;
-  inline void clear_num_example();
-  static const int kNumExampleFieldNumber = 5;
-  inline ::google::protobuf::uint32 num_example() const;
-  inline void set_num_example(::google::protobuf::uint32 value);
+  // optional uint32 num_examples = 5;
+  inline bool has_num_examples() const;
+  inline void clear_num_examples();
+  static const int kNumExamplesFieldNumber = 5;
+  inline ::google::protobuf::uint32 num_examples() const;
+  inline void set_num_examples(::google::protobuf::uint32 value);
 
   // optional double click_average = 6;
   inline bool has_click_average() const;
@@ -162,8 +162,8 @@ class AUCData : public ::google::protobuf::Message {
 
   // @@protoc_insertion_point(class_scope:PS.AUCData)
  private:
-  inline void set_has_num_example();
-  inline void clear_has_num_example();
+  inline void set_has_num_examples();
+  inline void clear_has_num_examples();
   inline void set_has_click_average();
   inline void clear_has_click_average();
   inline void set_has_prediction_average();
@@ -177,7 +177,7 @@ class AUCData : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > fp_count_;
   double click_average_;
   double prediction_average_;
-  ::google::protobuf::uint32 num_example_;
+  ::google::protobuf::uint32 num_examples_;
 
   mutable int _cached_size_;
   ::google::protobuf::uint32 _has_bits_[(7 + 31) / 32];
@@ -296,26 +296,26 @@ AUCData::mutable_fp_count() {
   return &fp_count_;
 }
 
-// optional uint32 num_example = 5;
-inline bool AUCData::has_num_example() const {
+// optional uint32 num_examples = 5;
+inline bool AUCData::has_num_examples() const {
   return (_has_bits_[0] & 0x00000010u) != 0;
 }
-inline void AUCData::set_has_num_example() {
+inline void AUCData::set_has_num_examples() {
   _has_bits_[0] |= 0x00000010u;
 }
-inline void AUCData::clear_has_num_example() {
+inline void AUCData::clear_has_num_examples() {
   _has_bits_[0] &= ~0x00000010u;
 }
-inline void AUCData::clear_num_example() {
-  num_example_ = 0u;
-  clear_has_num_example();
+inline void AUCData::clear_num_examples() {
+  num_examples_ = 0u;
+  clear_has_num_examples();
 }
-inline ::google::protobuf::uint32 AUCData::num_example() const {
-  return num_example_;
+inline ::google::protobuf::uint32 AUCData::num_examples() const {
+  return num_examples_;
 }
-inline void AUCData::set_num_example(::google::protobuf::uint32 value) {
-  set_has_num_example();
-  num_example_ = value;
+inline void AUCData::set_num_examples(::google::protobuf::uint32 value) {
+  set_has_num_examples();
+  num_examples_ = value;
 }
 
 // optional double click_average = 6;
