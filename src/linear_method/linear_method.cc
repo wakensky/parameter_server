@@ -44,6 +44,10 @@ void LinearMethod::init() {
     penalty_ = Penalty<double>::create(conf_.penalty());
   }
 
+  num_validation_examples_ = 0;
+  click_sum_ = 0.0;
+  prediction_sum_ = 0.0;
+
   // bool has_learner = app_cf_.has_learner();
   // if (has_learner) {
   //   learner_ = std::static_pointer_cast<AggGradLearner<double>>(
@@ -111,6 +115,13 @@ void LinearMethod::mergeProgress(int iter) {
   p.set_relative_objv(iter==0 ? 1 : g_progress_[iter-1].objv()/p.objv() - 1);
   p.set_violation(std::max(p.violation(), recv.violation()));
   p.set_nnz_active_set(p.nnz_active_set() + recv.nnz_active_set());
+
+  if (recv.has_validation_auc_data()) {
+    validation_auc_.merge(recv.validation_auc_data());
+    click_sum_ += recv.validation_auc_data().click_sum();
+    prediction_sum_ += recv.validation_auc_data().prediction_sum();
+    num_validation_examples_ += recv.validation_auc_data().num_examples();
+  }
 }
 
 void LinearMethod::mergeAUC(AUC* auc) {
@@ -226,6 +237,30 @@ void LinearMethod::showNNZ(int iter) {
   } else {
     auto prog = g_progress_[iter];
     fprintf(stderr, "|%10lu ", (size_t)prog.nnz_w());
+  }
+}
+
+void LinearMethod::showAUC(int iter) {
+  if (iter == -3) {
+    fprintf(stderr, "| AUC ");
+  } else if (iter == -2) {
+    fprintf(stderr, "|    AUC    pa    ca    ");
+  } else if (iter == -1) {
+    fprintf(stderr, "+----------------------");
+  } else {
+    double click_average = 0.0;
+    double prediction_average = 0.0;
+    if (num_validation_examples_ > 0) {
+      click_average = click_sum_ / num_validation_examples_;
+      prediction_average = prediction_sum_ / num_validation_examples_;
+    }
+    fprintf(stderr, "|%.6e  %.6e  %.6e  ",
+      validation_auc_.evaluate(), prediction_average, click_average);
+
+    validation_auc_.clear();
+    num_validation_examples_ = 0;
+    click_sum_ = 0.0;
+    prediction_sum_ = 0.0;
   }
 }
 

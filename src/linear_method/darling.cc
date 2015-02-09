@@ -42,6 +42,7 @@ void Darling::runIteration() {
       if (iter == 0 && i < prior_blk_order_.size()) {
         // force zero delay for important feature blocks
         update.set_wait_time(time);
+        update.set_is_priority(true);
       } else {
         update.set_wait_time(time - tau);
       }
@@ -64,7 +65,7 @@ void Darling::runIteration() {
 
     // evaluate the progress
     Task eval = newTask(Call::EVALUATE_PROGRESS);
-    eval.set_wait_time(time - tau);
+    eval.set_wait_time(time);
     time = pool->submitAndWait(
         eval, [this, iter](){ LinearMethod::mergeProgress(iter); });
     showProgress(iter);
@@ -104,8 +105,14 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
 
+  std::shared_ptr<std::thread> validation_thread_ptr;
   ocean_.init(myNodeID(), conf_, msg->task, &path_picker_);
   if (IamWorker()) {
+    // validation preprocess
+    validation_thread_ptr.reset(new std::thread([this, msg]() {
+      CHECK(validation_.preprocess(msg->task));
+    }));
+
     // load labels
     y_ = MatrixPtr<double>(new DenseMatrix<double>(
       slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
@@ -126,6 +133,9 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     active_set_[grp_id].resize(ocean_.getGroupKeyCount(grp_id), true);
   }
 
+  if (validation_thread_ptr) {
+    validation_thread_ptr->join();
+  }
 }
 
 void Darling::updateModel(const MessagePtr& msg) {
@@ -148,39 +158,6 @@ void Darling::updateModel(const MessagePtr& msg) {
   int grp = call.fea_grp(0);
   Range<Key> g_key_range(call.key());
   auto anchor = ocean_.fetchAnchor(grp, g_key_range);
-
-#if 0
-  // prefetch column partitioned data
-  LI << "pending prefetch count: " << ocean_.pendingPrefetchCount();
-  if (ocean_.pendingPrefetchCount() < 64 * FLAGS_in_memory_unit_limit) {
-    auto current_time = msg->task.time();
-    auto judge = [current_time](const Task& task) -> bool {
-      if (Call::UPDATE_MODEL == task.linear_method().cmd()) return true;
-      return false;
-
-      if (Call::UPDATE_MODEL == task.linear_method().cmd() &&
-          task.time() < current_time + 64 * FLAGS_in_memory_unit_limit) {
-        return true;
-      }
-      return false;
-    };
-    std::vector<Task> in_coming_tasks;
-    exec().peek(judge, in_coming_tasks);
-
-    // sort by task->time(), ascending
-    std::sort(
-      in_coming_tasks.begin(), in_coming_tasks.end(),
-      [](const Task& a, const Task& b) {return a.time() < b.time();});
-
-    // prefetch
-    for (const auto& task : in_coming_tasks) {
-      ocean_.prefetch(
-        task.linear_method().fea_grp(0),
-        task.linear_method().key(),
-        task.time());
-    }
-  }
-#endif
 
   if (IamWorker()) {
     // compute local gradients
@@ -230,7 +207,8 @@ void Darling::updateModel(const MessagePtr& msg) {
     pull_msg->task.set_owner_time(msg->task.time());
     // pull_msg->addFilter(FilterConfig::KEY_CACHING);
     // the callback for updating the local dual variable
-    pull_msg->fin_handle = [this, grp, anchor, time, msg, g_key_range] () {
+    pull_msg->fin_handle = [this, grp, anchor, time, msg,
+                            g_key_range, parameter_key] () {
       if (!anchor.empty()) {
         auto data = w_->received(time+2);
         CHECK_EQ(anchor, data.first); CHECK_EQ(data.second.size(), 1);
@@ -264,6 +242,16 @@ void Darling::updateModel(const MessagePtr& msg) {
         }
 
         mu_.unlock();
+
+        // validation
+        if (!(msg->task.has_is_priority() && msg->task.is_priority())) {
+          validation_.submit(
+            grp,
+            g_key_range,
+            msg->task.time(),
+            parameter_key,
+            data.second[0]);
+        }
       }
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
@@ -594,6 +582,7 @@ void Darling::showProgress(int iter) {
     showObjective(i);
     showNNZ(i);
     showKKTFilter(i);
+    showAUC(i);
     showTime(i);
   }
 }
@@ -604,6 +593,7 @@ Progress Darling::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.stop());
     busy_timer_.restart();
+    *prog.mutable_validation_auc_data() = validation_.waitAndGetResult();
 
     // label statistics
     if (FLAGS_verbose) {

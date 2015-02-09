@@ -26,13 +26,15 @@ class Validation {
       tbb::concurrent_hash_map<Ocean::FullKey, Ocean::Value>;
 
   public:
-    Validation(
-      const string& identity,
-      const LM::Config& conf,
-      PathPicker* path_picker);
+    Validation();
     ~Validation();
     Validation(const Validation& other) = delete;
     Validation& operator= (const Validation& rhs) = delete;
+
+  void init(
+    const string& identity,
+    const LM::Config& conf,
+    PathPicker* path_picker);
 
   // download validation data
   bool download();
@@ -130,11 +132,13 @@ class Validation {
     // how many validation examples to be predicted
     size_t num_examples_;
 
-    // average of clicks for validation data
-    double click_average_;
+    // sum of clicks for validation data
+    double click_sum_;
 
     // statistic for AUC
     AUC auc_;
+
+    std::shared_ptr<std::thread> predict_thread_ptr_;
 };
 
 };

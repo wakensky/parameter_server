@@ -1085,6 +1085,15 @@ class Progress : public ::google::protobuf::Message {
   inline ::PS::AUCData* release_training_auc_data();
   inline void set_allocated_training_auc_data(::PS::AUCData* training_auc_data);
 
+  // optional .PS.AUCData validation_auc_data = 14;
+  inline bool has_validation_auc_data() const;
+  inline void clear_validation_auc_data();
+  static const int kValidationAucDataFieldNumber = 14;
+  inline const ::PS::AUCData& validation_auc_data() const;
+  inline ::PS::AUCData* mutable_validation_auc_data();
+  inline ::PS::AUCData* release_validation_auc_data();
+  inline void set_allocated_validation_auc_data(::PS::AUCData* validation_auc_data);
+
   // optional uint64 num_ex_trained = 12;
   inline bool has_num_ex_trained() const;
   inline void clear_num_ex_trained();
@@ -1134,6 +1143,8 @@ class Progress : public ::google::protobuf::Message {
   inline void clear_has_training_auc();
   inline void set_has_training_auc_data();
   inline void clear_has_training_auc_data();
+  inline void set_has_validation_auc_data();
+  inline void clear_has_validation_auc_data();
   inline void set_has_num_ex_trained();
   inline void clear_has_num_ex_trained();
   inline void set_has_acc();
@@ -1150,13 +1161,14 @@ class Progress : public ::google::protobuf::Message {
   ::google::protobuf::uint64 nnz_active_set_;
   double training_auc_;
   ::PS::AUCData* training_auc_data_;
+  ::PS::AUCData* validation_auc_data_;
   ::google::protobuf::uint64 num_ex_trained_;
   double acc_;
   double total_time_;
   ::google::protobuf::RepeatedField< double > busy_time_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(11 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(12 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2flinear_5fmethod_2eproto();
   friend void protobuf_AssignDesc_proto_2flinear_5fmethod_2eproto();
@@ -2702,15 +2714,53 @@ inline void Progress::set_allocated_training_auc_data(::PS::AUCData* training_au
   }
 }
 
-// optional uint64 num_ex_trained = 12;
-inline bool Progress::has_num_ex_trained() const {
+// optional .PS.AUCData validation_auc_data = 14;
+inline bool Progress::has_validation_auc_data() const {
   return (_has_bits_[0] & 0x00000080u) != 0;
 }
-inline void Progress::set_has_num_ex_trained() {
+inline void Progress::set_has_validation_auc_data() {
   _has_bits_[0] |= 0x00000080u;
 }
-inline void Progress::clear_has_num_ex_trained() {
+inline void Progress::clear_has_validation_auc_data() {
   _has_bits_[0] &= ~0x00000080u;
+}
+inline void Progress::clear_validation_auc_data() {
+  if (validation_auc_data_ != NULL) validation_auc_data_->::PS::AUCData::Clear();
+  clear_has_validation_auc_data();
+}
+inline const ::PS::AUCData& Progress::validation_auc_data() const {
+  return validation_auc_data_ != NULL ? *validation_auc_data_ : *default_instance_->validation_auc_data_;
+}
+inline ::PS::AUCData* Progress::mutable_validation_auc_data() {
+  set_has_validation_auc_data();
+  if (validation_auc_data_ == NULL) validation_auc_data_ = new ::PS::AUCData;
+  return validation_auc_data_;
+}
+inline ::PS::AUCData* Progress::release_validation_auc_data() {
+  clear_has_validation_auc_data();
+  ::PS::AUCData* temp = validation_auc_data_;
+  validation_auc_data_ = NULL;
+  return temp;
+}
+inline void Progress::set_allocated_validation_auc_data(::PS::AUCData* validation_auc_data) {
+  delete validation_auc_data_;
+  validation_auc_data_ = validation_auc_data;
+  if (validation_auc_data) {
+    set_has_validation_auc_data();
+  } else {
+    clear_has_validation_auc_data();
+  }
+}
+
+// optional uint64 num_ex_trained = 12;
+inline bool Progress::has_num_ex_trained() const {
+  return (_has_bits_[0] & 0x00000100u) != 0;
+}
+inline void Progress::set_has_num_ex_trained() {
+  _has_bits_[0] |= 0x00000100u;
+}
+inline void Progress::clear_has_num_ex_trained() {
+  _has_bits_[0] &= ~0x00000100u;
 }
 inline void Progress::clear_num_ex_trained() {
   num_ex_trained_ = GOOGLE_ULONGLONG(0);
@@ -2726,13 +2776,13 @@ inline void Progress::set_num_ex_trained(::google::protobuf::uint64 value) {
 
 // optional double acc = 13;
 inline bool Progress::has_acc() const {
-  return (_has_bits_[0] & 0x00000100u) != 0;
+  return (_has_bits_[0] & 0x00000200u) != 0;
 }
 inline void Progress::set_has_acc() {
-  _has_bits_[0] |= 0x00000100u;
+  _has_bits_[0] |= 0x00000200u;
 }
 inline void Progress::clear_has_acc() {
-  _has_bits_[0] &= ~0x00000100u;
+  _has_bits_[0] &= ~0x00000200u;
 }
 inline void Progress::clear_acc() {
   acc_ = 0;
@@ -2748,13 +2798,13 @@ inline void Progress::set_acc(double value) {
 
 // optional double total_time = 10;
 inline bool Progress::has_total_time() const {
-  return (_has_bits_[0] & 0x00000200u) != 0;
+  return (_has_bits_[0] & 0x00000400u) != 0;
 }
 inline void Progress::set_has_total_time() {
-  _has_bits_[0] |= 0x00000200u;
+  _has_bits_[0] |= 0x00000400u;
 }
 inline void Progress::clear_has_total_time() {
-  _has_bits_[0] &= ~0x00000200u;
+  _has_bits_[0] &= ~0x00000400u;
 }
 inline void Progress::clear_total_time() {
   total_time_ = 0;

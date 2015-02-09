@@ -12,25 +12,39 @@
 
 namespace PS {
 
-Validation::Validation(
-  const string& identity, const LM::Config& conf,
-  PathPicker* path_picker):
-  identity_(identity),
-  path_picker_(path_picker),
-  conf_(conf),
+Validation::Validation():
   go_on_(true),
   num_examples_(0u),
-  click_average_(0.0) {
+  click_sum_(0.0) {
 }
 
 Validation::~Validation() {
+  go_on_ = false;
+
+  // join predictthreadfunc
+  submit(0, Range<Ocean::FullKey>(), 0,
+    SArray<Ocean::FullKey>(),
+    SArray<Ocean::Value>());
+  predict_thread_ptr_->join();
+}
+
+void Validation::init(
+  const string& identity,
+  const LM::Config& conf,
+  PathPicker* path_picker) {
+  CHECK(!identity.empty());
+  identity_ = identity;
+  conf_ = conf;
+  path_picker_ = path_picker;
+  predict_thread_ptr_.reset(
+    new std::thread(&Validation::predictThreadFunc, this));
 }
 
 bool Validation::download() {
   slot_reader_.init(
     conf_.validation_data(), conf_.local_cache(),
     path_picker_, nullptr,
-    0, 0, 0, 0);
+    0, 0, 0, 0, identity_);
 
   ExampleInfo example_info;
   return 0 == slot_reader_.read(&example_info);
@@ -116,9 +130,10 @@ bool Validation::preprocess(const Task& task) {
   // statistic for clicks
   num_examples_ = y_->value().size();
   for (size_t i = 0; i < num_examples_; ++i) {
-    click_average_ += y_->value()[i];
+    if (y_->value()[i] > 0) {
+      click_sum_ += y_->value()[i];
+    }
   }
-  if (num_examples_ > 0) { click_average_ /= num_examples_; }
 
   // initialize predictions
   prediction_ = MatrixPtr<double>(new DenseMatrix<double>(
@@ -164,6 +179,10 @@ void Validation::submit(
   // in-queue
   prediction_pending_queue_.push(
     PredictionRequest(Ocean::UnitID(grp_id, global_range), task_id, lookup_ptr));
+
+  LI << "Validation::submit has enqueued [" <<
+    Ocean::UnitID(grp_id, global_range).toString() << "] [" <<
+    task_id << "]; queue_size: " << prediction_pending_queue_.size();
 }
 
 void Validation::predictThreadFunc() {
@@ -171,7 +190,11 @@ void Validation::predictThreadFunc() {
     // take out a Predictionrequest from pending queue
     PredictionRequest prediction_request;
     prediction_pending_queue_.pop(prediction_request);
-    queue_pop_cv_.notify_all();
+
+    LI << "Validation::predictThreadFunc has popped [" <<
+      prediction_request.unit_id.toString() << "] [" <<
+      prediction_request.task_id << "]; queue_size: " <<
+      prediction_pending_queue_.size();
 
     // load data
     Ocean::DataPack data_pack = ocean_.get(
@@ -215,33 +238,50 @@ void Validation::predictThreadFunc() {
       }
       pool.startWorkers();
     }
+
+    // drop
+    ocean_.drop(
+      prediction_request.unit_id.grp_id,
+      prediction_request.unit_id.global_range,
+      prediction_request.task_id);
+
+    // notify
+    queue_pop_cv_.notify_all();
   };
 }
 
 AUCData Validation::waitAndGetResult() {
   // wait until prediction_pending_queue_ is empty
-  {
+  if (prediction_pending_queue_.size() >= 0) {
     std::unique_lock<std::mutex> l(queue_pop_mu_);
     queue_pop_cv_.wait(
-      l, [this]() { return prediction_pending_queue_.size() <= -1; });
+      l, [this]() { return prediction_pending_queue_.empty(); });
+  }
+
+  // prediction average
+  double prediction_sum = 0.0;
+  for (size_t i = 0; i < prediction_->value().size(); ++i) {
+    // logit
+    prediction_->value()[i] = 1 / (1 + exp(0 - prediction_->value()[i]));
+
+    prediction_sum += prediction_->value()[i];
+  }
+
+  // wakensky
+  for (int i = 0; i < 1000 && i < prediction_->value().size(); ++i) {
+    LI << "C:P " << y_->value()[i] << " " << prediction_->value()[i];
   }
 
   AUCData auc_data;
   auc_.compute<Ocean::Value>(y_->value(), prediction_->value(), &auc_data);
 
-  // prediction average
-  double prediction_average = 0.0;
-  for (size_t i = 0; i < prediction_->value().size(); ++i) {
-    prediction_average += prediction_->value()[i];
-  }
-  prediction_average /= num_examples_;
-
   auc_data.set_num_examples(num_examples_);
-  auc_data.set_click_average(click_average_);
-  auc_data.set_prediction_average(prediction_average);
+  auc_data.set_click_sum(click_sum_);
+  auc_data.set_prediction_sum(prediction_sum);
 
   // clear prediction_
   prediction_->value().setZero();
+  auc_.clear();
 
   return auc_data;
 }

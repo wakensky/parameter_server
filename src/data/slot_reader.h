@@ -14,15 +14,17 @@ class SlotReader {
   SlotReader(const DataConfig& data, const DataConfig& cache,
     PathPicker* path_picker, KVVectorPtr<Key,double> w,
     const int start_time, const int finishing_time,
-    const int count_min_k, const float count_min_n) {
+    const int count_min_k, const float count_min_n,
+    const string& identity) {
     init(data, cache, path_picker, w, start_time, finishing_time,
-         count_min_k, count_min_n);
+         count_min_k, count_min_n, identity);
   }
 
   void init(const DataConfig& data, const DataConfig& cache,
     PathPicker* path_picker, KVVectorPtr<Key,double> w,
     const int start_time, const int finishing_time,
-    const int count_min_k, const float count_min_n);
+    const int count_min_k, const float count_min_n,
+    const string& identity);
 
   // first read, then save
   int read(ExampleInfo* info = nullptr);
@@ -68,6 +70,7 @@ class SlotReader {
   int finishing_time_;
   int count_min_k_;
   float count_min_n_;
+  string identity_;
 };
 
 template<typename V> SArray<V> SlotReader::value(int slot_id) const {

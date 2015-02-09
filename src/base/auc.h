@@ -1,4 +1,5 @@
 #pragma once
+#include <limits>
 #include "base/shared_array.h"
 #include "proto/evaluation.pb.h"
 
@@ -38,8 +39,9 @@ class AUC {
     return (correct / total);
   }
 
+#if 0
   // evaluate the auc after merging all workers' results
-  double evaluate() {
+  double oldEvaluate() {
     if (tp_count_.empty() || fp_count_.empty()) return 0.5;
     double tp_sum = 0, fp_sum = 0, auc = 0;
     auto tp_it = tp_count_.begin();
@@ -56,6 +58,46 @@ class AUC {
     // LL << tp_sum << " " << fp_sum;
     auc = auc / tp_sum / fp_sum;
     return (auc < .5 ? 1 - auc : auc);
+  }
+#endif
+
+  double evaluate() {
+    if (tp_count_.empty() || fp_count_.empty()) return 0.5;
+
+    double area = 0.0;
+    double tp_sum = 0.0;
+    double fp_sum = 0.0;
+
+    auto tp_it = tp_count_.cbegin();
+    auto fp_it = fp_count_.cbegin();
+    while (tp_it != tp_count_.cend() || fp_it != fp_count_.cend()) {
+      auto tp_key = std::numeric_limits<int64>::max();
+      if (tp_it != tp_count_.cend()) {
+        tp_key = tp_it->first;
+      }
+      auto fp_key = std::numeric_limits<int64>::max();
+      if (fp_it != fp_count_.cend()) {
+        fp_key = fp_it->first;
+      }
+
+      size_t new_tp_sum = tp_sum;
+      size_t new_fp_sum = fp_sum;
+      if (tp_key <= fp_key) {
+        new_tp_sum += tp_it->second;
+        ++tp_it;
+      }
+      if (fp_key <= tp_key) {
+        new_fp_sum += fp_it->second;
+        ++fp_it;
+      }
+
+      area += (new_fp_sum - fp_sum) * (new_tp_sum + tp_sum) / 2;
+      tp_sum = new_tp_sum;
+      fp_sum = new_fp_sum;
+    };
+
+    area /= (tp_sum * fp_sum);
+    return (area < .5 ? 1 - area : area);
   }
 
   // clear cached results of workers
@@ -97,7 +139,7 @@ class AUC {
     }
   }
  private:
-  int64 goodness_ = 1000;
+  int64 goodness_ = 1 << 20;
   std::map<int64, uint64> fp_count_, tp_count_;
 
 };

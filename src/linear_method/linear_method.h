@@ -36,6 +36,7 @@ class LinearMethod : public App {
   void showTime(int iter);
   void showObjective(int iter);
   void showNNZ(int iter);
+  void showAUC(int iter);
 
   static Call get(const MessageCPtr& msg) {
     CHECK_EQ(msg->task.type(), Task::CALL_CUSTOMER);
@@ -66,6 +67,10 @@ class LinearMethod : public App {
   PenaltyPtr<double> penalty_;
   // shared_ptr<AggGradLearner<double>> learner_;
 
+  AUC validation_auc_;
+  size_t num_validation_examples_;
+  double click_sum_;
+  double prediction_sum_;
 };
 
 } // namespace LM

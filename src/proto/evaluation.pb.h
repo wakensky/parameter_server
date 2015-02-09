@@ -146,28 +146,28 @@ class AUCData : public ::google::protobuf::Message {
   inline ::google::protobuf::uint32 num_examples() const;
   inline void set_num_examples(::google::protobuf::uint32 value);
 
-  // optional double click_average = 6;
-  inline bool has_click_average() const;
-  inline void clear_click_average();
-  static const int kClickAverageFieldNumber = 6;
-  inline double click_average() const;
-  inline void set_click_average(double value);
+  // optional double click_sum = 6;
+  inline bool has_click_sum() const;
+  inline void clear_click_sum();
+  static const int kClickSumFieldNumber = 6;
+  inline double click_sum() const;
+  inline void set_click_sum(double value);
 
-  // optional double prediction_average = 7;
-  inline bool has_prediction_average() const;
-  inline void clear_prediction_average();
-  static const int kPredictionAverageFieldNumber = 7;
-  inline double prediction_average() const;
-  inline void set_prediction_average(double value);
+  // optional double prediction_sum = 7;
+  inline bool has_prediction_sum() const;
+  inline void clear_prediction_sum();
+  static const int kPredictionSumFieldNumber = 7;
+  inline double prediction_sum() const;
+  inline void set_prediction_sum(double value);
 
   // @@protoc_insertion_point(class_scope:PS.AUCData)
  private:
   inline void set_has_num_examples();
   inline void clear_has_num_examples();
-  inline void set_has_click_average();
-  inline void clear_has_click_average();
-  inline void set_has_prediction_average();
-  inline void clear_has_prediction_average();
+  inline void set_has_click_sum();
+  inline void clear_has_click_sum();
+  inline void set_has_prediction_sum();
+  inline void clear_has_prediction_sum();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -175,8 +175,8 @@ class AUCData : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > tp_count_;
   ::google::protobuf::RepeatedField< ::google::protobuf::int64 > fp_key_;
   ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > fp_count_;
-  double click_average_;
-  double prediction_average_;
+  double click_sum_;
+  double prediction_sum_;
   ::google::protobuf::uint32 num_examples_;
 
   mutable int _cached_size_;
@@ -318,48 +318,48 @@ inline void AUCData::set_num_examples(::google::protobuf::uint32 value) {
   num_examples_ = value;
 }
 
-// optional double click_average = 6;
-inline bool AUCData::has_click_average() const {
+// optional double click_sum = 6;
+inline bool AUCData::has_click_sum() const {
   return (_has_bits_[0] & 0x00000020u) != 0;
 }
-inline void AUCData::set_has_click_average() {
+inline void AUCData::set_has_click_sum() {
   _has_bits_[0] |= 0x00000020u;
 }
-inline void AUCData::clear_has_click_average() {
+inline void AUCData::clear_has_click_sum() {
   _has_bits_[0] &= ~0x00000020u;
 }
-inline void AUCData::clear_click_average() {
-  click_average_ = 0;
-  clear_has_click_average();
+inline void AUCData::clear_click_sum() {
+  click_sum_ = 0;
+  clear_has_click_sum();
 }
-inline double AUCData::click_average() const {
-  return click_average_;
+inline double AUCData::click_sum() const {
+  return click_sum_;
 }
-inline void AUCData::set_click_average(double value) {
-  set_has_click_average();
-  click_average_ = value;
+inline void AUCData::set_click_sum(double value) {
+  set_has_click_sum();
+  click_sum_ = value;
 }
 
-// optional double prediction_average = 7;
-inline bool AUCData::has_prediction_average() const {
+// optional double prediction_sum = 7;
+inline bool AUCData::has_prediction_sum() const {
   return (_has_bits_[0] & 0x00000040u) != 0;
 }
-inline void AUCData::set_has_prediction_average() {
+inline void AUCData::set_has_prediction_sum() {
   _has_bits_[0] |= 0x00000040u;
 }
-inline void AUCData::clear_has_prediction_average() {
+inline void AUCData::clear_has_prediction_sum() {
   _has_bits_[0] &= ~0x00000040u;
 }
-inline void AUCData::clear_prediction_average() {
-  prediction_average_ = 0;
-  clear_has_prediction_average();
+inline void AUCData::clear_prediction_sum() {
+  prediction_sum_ = 0;
+  clear_has_prediction_sum();
 }
-inline double AUCData::prediction_average() const {
-  return prediction_average_;
+inline double AUCData::prediction_sum() const {
+  return prediction_sum_;
 }
-inline void AUCData::set_prediction_average(double value) {
-  set_has_prediction_average();
-  prediction_average_ = value;
+inline void AUCData::set_prediction_sum(double value) {
+  set_has_prediction_sum();
+  prediction_sum_ = value;
 }
 
 

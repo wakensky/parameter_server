@@ -17,7 +17,8 @@ DECLARE_bool(verbose);
 void SlotReader::init(const DataConfig& data, const DataConfig& cache,
   PathPicker* path_picker, KVVectorPtr<Key,double> w,
   const int start_time, const int finishing_time,
-  const int count_min_k, const float count_min_n) {
+  const int count_min_k, const float count_min_n,
+  const string& identity) {
   CHECK(data.format() == DataConfig::TEXT);
   if (cache.file_size()) dump_to_disk_ = true;
   data_ = data;
@@ -27,11 +28,12 @@ void SlotReader::init(const DataConfig& data, const DataConfig& cache,
   finishing_time_ = finishing_time;
   count_min_k_ = count_min_k;
   count_min_n_ = count_min_n;
+  identity_ = identity;
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
   CHECK_GT(data.file_size(), 0);
-  return std::to_string(DJBHash32(data.file(0))) + "-" + \
+  return identity_ + "-" + std::to_string(DJBHash32(data.file(0))) + "-" + \
     getFilename(data.file(0)) + "_slot_" + std::to_string(slot_id);
 }
 

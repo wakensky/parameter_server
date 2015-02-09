@@ -576,6 +576,13 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::HeartbeatReport* release_heartbeat_report();
   inline void set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbeat_report);
 
+  // optional bool is_priority = 602;
+  inline bool has_is_priority() const;
+  inline void clear_is_priority();
+  static const int kIsPriorityFieldNumber = 602;
+  inline bool is_priority() const;
+  inline void set_is_priority(bool value);
+
   // @@protoc_insertion_point(class_scope:PS.Task)
  private:
   inline void set_has_type();
@@ -614,19 +621,22 @@ class Task : public ::google::protobuf::Message {
   inline void clear_has_sketch();
   inline void set_has_heartbeat_report();
   inline void clear_has_heartbeat_report();
+  inline void set_has_is_priority();
+  inline void clear_has_is_priority();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int type_;
   ::google::protobuf::int32 time_;
   ::std::string* customer_;
+  ::google::protobuf::int32 wait_time_;
+  ::google::protobuf::int32 owner_time_;
+  ::PS::PbRange* key_range_;
+  ::google::protobuf::int32 key_channel_;
   bool request_;
   bool do_not_reply_;
   bool has_key_;
-  ::google::protobuf::int32 wait_time_;
-  ::PS::PbRange* key_range_;
-  ::google::protobuf::int32 owner_time_;
-  ::google::protobuf::int32 key_channel_;
+  bool is_priority_;
   ::google::protobuf::RepeatedField<int> value_type_;
   ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig > filter_;
   ::std::string* msg_;
@@ -640,7 +650,7 @@ class Task : public ::google::protobuf::Message {
   int key_type_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(21 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(22 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -2154,6 +2164,28 @@ inline void Task::set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbea
   } else {
     clear_has_heartbeat_report();
   }
+}
+
+// optional bool is_priority = 602;
+inline bool Task::has_is_priority() const {
+  return (_has_bits_[0] & 0x00200000u) != 0;
+}
+inline void Task::set_has_is_priority() {
+  _has_bits_[0] |= 0x00200000u;
+}
+inline void Task::clear_has_is_priority() {
+  _has_bits_[0] &= ~0x00200000u;
+}
+inline void Task::clear_is_priority() {
+  is_priority_ = false;
+  clear_has_is_priority();
+}
+inline bool Task::is_priority() const {
+  return is_priority_;
+}
+inline void Task::set_is_priority(bool value) {
+  set_has_is_priority();
+  is_priority_ = value;
 }
 
 // -------------------------------------------------------------------

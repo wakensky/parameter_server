@@ -22,6 +22,7 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
+  validation_.init(myNodeID() + "-validation", conf_, &path_picker_);
 }
 
 void BatchSolver::run() {
@@ -213,12 +214,25 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   const int finishing_time = starting_time + 1000000;
   if (IamWorker()) {
     CHECK(conf_.has_local_cache());
+
+    // download validation data with another thread
+    ThreadPool load_validation_pool(1);
+    load_validation_pool.add([this]() {
+                                CHECK(validation_.download());
+                             });
+    load_validation_pool.startWorkers();
+
+    // download training data
     slot_reader_.init(
       conf_.training_data(), conf_.local_cache(), &pathPicker(),
       w_, starting_time, finishing_time,
       conf_.solver().countmin_k(),
-      conf_.solver().countmin_n_ratio());
+      conf_.solver().countmin_n_ratio(),
+      myNodeID());
     slot_reader_.read(info);
+
+    // ThreadPool could guarantee that
+    //   validation_::download finishes before leaving the scope
   } else {
     w_->waitInMsg(kWorkerGroup, finishing_time);
   }

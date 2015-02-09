@@ -10,8 +10,8 @@ message AUCData {
   // number of validation examples
   optional uint32 num_examples = 5;
 
-  optional double click_average = 6;
-  optional double prediction_average = 7;
+  optional double click_sum = 6;
+  optional double prediction_sum = 7;
 }
 
 // message AccuracyData {
