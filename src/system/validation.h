@@ -139,6 +139,9 @@ class Validation {
     AUC auc_;
 
     std::shared_ptr<std::thread> predict_thread_ptr_;
+
+    // whether conf_ has validation data information
+    bool enable_;
 };
 
 };

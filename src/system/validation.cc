@@ -15,7 +15,8 @@ namespace PS {
 Validation::Validation():
   go_on_(true),
   num_examples_(0u),
-  click_sum_(0.0) {
+  click_sum_(0.0),
+  enable_(false) {
 }
 
 Validation::~Validation() {
@@ -36,11 +37,14 @@ void Validation::init(
   identity_ = identity;
   conf_ = conf;
   path_picker_ = path_picker;
+  enable_ = conf_.has_validation_data() && conf_.validation_data().file_size() > 0;
   predict_thread_ptr_.reset(
     new std::thread(&Validation::predictThreadFunc, this));
 }
 
 bool Validation::download() {
+  if (!enable_) { return true; }
+
   slot_reader_.init(
     conf_.validation_data(), conf_.local_cache(),
     path_picker_, nullptr,
@@ -51,6 +55,7 @@ bool Validation::download() {
 }
 
 bool Validation::preprocess(const Task& task) {
+  if (!enable_) { return true; }
   ocean_.init(identity_, conf_, task, path_picker_);
 
   const int grp_size = task.linear_method().fea_grp_size();
@@ -149,6 +154,7 @@ void Validation::submit(
   const Ocean::TaskID task_id,
   SArray<Ocean::FullKey> model_keys,
   SArray<Ocean::Value> model_weights) {
+  if (!enable_) { return; }
   CHECK_EQ(model_keys.size(), model_weights.size());
   if (model_keys.empty()) {
     return;
@@ -251,6 +257,9 @@ void Validation::predictThreadFunc() {
 }
 
 AUCData Validation::waitAndGetResult() {
+  AUCData auc_data;
+  if (!enable_) { return auc_data; }
+
   // wait until prediction_pending_queue_ is empty
   if (prediction_pending_queue_.size() >= 0) {
     std::unique_lock<std::mutex> l(queue_pop_mu_);
@@ -267,14 +276,7 @@ AUCData Validation::waitAndGetResult() {
     prediction_sum += prediction_->value()[i];
   }
 
-  // wakensky
-  for (int i = 0; i < 1000 && i < prediction_->value().size(); ++i) {
-    LI << "C:P " << y_->value()[i] << " " << prediction_->value()[i];
-  }
-
-  AUCData auc_data;
   auc_.compute<Ocean::Value>(y_->value(), prediction_->value(), &auc_data);
-
   auc_data.set_num_examples(num_examples_);
   auc_data.set_click_sum(click_sum_);
   auc_data.set_prediction_sum(prediction_sum);
