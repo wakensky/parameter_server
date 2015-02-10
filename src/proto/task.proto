@@ -125,6 +125,7 @@ message CallSharedPara {
   // it's a replica request
   optional bool replica = 10;
   repeated Timestamp backup = 11;
+  optional bool is_validation = 12 [default=false];
 }
 
 message CallSketch {

@@ -56,8 +56,6 @@ class BatchSolver : public LinearMethod {
   std::unordered_map<int, Bitmap> active_set_;
   std::unordered_map<int, SArray<double>> delta_;
 
-  Validation validation_;
-
   std::mutex mu_;
 
  private:

@@ -22,7 +22,8 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
-  validation_.init(myNodeID() + "-validation", conf_, &path_picker_);
+  validation_.init(myNodeID() + "-validation", conf_, &path_picker_,
+    std::shared_ptr<SlotReader>(new SlotReader()));
 }
 
 void BatchSolver::run() {

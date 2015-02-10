@@ -86,7 +86,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
   }
 
   string info_name = path_picker_->getPath(
-    std::to_string(DJBHash32(data.file(0))) +
+    identity_ + "-" + std::to_string(DJBHash32(data.file(0))) +
     "-" + getFilename(data.file(0)) + ".info");
   ExampleInfo info;
   if (readFileToProto(info_name, &info)) {

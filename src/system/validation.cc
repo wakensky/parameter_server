@@ -7,8 +7,9 @@
 #include <stdexcept>
 #include <gperftools/malloc_extension.h>
 #include "base/shared_array_inl.h"
-#include "system/ocean.h"
+#include "base/localizer.h"
 #include "system/validation.h"
+#include "data/slot_reader.h"
 
 namespace PS {
 
@@ -22,9 +23,8 @@ Validation::Validation():
 Validation::~Validation() {
   go_on_ = false;
 
-  // join predictthreadfunc
+  // join prediction thread
   submit(0, Range<Ocean::FullKey>(), 0,
-    SArray<Ocean::FullKey>(),
     SArray<Ocean::Value>());
   predict_thread_ptr_->join();
 }
@@ -32,7 +32,8 @@ Validation::~Validation() {
 void Validation::init(
   const string& identity,
   const LM::Config& conf,
-  PathPicker* path_picker) {
+  PathPicker* path_picker,
+  std::shared_ptr<SlotReader> slot_reader_ptr) {
   CHECK(!identity.empty());
   identity_ = identity;
   conf_ = conf;
@@ -40,18 +41,19 @@ void Validation::init(
   enable_ = conf_.has_validation_data() && conf_.validation_data().file_size() > 0;
   predict_thread_ptr_.reset(
     new std::thread(&Validation::predictThreadFunc, this));
+  slot_reader_ptr_ = slot_reader_ptr;
 }
 
 bool Validation::download() {
   if (!enable_) { return true; }
 
-  slot_reader_.init(
+  slot_reader_ptr_->init(
     conf_.validation_data(), conf_.local_cache(),
     path_picker_, nullptr,
     0, 0, 0, 0, identity_);
 
   ExampleInfo example_info;
-  return 0 == slot_reader_.read(&example_info);
+  return 0 == slot_reader_ptr_->read(&example_info);
 }
 
 bool Validation::preprocess(const Task& task) {
@@ -70,7 +72,7 @@ bool Validation::preprocess(const Task& task) {
 
     // merge all unique keys
     std::vector<std::pair<string, SizeR>> unique_keys_partitions;
-    slot_reader_.getAllPartitions(
+    slot_reader_ptr_->getAllPartitions(
       group_id, "colidx_sorted_uniq", unique_keys_partitions);
 
     SArray<Ocean::FullKey> merged_unique_keys;
@@ -97,13 +99,13 @@ bool Validation::preprocess(const Task& task) {
         grp_size << "]; grp: " << group_id;
     }
     auto X = localizer->remapIndex(
-      group_id, merged_unique_keys, &slot_reader_, path_picker_, identity_);
+      group_id, merged_unique_keys, slot_reader_ptr_.get(), path_picker_, identity_);
     if (FLAGS_verbose) {
       LI << "finished remapIndex [" << group_order + 1 << "/" << grp_size <<
         "]; grp: " << group_id;
     }
     delete localizer;
-    slot_reader_.clear(group_id); // clear SlotReader's internal cache
+    slot_reader_ptr_->clear(group_id); // clear SlotReader's internal cache
 
     // transformation
     if (FLAGS_verbose) {
@@ -130,7 +132,7 @@ bool Validation::preprocess(const Task& task) {
 
   // load labels
   y_ = MatrixPtr<double>(new DenseMatrix<double>(
-    slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+    slot_reader_ptr_->info<double>(0), slot_reader_ptr_->value<double>(0)));
 
   // statistic for clicks
   num_examples_ = y_->value().size();
@@ -142,7 +144,7 @@ bool Validation::preprocess(const Task& task) {
 
   // initialize predictions
   prediction_ = MatrixPtr<double>(new DenseMatrix<double>(
-    slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
+    slot_reader_ptr_->info<double>(0), slot_reader_ptr_->value<double>(0)));
   prediction_->value().setZero();
 
   return true;
@@ -152,11 +154,12 @@ void Validation::submit(
   const Ocean::GroupID grp_id,
   const Range<Ocean::FullKey> global_range,
   const Ocean::TaskID task_id,
-  SArray<Ocean::FullKey> model_keys,
-  SArray<Ocean::Value> model_weights) {
+  SArray<Ocean::Value> validation_weights) {
   if (!enable_) { return; }
-  CHECK_EQ(model_keys.size(), model_weights.size());
-  if (model_keys.empty()) {
+  SArray<Ocean::FullKey> validation_keys = getKey(
+    grp_id, global_range, task_id);
+  CHECK_EQ(validation_keys.size(), validation_weights.size());
+  if (validation_keys.empty()) {
     return;
   }
 
@@ -165,17 +168,17 @@ void Validation::submit(
   CHECK(lookup_ptr);
   {
     ThreadPool pool(FLAGS_num_threads);
-    SizeR keys_index_range(0, model_keys.size());
+    SizeR keys_index_range(0, validation_keys.size());
     for (int i = 0; i < FLAGS_num_threads; ++i) {
       auto thr_keys_index_range = keys_index_range.evenDivide(FLAGS_num_threads, i);
       pool.add([this, thr_keys_index_range,
-                &model_keys, &model_weights,
+                &validation_keys, &validation_weights,
                 lookup_ptr](){
                   for (size_t i = thr_keys_index_range.begin();
                        i < thr_keys_index_range.end(); ++i) {
                     WeightLookupTable::accessor accessor;
-                    lookup_ptr->insert(accessor, model_keys[i]);
-                    accessor->second = model_weights[i];
+                    lookup_ptr->insert(accessor, validation_keys[i]);
+                    accessor->second = validation_weights[i];
                   }
                 });
     }
@@ -286,6 +289,31 @@ AUCData Validation::waitAndGetResult() {
   auc_.clear();
 
   return auc_data;
+}
+
+// not thread safe
+void Validation::dumpPrediction() {
+  std::ofstream pred("./");
+  CHECK(pred.good());
+  for (size_t i = 0; i < y_->value().size(); ++i) {
+    pred << static_cast<int>(y_->value()[i]) <<
+      " " << prediction_->value()[i] << "\n";
+  }
+}
+
+SArray<Ocean::FullKey> Validation::getKey(
+  const Ocean::GroupID grp_id,
+  const Range<Ocean::FullKey>& global_range,
+  const Ocean::TaskID task_id) {
+  Ocean::DataPack data_pack = ocean_.get(grp_id, global_range, task_id);
+  return SArray<Ocean::FullKey>(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
+}
+
+SizeR Validation::fetchAnchor(
+  const Ocean::GroupID grp_id,
+  const Range<Ocean::FullKey>& global_range) {
+  return ocean_.fetchAnchor(grp_id, global_range);
 }
 
 void Validation::prophet(

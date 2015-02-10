@@ -1136,6 +1136,13 @@ class CallSharedPara : public ::google::protobuf::Message {
   inline ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >*
       mutable_backup();
 
+  // optional bool is_validation = 12 [default = false];
+  inline bool has_is_validation() const;
+  inline void clear_is_validation();
+  static const int kIsValidationFieldNumber = 12;
+  inline bool is_validation() const;
+  inline void set_is_validation(bool value);
+
   // @@protoc_insertion_point(class_scope:PS.CallSharedPara)
  private:
   inline void set_has_cmd();
@@ -1152,20 +1159,23 @@ class CallSharedPara : public ::google::protobuf::Message {
   inline void clear_has_countmin_k();
   inline void set_has_replica();
   inline void clear_has_replica();
+  inline void set_has_is_validation();
+  inline void clear_has_is_validation();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int cmd_;
   ::google::protobuf::int32 query_key_freq_;
+  double countmin_n_;
   bool insert_key_freq_;
   bool insert_key_;
   bool replica_;
+  bool is_validation_;
   ::google::protobuf::int32 countmin_k_;
-  double countmin_n_;
   ::google::protobuf::RepeatedPtrField< ::PS::Timestamp > backup_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(8 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(9 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -2583,6 +2593,28 @@ CallSharedPara::backup() const {
 inline ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >*
 CallSharedPara::mutable_backup() {
   return &backup_;
+}
+
+// optional bool is_validation = 12 [default = false];
+inline bool CallSharedPara::has_is_validation() const {
+  return (_has_bits_[0] & 0x00000100u) != 0;
+}
+inline void CallSharedPara::set_has_is_validation() {
+  _has_bits_[0] |= 0x00000100u;
+}
+inline void CallSharedPara::clear_has_is_validation() {
+  _has_bits_[0] &= ~0x00000100u;
+}
+inline void CallSharedPara::clear_is_validation() {
+  is_validation_ = false;
+  clear_has_is_validation();
+}
+inline bool CallSharedPara::is_validation() const {
+  return is_validation_;
+}
+inline void CallSharedPara::set_is_validation(bool value) {
+  set_has_is_validation();
+  is_validation_ = value;
 }
 
 // -------------------------------------------------------------------

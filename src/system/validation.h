@@ -1,25 +1,12 @@
 #pragma once
-#include <cstdint>
-#include <cinttypes>
-#include <atomic>
-#include <array>
-#include <tbb/concurrent_queue.h>
-#include <tbb/concurrent_hash_map.h>
-#include <tbb/concurrent_unordered_set.h>
-#include "proto/task.pb.h"
-#include "util/common.h"
-#include "util/threadpool.h"
-#include "base/sparse_matrix.h"
 #include "base/auc.h"
-#include "base/localizer.h"
-#include "data/slot_reader.h"
-#include "system/path_picker.h"
 #include "system/ocean.h"
 
 namespace PS {
 
 DECLARE_bool(verbose);
 
+class SlotReader;
 class Validation {
   public:
     using WeightLookupTable =
@@ -34,7 +21,8 @@ class Validation {
   void init(
     const string& identity,
     const LM::Config& conf,
-    PathPicker* path_picker);
+    PathPicker* path_picker,
+    std::shared_ptr<SlotReader> slot_reader_ptr);
 
   // download validation data
   bool download();
@@ -47,13 +35,26 @@ class Validation {
     const Ocean::GroupID grp_id,
     const Range<Ocean::FullKey> global_range,
     const Ocean::TaskID task_id,
-    SArray<Ocean::FullKey> model_keys,
-    SArray<Ocean::Value> model_weights);
+    SArray<Ocean::Value> validation_weights);
 
   // get validation result
   // need wait all prediction tasks finished
   // prediction result will be cleared afterwards
   AUCData waitAndGetResult();
+
+  SArray<Ocean::FullKey> getKey(
+    const Ocean::GroupID grp_id,
+    const Range<Ocean::FullKey>& global_range,
+    const Ocean::TaskID task_id);
+
+  SizeR fetchAnchor(
+    const Ocean::GroupID grp_id, const Range<Ocean::FullKey>& global_range);
+
+  // whether the Validation is enabled
+  bool isEnabled() { return enable_; }
+
+  // NOT THREAD SAFE
+  void dumpPrediction();
 
   // internal types
   private:
@@ -110,7 +111,7 @@ class Validation {
   private:
     string identity_;
     // download validation data
-    SlotReader slot_reader_;
+    std::shared_ptr<SlotReader> slot_reader_ptr_;
     // select a directory for a file name
     PathPicker* path_picker_;
     // storage column partitioned validation data

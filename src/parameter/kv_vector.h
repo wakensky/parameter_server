@@ -32,6 +32,7 @@ class KVVector : public SharedParameter<K> {
   MessagePtrList slice(const MessagePtr& msg, const KeyList& sep);
   void getValue(const MessagePtr& msg);
   void setValue(const MessagePtr& msg);
+  void setValidationValue(const MessagePtr& msg);
 
   // TODO
   void setReplica(const MessagePtr& msg) { }
@@ -77,7 +78,7 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
   // load data
   Ocean::DataPack data_pack = this->ocean().get(
     chl, key_range, msg->task.owner_time());
-  SArray<Key> parameter_key(
+  SArray<K> parameter_key(
     data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
 
   recved_val_mu_.lock();
@@ -105,6 +106,41 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
 }
 
 template <typename K, typename V>
+void KVVector<K,V>::setValidationValue(const MessagePtr& msg) {
+  SArray<K> recv_key(msg->key);
+  if (recv_key.empty()) return;
+  int chl = msg->task.key_channel();
+
+  int t = msg->task.time();
+  Range<K> key_range(msg->task.key_range());
+  SizeR idx_range = this->validation().fetchAnchor(chl, key_range);
+
+  // load validation keys
+  SArray<K> parameter_key = this->validation().getKey(
+    chl, key_range, msg->task.owner_time());
+
+  recved_val_mu_.lock();
+  auto& matched = recved_val_[t];
+  recved_val_mu_.unlock();
+
+  SArray<V> recv_data(msg->value[0]);
+  CHECK_EQ(recv_data.size(), recv_key.size());
+
+  if (matched.second.empty()) {
+    matched.first = idx_range;
+    matched.second.push_back(SArray<V>());
+    CHECK_EQ(parallelOrderedMatch(
+      recv_key, recv_data, parameter_key,
+      OpAssign<V>(), FLAGS_num_threads, &matched.second[0]), recv_key.size());
+  } else {
+    CHECK_EQ(matched.first, idx_range);
+    CHECK_EQ(parallelOrderedMatch(
+      recv_key, recv_data, parameter_key,
+      OpPlus<V>(), FLAGS_num_threads, &matched.second[0]), recv_key.size());
+  }
+}
+
+template <typename K, typename V>
 void KVVector<K,V>::getValue(const MessagePtr& msg) {
   SArray<K> recv_key(msg->key);
   if (recv_key.empty()) return;
@@ -126,7 +162,12 @@ void KVVector<K,V>::getValue(const MessagePtr& msg) {
   // auto op = [](const V* src, V* dst) { *dst = *src; };
   size_t n = parallelOrderedMatch(
     parameter_key, parameter_value, recv_key, OpAssign<V>(), FLAGS_num_threads, &val);
-  CHECK_EQ(n, val.size());
+  if (!get(msg).is_validation()) {
+    // for training data, the size of recv_key and the matched count
+    //   must be identical
+    // for validation data, such equality cannot be guaranteed
+    CHECK_EQ(n, val.size());
+  }
   msg->clearValue();
   msg->addValue(val);
 }

@@ -242,16 +242,6 @@ void Darling::updateModel(const MessagePtr& msg) {
         }
 
         mu_.unlock();
-
-        // validation
-        if (!(msg->task.has_is_priority() && msg->task.is_priority())) {
-          validation_.submit(
-            grp,
-            g_key_range,
-            msg->task.time(),
-            parameter_key,
-            data.second[0]);
-        }
       }
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
@@ -261,6 +251,31 @@ void Darling::updateModel(const MessagePtr& msg) {
       ocean_.drop(grp, g_key_range, msg->task.time());
     };
     CHECK_EQ(time+2, w_->pull(pull_msg));
+
+    // time 2: pull the updated model for validation
+    if (!msg->task.is_priority() && validation_.isEnabled()) {
+      LI << "ready to send validation pull: " <<
+        grp << " " << g_key_range.toString() <<
+        " " << msg->task.time() <<
+        " " << validation_.isEnabled();
+      MessagePtr validation_pull_msg(
+        new Message(kServerGroup, time+3, time+1));
+      validation_pull_msg->task.mutable_shared_para()->set_is_validation(true);
+      validation_pull_msg->setKey(
+        validation_.getKey(grp, g_key_range, msg->task.time()));
+      g_key_range.to(validation_pull_msg->task.mutable_key_range());
+      validation_pull_msg->task.set_key_channel(grp);
+      validation_pull_msg->task.set_owner_time(msg->task.time());
+      validation_pull_msg->fin_handle = [this, grp, time, msg,
+                                         g_key_range] () {
+        if (!validation_.fetchAnchor(grp, g_key_range).empty()) {
+          validation_.submit(
+            grp, g_key_range, msg->task.time(),
+            w_->received(time+3).second[0]);
+        }
+      };
+      CHECK_EQ(time+3, w_->pull(validation_pull_msg));
+    }
   } else if (IamServer()) {
     // none of my bussiness
     if (w_->myKeyRange().setIntersection(g_key_range).empty()) {
@@ -593,6 +608,8 @@ Progress Darling::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.stop());
     busy_timer_.restart();
+    // wakensky
+    std::this_thread::sleep_for(std::chrono::seconds(20));
     *prog.mutable_validation_auc_data() = validation_.waitAndGetResult();
 
     // label statistics
