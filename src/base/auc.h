@@ -68,25 +68,25 @@ class AUC {
     double tp_sum = 0.0;
     double fp_sum = 0.0;
 
-    auto tp_it = tp_count_.cbegin();
-    auto fp_it = fp_count_.cbegin();
-    while (tp_it != tp_count_.cend() || fp_it != fp_count_.cend()) {
-      auto tp_key = std::numeric_limits<int64>::max();
-      if (tp_it != tp_count_.cend()) {
+    auto tp_it = tp_count_.rbegin();
+    auto fp_it = fp_count_.rbegin();
+    while (tp_it != tp_count_.rend() || fp_it != fp_count_.rend()) {
+      auto tp_key = std::numeric_limits<int64>::min();
+      if (tp_it != tp_count_.rend()) {
         tp_key = tp_it->first;
       }
-      auto fp_key = std::numeric_limits<int64>::max();
-      if (fp_it != fp_count_.cend()) {
+      auto fp_key = std::numeric_limits<int64>::min();
+      if (fp_it != fp_count_.rend()) {
         fp_key = fp_it->first;
       }
 
       size_t new_tp_sum = tp_sum;
       size_t new_fp_sum = fp_sum;
-      if (tp_key <= fp_key) {
+      if (tp_key >= fp_key) {
         new_tp_sum += tp_it->second;
         ++tp_it;
       }
-      if (fp_key <= tp_key) {
+      if (fp_key >= tp_key) {
         new_fp_sum += fp_it->second;
         ++fp_it;
       }
@@ -139,7 +139,7 @@ class AUC {
     }
   }
  private:
-  int64 goodness_ = 1 << 20;
+  int64 goodness_ = 1 << 24;
   std::map<int64, uint64> fp_count_, tp_count_;
 
 };

@@ -608,8 +608,8 @@ Progress Darling::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.stop());
     busy_timer_.restart();
-    // wakensky
-    std::this_thread::sleep_for(std::chrono::seconds(20));
+
+    // wait and get AUC statistic
     *prog.mutable_validation_auc_data() = validation_.waitAndGetResult();
 
     // label statistics
