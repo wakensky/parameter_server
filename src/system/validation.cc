@@ -284,6 +284,9 @@ AUCData Validation::waitAndGetResult() {
   auc_data.set_click_sum(click_sum_);
   auc_data.set_prediction_sum(prediction_sum);
 
+  // wakensky
+  dumpPrediction();
+
   // clear prediction_
   prediction_->value().setZero();
   auc_.clear();
@@ -293,7 +296,9 @@ AUCData Validation::waitAndGetResult() {
 
 // not thread safe
 void Validation::dumpPrediction() {
-  std::ofstream pred("./");
+  if (!enable_) { return; }
+
+  std::ofstream pred("./dumped_prediction");
   CHECK(pred.good());
   for (size_t i = 0; i < y_->value().size(); ++i) {
     pred << static_cast<int>(y_->value()[i]) <<
@@ -339,6 +344,7 @@ void Validation::prophet(
         weight = const_accessor->second;
       }
     }
+    if (weight != weight) { continue; }
 
     // accumulate the weight to corresponding examples
     for (size_t o = offset[j]; o < offset[j + 1]; ++o) {
