@@ -755,6 +755,7 @@ bool Ocean::loadFromDiskSynchronously(
   if (!offset.empty()) {
     SArray<ShortKey> feature_key(
       data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_KEY)]);
+    CHECK_EQ(offset.size(), parameter_key.size() + 1);
     CHECK_EQ(offset.back() - offset.front(), feature_key.size());
   }
   if (parameter_value.size() > 0) {

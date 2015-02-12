@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <fcntl.h>
+#include <iomanip>
 #include "util/split.h"
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -13,6 +14,10 @@
 
 namespace PS {
 
+DEFINE_bool(dump_prediction, false,
+  "allow workers with validation data dump prediction file. "
+  "false in default");
+
 Validation::Validation():
   go_on_(true),
   num_examples_(0u),
@@ -24,7 +29,7 @@ Validation::~Validation() {
   go_on_ = false;
 
   // join prediction thread
-  submit(0, Range<Ocean::FullKey>(), 0,
+  submit(0, Range<Ocean::FullKey>(), kFakeTaskID,
     SArray<Ocean::Value>());
   predict_thread_ptr_->join();
 }
@@ -159,9 +164,6 @@ void Validation::submit(
   SArray<Ocean::FullKey> validation_keys = getKey(
     grp_id, global_range, task_id);
   CHECK_EQ(validation_keys.size(), validation_weights.size());
-  if (validation_keys.empty()) {
-    return;
-  }
 
   // generate key->weight lookup table
   std::shared_ptr<WeightLookupTable> lookup_ptr(new WeightLookupTable());
@@ -199,6 +201,9 @@ void Validation::predictThreadFunc() {
     // take out a Predictionrequest from pending queue
     PredictionRequest prediction_request;
     prediction_pending_queue_.pop(prediction_request);
+    if (kFakeTaskID == prediction_request.task_id) {
+      continue;
+    }
 
     LI << "Validation::predictThreadFunc has popped [" <<
       prediction_request.unit_id.toString() << "] [" <<
@@ -284,12 +289,12 @@ AUCData Validation::waitAndGetResult() {
   auc_data.set_click_sum(click_sum_);
   auc_data.set_prediction_sum(prediction_sum);
 
-  // wakensky
-  dumpPrediction();
+  if (FLAGS_dump_prediction) {
+    dumpPrediction();
+  }
 
   // clear prediction_
   prediction_->value().setZero();
-  auc_.clear();
 
   return auc_data;
 }
@@ -301,6 +306,7 @@ void Validation::dumpPrediction() {
   std::ofstream pred("./dumped_prediction");
   CHECK(pred.good());
   for (size_t i = 0; i < y_->value().size(); ++i) {
+    pred << std::setprecision(std::numeric_limits<double>::digits10+2);
     pred << static_cast<int>(y_->value()[i]) <<
       " " << prediction_->value()[i] << "\n";
   }
@@ -319,6 +325,13 @@ SizeR Validation::fetchAnchor(
   const Ocean::GroupID grp_id,
   const Range<Ocean::FullKey>& global_range) {
   return ocean_.fetchAnchor(grp_id, global_range);
+}
+
+void Validation::prefetch(
+  const Ocean::GroupID grp_id,
+  const Range<Ocean::FullKey>& global_range,
+  const Ocean::TaskID task_id) {
+  ocean_.prefetch(grp_id, global_range, task_id);
 }
 
 void Validation::prophet(

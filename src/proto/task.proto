@@ -126,6 +126,8 @@ message CallSharedPara {
   optional bool replica = 10;
   repeated Timestamp backup = 11;
   optional bool is_validation = 12 [default=false];
+  // notify servers release column-partitioned memory block
+  optional bool task_over = 13 [default=false];
 }
 
 message CallSketch {

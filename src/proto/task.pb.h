@@ -1143,6 +1143,13 @@ class CallSharedPara : public ::google::protobuf::Message {
   inline bool is_validation() const;
   inline void set_is_validation(bool value);
 
+  // optional bool task_over = 13 [default = false];
+  inline bool has_task_over() const;
+  inline void clear_task_over();
+  static const int kTaskOverFieldNumber = 13;
+  inline bool task_over() const;
+  inline void set_task_over(bool value);
+
   // @@protoc_insertion_point(class_scope:PS.CallSharedPara)
  private:
   inline void set_has_cmd();
@@ -1161,6 +1168,8 @@ class CallSharedPara : public ::google::protobuf::Message {
   inline void clear_has_replica();
   inline void set_has_is_validation();
   inline void clear_has_is_validation();
+  inline void set_has_task_over();
+  inline void clear_has_task_over();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -1173,9 +1182,10 @@ class CallSharedPara : public ::google::protobuf::Message {
   bool is_validation_;
   ::google::protobuf::int32 countmin_k_;
   ::google::protobuf::RepeatedPtrField< ::PS::Timestamp > backup_;
+  bool task_over_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(9 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(10 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -2615,6 +2625,28 @@ inline bool CallSharedPara::is_validation() const {
 inline void CallSharedPara::set_is_validation(bool value) {
   set_has_is_validation();
   is_validation_ = value;
+}
+
+// optional bool task_over = 13 [default = false];
+inline bool CallSharedPara::has_task_over() const {
+  return (_has_bits_[0] & 0x00000200u) != 0;
+}
+inline void CallSharedPara::set_has_task_over() {
+  _has_bits_[0] |= 0x00000200u;
+}
+inline void CallSharedPara::clear_has_task_over() {
+  _has_bits_[0] &= ~0x00000200u;
+}
+inline void CallSharedPara::clear_task_over() {
+  task_over_ = false;
+  clear_has_task_over();
+}
+inline bool CallSharedPara::task_over() const {
+  return task_over_;
+}
+inline void CallSharedPara::set_task_over(bool value) {
+  set_has_task_over();
+  task_over_ = value;
 }
 
 // -------------------------------------------------------------------

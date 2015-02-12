@@ -50,6 +50,12 @@ class Validation {
   SizeR fetchAnchor(
     const Ocean::GroupID grp_id, const Range<Ocean::FullKey>& global_range);
 
+  // add prefetch job to internal Ocean object
+  void prefetch(
+    const Ocean::GroupID grp_id,
+    const Range<Ocean::FullKey>& global_range,
+    const Ocean::TaskID task_id);
+
   // whether the Validation is enabled
   bool isEnabled() { return enable_; }
 
@@ -93,6 +99,8 @@ class Validation {
         return *this;
       }
     };
+
+    const Ocean::TaskID kFakeTaskID = -1;
 
   // methods
   private:

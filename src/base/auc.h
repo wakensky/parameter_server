@@ -39,28 +39,6 @@ class AUC {
     return (correct / total);
   }
 
-#if 0
-  // evaluate the auc after merging all workers' results
-  double oldEvaluate() {
-    if (tp_count_.empty() || fp_count_.empty()) return 0.5;
-    double tp_sum = 0, fp_sum = 0, auc = 0;
-    auto tp_it = tp_count_.begin();
-
-    for (auto& fp_it : fp_count_) {
-      auto fp_v = fp_it.second;
-      for (; tp_it != tp_count_.end() && tp_it->second <= fp_v; ++ tp_it)
-        tp_sum += tp_it->second;
-      fp_sum += fp_v;
-      auc += tp_sum * fp_v;
-    }
-    for (; tp_it != tp_count_.end(); ++tp_it) tp_sum += tp_it->second;
-
-    // LL << tp_sum << " " << fp_sum;
-    auc = auc / tp_sum / fp_sum;
-    return (auc < .5 ? 1 - auc : auc);
-  }
-#endif
-
   double evaluate() {
     if (tp_count_.empty() || fp_count_.empty()) return 0.5;
 
