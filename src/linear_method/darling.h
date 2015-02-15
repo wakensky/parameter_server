@@ -22,7 +22,7 @@ class Darling : public BatchSolver {
   void updateWeight(
     int grp, SizeR global_range,
     SArray<double> G, SArray<double> U,
-    const int task_id);
+    const int task_id, const bool is_priority);
 
   Progress evaluateProgress();
   void showProgress(int iter);

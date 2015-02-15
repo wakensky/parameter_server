@@ -331,7 +331,8 @@ void Darling::updateModel(const MessagePtr& msg) {
       CHECK_EQ(data.second.size(), 2);
 
       MilliTimer weight_milli_timer; weight_milli_timer.start();
-      updateWeight(grp, g_key_range, data.second[0], data.second[1], msg->task.time());
+      updateWeight(grp, g_key_range, data.second[0], data.second[1],
+        msg->task.time(), msg->task.is_priority());
       weight_milli_timer.stop();
       this->sys_.hb_collector().increaseTime(weight_milli_timer.get());
     }
@@ -555,7 +556,7 @@ void Darling::updateDual(
 void Darling::updateWeight(
   int grp, SizeR global_range,
   SArray<double> G, SArray<double> U,
-  const int task_id) {
+  const int task_id, const bool is_priority) {
   // load data
   Ocean::DataPack data_pack = ocean_.get(grp, global_range, task_id);
   // on-demand usage
@@ -575,6 +576,10 @@ void Darling::updateWeight(
   double objv = 0.0;
 
   double eta = conf_.learning_rate().eta();
+  if (1023 == grp && is_priority) {
+    eta = 1;
+  }
+
   double lambda = conf_.penalty().lambda(0);
   auto& active_set = active_set_[grp];
   for (size_t i = 0; i < anchor.size(); ++i) {

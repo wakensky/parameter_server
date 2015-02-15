@@ -29,6 +29,9 @@ void SlotReader::init(const DataConfig& data, const DataConfig& cache,
   count_min_k_ = count_min_k;
   count_min_n_ = count_min_n;
   identity_ = identity;
+
+  LI << "SlotReader has DataConfig [" << identity_ << "] " <<
+    data.ShortDebugString();
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
@@ -55,7 +58,8 @@ int SlotReader::read(ExampleInfo* info) {
     if (FLAGS_verbose) {
       for (size_t i = 0; i < data_.file_size(); ++i) {
         LI << "I will load data file [" << i + 1 << "/" <<
-          data_.file_size() << "] [" << data_.file(i) << "]";
+          data_.file_size() << "] [" << data_.file(i) << "] [" <<
+          identity_ << "]";
       }
     }
 
@@ -82,7 +86,8 @@ int SlotReader::read(ExampleInfo* info) {
 bool SlotReader::readOneFile(const DataConfig& data) {
   if (FLAGS_verbose) {
     LI << "loading data file [" << data.file(0) << "]; loaded [" <<
-      loaded_file_count_ << "/" << data_.file_size() << "]";
+      loaded_file_count_ << "/" << data_.file_size() << "] [" <<
+      identity_ << "]";
   }
 
   string info_name = path_picker_->getPath(
@@ -95,7 +100,8 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     info_ = mergeExampleInfo(info_, info);
     if (FLAGS_verbose) {
       LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
-        loaded_file_count_++ << "/" << data_.file_size() << "]";
+        loaded_file_count_++ << "/" << data_.file_size() << "] [" <<
+        identity_ << "]";
     }
     return true;
   }

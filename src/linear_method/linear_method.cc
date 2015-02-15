@@ -178,8 +178,16 @@ void LinearMethod::startSystem() {
     lm->clear_validation_data();
     if (w->role() == Node::WORKER) {
       if (conf_.has_validation_data()) {
+        LI << "Scheduler assigns validation data [" <<
+          va_parts[k].ShortDebugString() << "] to worker [" <<
+          w->id() << "]";
+
         *lm->mutable_validation_data() = va_parts[k];
       }
+      LI << "Scheduler assigns training data [" <<
+        tr_parts[k].ShortDebugString() << "] to worker [" <<
+        w->id() << "]";
+
       *lm->mutable_training_data() = tr_parts[k++];
     }
     *start.mutable_mng_app()->mutable_app_config() = cf;

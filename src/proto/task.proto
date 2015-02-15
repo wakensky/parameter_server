@@ -77,7 +77,8 @@ message Task {
   repeated PartitionInfo partition_info = 401;
 
   optional HeartbeatReport heartbeat_report = 601;
-  optional bool is_priority = 602;  // import task for priority groups
+  // import task for priority groups
+  optional bool is_priority = 602 [default=false];
 }
 
 message ManageNode {

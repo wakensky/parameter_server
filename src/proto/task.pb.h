@@ -576,7 +576,7 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::HeartbeatReport* release_heartbeat_report();
   inline void set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbeat_report);
 
-  // optional bool is_priority = 602;
+  // optional bool is_priority = 602 [default = false];
   inline bool has_is_priority() const;
   inline void clear_is_priority();
   static const int kIsPriorityFieldNumber = 602;
@@ -2186,7 +2186,7 @@ inline void Task::set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbea
   }
 }
 
-// optional bool is_priority = 602;
+// optional bool is_priority = 602 [default = false];
 inline bool Task::has_is_priority() const {
   return (_has_bits_[0] & 0x00200000u) != 0;
 }

@@ -43,6 +43,7 @@ void Validation::init(
   identity_ = identity;
   conf_ = conf;
   path_picker_ = path_picker;
+
   enable_ = conf_.has_validation_data() && conf_.validation_data().file_size() > 0;
   predict_thread_ptr_.reset(
     new std::thread(&Validation::predictThreadFunc, this));

@@ -524,6 +524,20 @@ class SolverConfig : public ::google::protobuf::Message {
   inline ::google::protobuf::int32 eval_interval() const;
   inline void set_eval_interval(::google::protobuf::int32 value);
 
+  // optional double beta_feature_learning_rate = 23;
+  inline bool has_beta_feature_learning_rate() const;
+  inline void clear_beta_feature_learning_rate();
+  static const int kBetaFeatureLearningRateFieldNumber = 23;
+  inline double beta_feature_learning_rate() const;
+  inline void set_beta_feature_learning_rate(double value);
+
+  // optional double beta_feature_prior_num_iter = 24;
+  inline bool has_beta_feature_prior_num_iter() const;
+  inline void clear_beta_feature_prior_num_iter();
+  static const int kBetaFeaturePriorNumIterFieldNumber = 24;
+  inline double beta_feature_prior_num_iter() const;
+  inline void set_beta_feature_prior_num_iter(double value);
+
   // @@protoc_insertion_point(class_scope:PS.LM.SolverConfig)
  private:
   inline void set_has_minibatch_size();
@@ -558,6 +572,10 @@ class SolverConfig : public ::google::protobuf::Message {
   inline void clear_has_max_data_buf_size_in_mb();
   inline void set_has_eval_interval();
   inline void clear_has_eval_interval();
+  inline void set_has_beta_feature_learning_rate();
+  inline void clear_has_beta_feature_learning_rate();
+  inline void set_has_beta_feature_prior_num_iter();
+  inline void clear_has_beta_feature_prior_num_iter();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -577,10 +595,12 @@ class SolverConfig : public ::google::protobuf::Message {
   double countmin_n_;
   ::google::protobuf::int32 max_num_parallel_groups_in_preprocessing_;
   ::google::protobuf::int32 max_data_buf_size_in_mb_;
+  double beta_feature_learning_rate_;
+  double beta_feature_prior_num_iter_;
   ::google::protobuf::int32 eval_interval_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(17 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(19 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2flinear_5fmethod_2eproto();
   friend void protobuf_AssignDesc_proto_2flinear_5fmethod_2eproto();
@@ -2410,6 +2430,50 @@ inline ::google::protobuf::int32 SolverConfig::eval_interval() const {
 inline void SolverConfig::set_eval_interval(::google::protobuf::int32 value) {
   set_has_eval_interval();
   eval_interval_ = value;
+}
+
+// optional double beta_feature_learning_rate = 23;
+inline bool SolverConfig::has_beta_feature_learning_rate() const {
+  return (_has_bits_[0] & 0x00020000u) != 0;
+}
+inline void SolverConfig::set_has_beta_feature_learning_rate() {
+  _has_bits_[0] |= 0x00020000u;
+}
+inline void SolverConfig::clear_has_beta_feature_learning_rate() {
+  _has_bits_[0] &= ~0x00020000u;
+}
+inline void SolverConfig::clear_beta_feature_learning_rate() {
+  beta_feature_learning_rate_ = 0;
+  clear_has_beta_feature_learning_rate();
+}
+inline double SolverConfig::beta_feature_learning_rate() const {
+  return beta_feature_learning_rate_;
+}
+inline void SolverConfig::set_beta_feature_learning_rate(double value) {
+  set_has_beta_feature_learning_rate();
+  beta_feature_learning_rate_ = value;
+}
+
+// optional double beta_feature_prior_num_iter = 24;
+inline bool SolverConfig::has_beta_feature_prior_num_iter() const {
+  return (_has_bits_[0] & 0x00040000u) != 0;
+}
+inline void SolverConfig::set_has_beta_feature_prior_num_iter() {
+  _has_bits_[0] |= 0x00040000u;
+}
+inline void SolverConfig::clear_has_beta_feature_prior_num_iter() {
+  _has_bits_[0] &= ~0x00040000u;
+}
+inline void SolverConfig::clear_beta_feature_prior_num_iter() {
+  beta_feature_prior_num_iter_ = 0;
+  clear_has_beta_feature_prior_num_iter();
+}
+inline double SolverConfig::beta_feature_prior_num_iter() const {
+  return beta_feature_prior_num_iter_;
+}
+inline void SolverConfig::set_beta_feature_prior_num_iter(double value) {
+  set_has_beta_feature_prior_num_iter();
+  beta_feature_prior_num_iter_ = value;
 }
 
 // -------------------------------------------------------------------
