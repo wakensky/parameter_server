@@ -576,8 +576,8 @@ void Darling::updateWeight(
   double objv = 0.0;
 
   double eta = conf_.learning_rate().eta();
-  if (1023 == grp && is_priority) {
-    eta = 1;
+  if (1023 == grp && is_priority && conf_.solver().has_beta_feature_learning_rate()) {
+    eta = conf_.solver().beta_feature_learning_rate();
   }
 
   double lambda = conf_.penalty().lambda(0);
