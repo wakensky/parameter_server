@@ -3,7 +3,7 @@
 #include "system/message.h"
 #include "system/yellow_pages.h"
 #include "system/heartbeat_collector.h"
-#include "system/ocean.h"
+#include "system/validation.h"
 #include "util/threadsafe_queue.h"
 #include "dashboard.h"
 
@@ -44,6 +44,7 @@ class Postoffice {
   HeartbeatCollector& hb_collector() { return heartbeat_collector_; };
 
   Ocean& ocean() { return ocean_; }
+  Validation& validation() { return validation_; }
 
  private:
   DISALLOW_COPY_AND_ASSIGN(Postoffice);
@@ -80,6 +81,7 @@ class Postoffice {
   Dashboard dashboard_;
 
   Ocean ocean_;
+  Validation validation_;
 };
 
 } // namespace PS

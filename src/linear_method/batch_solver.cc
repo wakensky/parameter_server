@@ -213,6 +213,16 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   const int finishing_time = starting_time + 1000000;
   if (IamWorker()) {
     CHECK(conf_.has_local_cache());
+
+    // download validation data
+    validation_.init(myNodeID() + "-validation", conf_, &path_picker_);
+    ThreadPool load_validation_pool(1);
+    load_validation_pool.add([this]() {
+                                CHECK(validation_.download());
+                             });
+    load_validation_pool.startWorkers();
+
+    // download training data
     slot_reader_.init(
       conf_.training_data(), conf_.local_cache(), &pathPicker(),
       starting_time, finishing_time,

@@ -223,7 +223,13 @@ void Executor::accept(const MessagePtr& msg) {
 
   // Ocean prefetch
   if (LM::Call::UPDATE_MODEL == msg->task.linear_method().cmd()) {
-    ocean_.prefetch(
+    // for training data
+    Postoffice::instance().ocean().prefetch(
+      msg->task.linear_method().fea_grp(0),
+      msg->task.linear_method().key(),
+      msg->task.time());
+    // for validation data
+    Postoffice::instance().validation().prefetch(
       msg->task.linear_method().fea_grp(0),
       msg->task.linear_method().key(),
       msg->task.time());

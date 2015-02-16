@@ -104,8 +104,14 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
 
+  std::shared_ptr<std::thread> validation_thread_ptr;
   ocean_.init(myNodeID(), conf_, msg->task, &path_picker_);
   if (IamWorker()) {
+    // validation preprocess
+    validation_thread_ptr.reset(new std::thread([this, msg]() {
+      CHECK(validation_.preprocess(msg->task));
+    }));
+
     // load labels
     y_ = MatrixPtr<double>(new DenseMatrix<double>(
       slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
@@ -126,6 +132,9 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     active_set_[grp_id].resize(ocean_.getGroupKeyCount(grp_id), true);
   }
 
+  if (validation_thread_ptr) {
+    validation_thread_ptr->join();
+  }
 }
 
 void Darling::updateModel(const MessagePtr& msg) {

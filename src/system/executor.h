@@ -22,8 +22,7 @@ const static NodeID kLiveGroup = Van::id("all_lives");
 class Executor {
  public:
   Executor(Customer& obj) :
-    obj_(obj),
-    ocean_(Postoffice::instance().ocean()) {
+    obj_(obj) {
     my_node_ = Postoffice::instance().myNode();
   }
   ~Executor() { }
@@ -100,7 +99,6 @@ class Executor {
   Node my_node_;
   std::mutex node_mu_;
   bool done_ = false;
-  Ocean& ocean_;
 };
 
 
