@@ -4,7 +4,6 @@
 #include "system/postoffice.h"
 #include "system/executor.h"
 #include "system/path_picker.h"
-#include "system/ocean.h"
 namespace PS {
 
 // An object shared across multiple nodes.
@@ -12,7 +11,7 @@ class Customer {
  public:
   Customer() : sys_(Postoffice::instance()), exec_(*this),
     path_picker_(PathPicker::instance()),
-    ocean_(Ocean::instance()) {
+    ocean_(Postoffice::instance().ocean()) {
     exec_thread_ = unique_ptr<std::thread>(new std::thread(&Executor::run, &exec_));
   }
   // process a message received from a remote node

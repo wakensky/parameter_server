@@ -140,7 +140,7 @@ class Ocean {
     };
 
   public:
-    SINGLETON(Ocean);
+    Ocean();
     ~Ocean();
     Ocean(const Ocean& other) = delete;
     Ocean& operator= (const Ocean& rhs) = delete;
@@ -250,7 +250,6 @@ class Ocean {
     const TaskID kFakeTaskID = -1;
 
   private: // methods
-    Ocean();
     void prefetchThreadFunc();
     void writeThreadFunc();
     // dump column partitioned SArray

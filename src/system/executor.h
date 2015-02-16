@@ -1,7 +1,6 @@
 #pragma once
 #include "system/remote_node.h"
 #include "system/message.h"
-#include "system/ocean.h"
 
 namespace PS {
 
@@ -24,7 +23,7 @@ class Executor {
  public:
   Executor(Customer& obj) :
     obj_(obj),
-    ocean_(Ocean::instance()) {
+    ocean_(Postoffice::instance().ocean()) {
     my_node_ = Postoffice::instance().myNode();
   }
   ~Executor() { }

@@ -3,6 +3,7 @@
 #include "system/message.h"
 #include "system/yellow_pages.h"
 #include "system/heartbeat_collector.h"
+#include "system/ocean.h"
 #include "util/threadsafe_queue.h"
 #include "dashboard.h"
 
@@ -42,6 +43,8 @@ class Postoffice {
 
   HeartbeatCollector& hb_collector() { return heartbeat_collector_; };
 
+  Ocean& ocean() { return ocean_; }
+
  private:
   DISALLOW_COPY_AND_ASSIGN(Postoffice);
   Postoffice():
@@ -75,6 +78,8 @@ class Postoffice {
   // If I have finished MANAGE task, I have connected to the scheduler certainly
   bool manage_task_done_;
   Dashboard dashboard_;
+
+  Ocean ocean_;
 };
 
 } // namespace PS
