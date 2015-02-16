@@ -139,8 +139,35 @@ class AUCData : public ::google::protobuf::Message {
   inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
       mutable_fp_count();
 
+  // optional uint32 num_examples = 5;
+  inline bool has_num_examples() const;
+  inline void clear_num_examples();
+  static const int kNumExamplesFieldNumber = 5;
+  inline ::google::protobuf::uint32 num_examples() const;
+  inline void set_num_examples(::google::protobuf::uint32 value);
+
+  // optional double click_sum = 6;
+  inline bool has_click_sum() const;
+  inline void clear_click_sum();
+  static const int kClickSumFieldNumber = 6;
+  inline double click_sum() const;
+  inline void set_click_sum(double value);
+
+  // optional double prediction_sum = 7;
+  inline bool has_prediction_sum() const;
+  inline void clear_prediction_sum();
+  static const int kPredictionSumFieldNumber = 7;
+  inline double prediction_sum() const;
+  inline void set_prediction_sum(double value);
+
   // @@protoc_insertion_point(class_scope:PS.AUCData)
  private:
+  inline void set_has_num_examples();
+  inline void clear_has_num_examples();
+  inline void set_has_click_sum();
+  inline void clear_has_click_sum();
+  inline void set_has_prediction_sum();
+  inline void clear_has_prediction_sum();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -148,9 +175,12 @@ class AUCData : public ::google::protobuf::Message {
   ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > tp_count_;
   ::google::protobuf::RepeatedField< ::google::protobuf::int64 > fp_key_;
   ::google::protobuf::RepeatedField< ::google::protobuf::uint64 > fp_count_;
+  double click_sum_;
+  double prediction_sum_;
+  ::google::protobuf::uint32 num_examples_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(4 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(7 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2fevaluation_2eproto();
   friend void protobuf_AssignDesc_proto_2fevaluation_2eproto();
@@ -264,6 +294,72 @@ AUCData::fp_count() const {
 inline ::google::protobuf::RepeatedField< ::google::protobuf::uint64 >*
 AUCData::mutable_fp_count() {
   return &fp_count_;
+}
+
+// optional uint32 num_examples = 5;
+inline bool AUCData::has_num_examples() const {
+  return (_has_bits_[0] & 0x00000010u) != 0;
+}
+inline void AUCData::set_has_num_examples() {
+  _has_bits_[0] |= 0x00000010u;
+}
+inline void AUCData::clear_has_num_examples() {
+  _has_bits_[0] &= ~0x00000010u;
+}
+inline void AUCData::clear_num_examples() {
+  num_examples_ = 0u;
+  clear_has_num_examples();
+}
+inline ::google::protobuf::uint32 AUCData::num_examples() const {
+  return num_examples_;
+}
+inline void AUCData::set_num_examples(::google::protobuf::uint32 value) {
+  set_has_num_examples();
+  num_examples_ = value;
+}
+
+// optional double click_sum = 6;
+inline bool AUCData::has_click_sum() const {
+  return (_has_bits_[0] & 0x00000020u) != 0;
+}
+inline void AUCData::set_has_click_sum() {
+  _has_bits_[0] |= 0x00000020u;
+}
+inline void AUCData::clear_has_click_sum() {
+  _has_bits_[0] &= ~0x00000020u;
+}
+inline void AUCData::clear_click_sum() {
+  click_sum_ = 0;
+  clear_has_click_sum();
+}
+inline double AUCData::click_sum() const {
+  return click_sum_;
+}
+inline void AUCData::set_click_sum(double value) {
+  set_has_click_sum();
+  click_sum_ = value;
+}
+
+// optional double prediction_sum = 7;
+inline bool AUCData::has_prediction_sum() const {
+  return (_has_bits_[0] & 0x00000040u) != 0;
+}
+inline void AUCData::set_has_prediction_sum() {
+  _has_bits_[0] |= 0x00000040u;
+}
+inline void AUCData::clear_has_prediction_sum() {
+  _has_bits_[0] &= ~0x00000040u;
+}
+inline void AUCData::clear_prediction_sum() {
+  prediction_sum_ = 0;
+  clear_has_prediction_sum();
+}
+inline double AUCData::prediction_sum() const {
+  return prediction_sum_;
+}
+inline void AUCData::set_prediction_sum(double value) {
+  set_has_prediction_sum();
+  prediction_sum_ = value;
 }
 
 

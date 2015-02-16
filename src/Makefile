@@ -57,6 +57,7 @@ SRCS = $(PROTOS_CC) \
 	system/dashboard.cc \
 	system/path_picker.cc \
 	system/ocean.cc \
+	system/validation.cc \
 	filter/filter.cc \
 	data/common.cc \
 	data/text_parser.cc \

@@ -6,6 +6,12 @@ message AUCData {
 
   repeated int64 fp_key = 3;
   repeated uint64 fp_count = 4;
+
+  // number of validation examples
+  optional uint32 num_examples = 5;
+
+  optional double click_sum = 6;
+  optional double prediction_sum = 7;
 }
 
 // message AccuracyData {
