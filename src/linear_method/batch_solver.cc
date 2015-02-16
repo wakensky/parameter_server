@@ -215,11 +215,11 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
     CHECK(conf_.has_local_cache());
     slot_reader_.init(
       conf_.training_data(), conf_.local_cache(), &pathPicker(),
-      w_, starting_time, finishing_time,
+      starting_time, finishing_time,
       conf_.solver().countmin_k(),
       conf_.solver().countmin_n_ratio(),
       myNodeID());
-    slot_reader_.read(info);
+    slot_reader_.read(w_, info);
   } else {
     w_->waitInMsg(kWorkerGroup, finishing_time);
   }

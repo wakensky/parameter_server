@@ -3,31 +3,35 @@
 #include "proto/example.pb.h"
 #include "data/common.h"
 #include "system/path_picker.h"
-#include "parameter/kv_vector.h"
 
 namespace PS {
+
+template <typename K, typename V>
+class KVVector;
 
 // read all slots in *data* with multithreadd, save them into *cache*.
 class SlotReader {
  public:
   SlotReader() { }
   SlotReader(const DataConfig& data, const DataConfig& cache,
-    PathPicker* path_picker, KVVectorPtr<Key,double> w,
+    PathPicker* path_picker,
     const int start_time, const int finishing_time,
     const int count_min_k, const float count_min_n,
     const string& identity) {
-    init(data, cache, path_picker, w, start_time, finishing_time,
+    init(data, cache, path_picker, start_time, finishing_time,
          count_min_k, count_min_n, identity);
   }
 
   void init(const DataConfig& data, const DataConfig& cache,
-    PathPicker* path_picker, KVVectorPtr<Key,double> w,
+    PathPicker* path_picker,
     const int start_time, const int finishing_time,
     const int count_min_k, const float count_min_n,
     const string& identity);
 
   // first read, then save
-  int read(ExampleInfo* info = nullptr);
+  int read(
+    std::shared_ptr<KVVector<Key,double>> w,
+    ExampleInfo* info = nullptr);
 
   template<typename V> MatrixInfo info(int slot_id) const {
     return readMatrixInfo(info_, slot_id, sizeof(uint64), sizeof(V));
@@ -53,7 +57,9 @@ class SlotReader {
  private:
   string cacheName(const DataConfig& data, int slot_id) const;
   size_t nnzEle(int slot_id) const;
-  bool readOneFile(const DataConfig& data);
+  bool readOneFile(
+    const DataConfig& data,
+    std::shared_ptr<KVVector<Key,double>> w);
   bool assemblePartitions(
     SArray<char>& out, SArray<char>& in, const string& partition_file_name) const;
   DataConfig data_;
@@ -65,7 +71,6 @@ class SlotReader {
   std::unordered_map<int, SArray<size_t>> offset_cache_;
   std::unordered_map<int, SArray<uint64>> index_cache_;
   PathPicker* path_picker_;
-  KVVectorPtr<Key,double> w_;
   std::atomic_int time_;
   int finishing_time_;
   int count_min_k_;

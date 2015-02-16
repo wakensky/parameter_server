@@ -3,6 +3,7 @@
 #include "util/threadpool.h"
 #include "util/filelinereader.h"
 #include "util/split.h"
+#include "parameter/kv_vector.h"
 namespace PS {
 
 DEFINE_int32(load_data_max_mb_per_thread,
@@ -15,7 +16,7 @@ DEFINE_int32(num_downloading_threads,
 DECLARE_bool(verbose);
 
 void SlotReader::init(const DataConfig& data, const DataConfig& cache,
-  PathPicker* path_picker, KVVectorPtr<Key,double> w,
+  PathPicker* path_picker,
   const int start_time, const int finishing_time,
   const int count_min_k, const float count_min_n,
   const string& identity) {
@@ -23,8 +24,6 @@ void SlotReader::init(const DataConfig& data, const DataConfig& cache,
   if (cache.file_size()) dump_to_disk_ = true;
   data_ = data;
   path_picker_ = path_picker;
-  w_ = w;
-  CHECK(w_);
   time_ = start_time;
   finishing_time_ = finishing_time;
   count_min_k_ = count_min_k;
@@ -46,7 +45,7 @@ size_t SlotReader::nnzEle(int slot_id) const {
   return nnz;
 }
 
-int SlotReader::read(ExampleInfo* info) {
+int SlotReader::read(std::shared_ptr<KVVector<Key,double>> w, ExampleInfo* info) {
   CHECK_GT(FLAGS_num_threads, 0);
   {
     Lock l(mu_);
@@ -63,7 +62,7 @@ int SlotReader::read(ExampleInfo* info) {
     ThreadPool pool(FLAGS_num_downloading_threads);
     for (int i = 0; i < data_.file_size(); ++i) {
       auto one_file = ithFile(data_, i);
-      pool.add([this, one_file](){ readOneFile(one_file); });
+      pool.add([this, one_file, w](){ readOneFile(one_file, w); });
     }
     pool.startWorkers();
   }
@@ -72,13 +71,17 @@ int SlotReader::read(ExampleInfo* info) {
     slot_info_[info_.slot(i).id()] = info_.slot(i);
   }
 
-  // send the closing message to servers
-  MessagePtr boundary(new Message(kServerGroup, finishing_time_));
-  CHECK_EQ(finishing_time_, w_->push(boundary));
+  if (w) {
+    // send the closing message to servers
+    MessagePtr boundary(new Message(kServerGroup, finishing_time_));
+    CHECK_EQ(finishing_time_, w->push(boundary));
+  }
   return 0;
 }
 
-bool SlotReader::readOneFile(const DataConfig& data) {
+bool SlotReader::readOneFile(
+  const DataConfig& data,
+  std::shared_ptr<KVVector<Key,double>> w) {
   if (FLAGS_verbose) {
     LI << "loading data file [" << data.file(0) << "]; loaded [" <<
       loaded_file_count_ << "/" << data_.file_size() << "]";
@@ -130,7 +133,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
 
     bool appendToFile(
       PathPicker* path_picker, const int slot_id, const string& prefix,
-      KVVectorPtr<Key,double> w, const int push_time,
+      std::shared_ptr<KVVector<Key,double>> w, const int push_time,
       const int count_min_k, const float count_min_n) {
       const string kPartitionSuffix = ".partition";
       CHECK(nullptr != path_picker);
@@ -194,17 +197,19 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         unique_key.pushBack(current_key);
         count_key.pushBack(current_cnt < kuint8max ? current_cnt : kuint8max);
 
-        // push unique keys with their counts to servers
-        MessagePtr count(new Message(kServerGroup, push_time));
-        count->setKey(unique_key);
-        count->addValue(count_key);
-        count->task.set_key_channel(slot_id);
-        Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
-          count->task.mutable_key_range());
-        w->set(count)->set_insert_key_freq(true);
-        w->set(count)->set_countmin_k(count_min_k);
-        w->set(count)->set_countmin_n(count_min_n);
-        CHECK_EQ(push_time, w->push(count));
+        if (w) {
+          // push unique keys with their counts to servers
+          MessagePtr count(new Message(kServerGroup, push_time));
+          count->setKey(unique_key);
+          count->addValue(count_key);
+          count->task.set_key_channel(slot_id);
+          Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
+            count->task.mutable_key_range());
+          w->set(count)->set_insert_key_freq(true);
+          w->set(count)->set_countmin_k(count_min_k);
+          w->set(count)->set_countmin_n(count_min_n);
+          CHECK_EQ(push_time, w->push(count));
+        }
 
         // dump unique keys to disk
         path = path_picker->getPath(prefix + ".colidx_sorted_uniq");
@@ -274,7 +279,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
       // append to disk file
       CHECK(slot.appendToFile(
         this->path_picker_, i, cacheName(data, i),
-        w_, time_++, count_min_k_, count_min_n_));
+        w, time_++, count_min_k_, count_min_n_));
       slot.clear();
     }
 
@@ -298,7 +303,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     }
     CHECK(vslot.appendToFile(
       this->path_picker_, i, cacheName(data, i),
-      w_, time_++, count_min_k_, count_min_n_));
+      w, time_++, count_min_k_, count_min_n_));
   }
 
   // generate info
