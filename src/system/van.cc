@@ -37,7 +37,6 @@ void Van::init() {
   connect(scheduler_);
 
   if (FLAGS_print_van) {
-    Lock l(debug_out_mu_);
     debug_out_.open("van_"+my_node_.id());
   }
 }
@@ -59,7 +58,6 @@ void Van::bind() {
       << "bind to " << addr << " failed: " << zmq_strerror(errno);
 
   if (FLAGS_print_van) {
-    Lock l(debug_out_mu_);
     debug_out_ << my_node_.id() << ": binds address " << addr << std::endl;
   }
 }
@@ -91,7 +89,6 @@ Status Van::connect(const Node& node) {
   senders_[id] = sender;
 
   if (FLAGS_print_van) {
-    Lock l(debug_out_mu_);
     debug_out_ << my_node_.id() << ": connect to " << addr << std::endl;
   }
   return Status::OK();
@@ -143,7 +140,6 @@ Status Van::send(const MessagePtr& msg, size_t* send_bytes) {
   }
 
   if (FLAGS_print_van) {
-    Lock l(debug_out_mu_);
     debug_out_ << "|>>>   " << msg->shortDebugString()<< std::endl;
   }
   return Status::OK();
@@ -191,7 +187,6 @@ Status Van::recv(const MessagePtr& msg, size_t* recv_bytes) {
   }
 
   if (FLAGS_print_van) {
-    Lock l(debug_out_mu_);
     debug_out_ << "|<<<   " << msg->shortDebugString() << std::endl;
   }
   return Status::OK();;

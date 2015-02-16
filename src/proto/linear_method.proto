@@ -59,9 +59,6 @@ message SolverConfig {
 
   // evaluate the progrss per *eval_interval* second
   optional int32 eval_interval = 21 [default = 5];
-
-  optional double beta_feature_learning_rate = 23;
-  optional double beta_feature_prior_num_iter = 24;
 }
 
 message DarlingConfig {
@@ -108,7 +105,6 @@ message Progress {
   optional uint64 nnz_active_set = 7;
   optional double training_auc = 8;
   optional AUCData training_auc_data = 9;
-  optional AUCData validation_auc_data = 14;
   optional uint64 num_ex_trained = 12;
   optional double acc = 13;
 

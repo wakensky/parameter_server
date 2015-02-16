@@ -1,4 +1,4 @@
-#include <regex.h>
+#include <regex>
 #include "data/common.h"
 #include "util/file.h"
 
@@ -98,25 +98,17 @@ DataConfig searchFiles(const DataConfig& config) {
   CHECK_GE(n, 1) << "empty files: " << config.DebugString();
   std::vector<std::string> matched_files;
   for (int i = 0; i < n; ++i) {
-    regex_t reg;
-    const size_t kNMatch = 4;
-    regmatch_t pmatch[kNMatch];
-    const size_t kErrBufLen = 1024;
-    char err_buf[kErrBufLen + 1];
-
-    // compile regrex
-    int reg_errno = regcomp(&reg, getFilename(config.file(i)).c_str(), 0);
-    if (0 != reg_errno) {
-      regerror(reg_errno, &reg, err_buf, kErrBufLen);
-      LL << "searchFiles try to compile regrex [" <<
-        getFilename(config.file(i)) << "] but failed. [" <<
-        err_buf << "]";
-      continue;
+    std::regex pattern;
+    try {
+      pattern = std::regex(getFilename(config.file(i)));
+    } catch (const std::regex_error& e) {
+      CHECK(false) << getFilename(config.file(i))
+                   << " is not valid (supported) regex, regex_error caught: "
+                   << e.what() << ". you may try gcc>=4.9 or llvm>=3.4";
     }
-
     auto dir = config; dir.clear_file();
     dir.add_file(getPath(config.file(i)));
-    // list all files in the directory
+    // match regex
     auto files = readFilenamesInDirectory(dir);
 
     // list all files found in dir
@@ -129,22 +121,9 @@ DataConfig searchFiles(const DataConfig& config) {
     }
 
     for (auto& f : files) {
-      string file_name = getFilename(f);
-      if (!file_name.empty() && file_name.back() == '\n') {
-        file_name.resize(file_name.size() - 1);
-      }
-
-      // match regex
-      reg_errno = regexec(&reg, file_name.c_str(), kNMatch, pmatch, 0);
-      if (0 == reg_errno) {
+      if (std::regex_match(getFilename(f), pattern)) {
         auto l = config.format() == DataConfig::TEXT ? f : removeExtension(f);
         matched_files.push_back(getPath(l) + "/" + getFilename(l));
-      } else if (REG_NOMATCH != reg_errno) {
-        regerror(reg_errno, &reg, err_buf, kErrBufLen);
-        LL << "searchFiles try to match regrex [" <<
-          getFilename(config.file(i)) << "] to candidate [" <<
-          file_name << "] but failed. [" <<
-          err_buf << "]";
       }
     }
 
@@ -156,11 +135,7 @@ DataConfig searchFiles(const DataConfig& config) {
           "] [" << file << "]";
       }
     }
-
-    // release regex
-    regfree(&reg);
   }
-
   // remove duplicate files
   std::sort(matched_files.begin(), matched_files.end());
   auto it = std::unique(matched_files.begin(), matched_files.end());
@@ -172,7 +147,7 @@ DataConfig searchFiles(const DataConfig& config) {
 
 std::vector<DataConfig> divideFiles(const DataConfig& data, int num) {
   CHECK_GT(data.file_size(), 0) << "empty files" << data.DebugString();
-  // CHECK_GE(data.file_size(), num) << "too many partitions";
+  CHECK_GE(data.file_size(), num) << "too many partitions";
   // evenly divide files
   std::vector<DataConfig> parts;
   for (int i = 0; i < num; ++i) {

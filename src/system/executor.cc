@@ -227,10 +227,6 @@ void Executor::accept(const MessagePtr& msg) {
       msg->task.linear_method().fea_grp(0),
       msg->task.linear_method().key(),
       msg->task.time());
-    validation_.prefetch(
-      msg->task.linear_method().fea_grp(0),
-      msg->task.linear_method().key(),
-      msg->task.time());
   }
 
   recved_msgs_.push_back(msg);

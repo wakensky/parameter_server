@@ -59,7 +59,6 @@ class Van {
   size_t data_sent_ = 0;
   size_t data_received_ = 0;
   std::ofstream debug_out_;
-  std::mutex debug_out_mu_;
 
   Node assembleMyNode();
 };

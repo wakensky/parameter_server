@@ -576,13 +576,6 @@ class Task : public ::google::protobuf::Message {
   inline ::PS::HeartbeatReport* release_heartbeat_report();
   inline void set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbeat_report);
 
-  // optional bool is_priority = 602 [default = false];
-  inline bool has_is_priority() const;
-  inline void clear_is_priority();
-  static const int kIsPriorityFieldNumber = 602;
-  inline bool is_priority() const;
-  inline void set_is_priority(bool value);
-
   // @@protoc_insertion_point(class_scope:PS.Task)
  private:
   inline void set_has_type();
@@ -621,22 +614,19 @@ class Task : public ::google::protobuf::Message {
   inline void clear_has_sketch();
   inline void set_has_heartbeat_report();
   inline void clear_has_heartbeat_report();
-  inline void set_has_is_priority();
-  inline void clear_has_is_priority();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int type_;
   ::google::protobuf::int32 time_;
   ::std::string* customer_;
-  ::google::protobuf::int32 wait_time_;
-  ::google::protobuf::int32 owner_time_;
-  ::PS::PbRange* key_range_;
-  ::google::protobuf::int32 key_channel_;
   bool request_;
   bool do_not_reply_;
   bool has_key_;
-  bool is_priority_;
+  ::google::protobuf::int32 wait_time_;
+  ::PS::PbRange* key_range_;
+  ::google::protobuf::int32 owner_time_;
+  ::google::protobuf::int32 key_channel_;
   ::google::protobuf::RepeatedField<int> value_type_;
   ::google::protobuf::RepeatedPtrField< ::PS::FilterConfig > filter_;
   ::std::string* msg_;
@@ -650,7 +640,7 @@ class Task : public ::google::protobuf::Message {
   int key_type_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(22 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(21 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -1136,20 +1126,6 @@ class CallSharedPara : public ::google::protobuf::Message {
   inline ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >*
       mutable_backup();
 
-  // optional bool is_validation = 12 [default = false];
-  inline bool has_is_validation() const;
-  inline void clear_is_validation();
-  static const int kIsValidationFieldNumber = 12;
-  inline bool is_validation() const;
-  inline void set_is_validation(bool value);
-
-  // optional bool task_over = 13 [default = false];
-  inline bool has_task_over() const;
-  inline void clear_task_over();
-  static const int kTaskOverFieldNumber = 13;
-  inline bool task_over() const;
-  inline void set_task_over(bool value);
-
   // @@protoc_insertion_point(class_scope:PS.CallSharedPara)
  private:
   inline void set_has_cmd();
@@ -1166,26 +1142,20 @@ class CallSharedPara : public ::google::protobuf::Message {
   inline void clear_has_countmin_k();
   inline void set_has_replica();
   inline void clear_has_replica();
-  inline void set_has_is_validation();
-  inline void clear_has_is_validation();
-  inline void set_has_task_over();
-  inline void clear_has_task_over();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
   int cmd_;
   ::google::protobuf::int32 query_key_freq_;
-  double countmin_n_;
   bool insert_key_freq_;
   bool insert_key_;
   bool replica_;
-  bool is_validation_;
   ::google::protobuf::int32 countmin_k_;
+  double countmin_n_;
   ::google::protobuf::RepeatedPtrField< ::PS::Timestamp > backup_;
-  bool task_over_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(10 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(8 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2ftask_2eproto();
   friend void protobuf_AssignDesc_proto_2ftask_2eproto();
@@ -2186,28 +2156,6 @@ inline void Task::set_allocated_heartbeat_report(::PS::HeartbeatReport* heartbea
   }
 }
 
-// optional bool is_priority = 602 [default = false];
-inline bool Task::has_is_priority() const {
-  return (_has_bits_[0] & 0x00200000u) != 0;
-}
-inline void Task::set_has_is_priority() {
-  _has_bits_[0] |= 0x00200000u;
-}
-inline void Task::clear_has_is_priority() {
-  _has_bits_[0] &= ~0x00200000u;
-}
-inline void Task::clear_is_priority() {
-  is_priority_ = false;
-  clear_has_is_priority();
-}
-inline bool Task::is_priority() const {
-  return is_priority_;
-}
-inline void Task::set_is_priority(bool value) {
-  set_has_is_priority();
-  is_priority_ = value;
-}
-
 // -------------------------------------------------------------------
 
 // ManageNode
@@ -2603,50 +2551,6 @@ CallSharedPara::backup() const {
 inline ::google::protobuf::RepeatedPtrField< ::PS::Timestamp >*
 CallSharedPara::mutable_backup() {
   return &backup_;
-}
-
-// optional bool is_validation = 12 [default = false];
-inline bool CallSharedPara::has_is_validation() const {
-  return (_has_bits_[0] & 0x00000100u) != 0;
-}
-inline void CallSharedPara::set_has_is_validation() {
-  _has_bits_[0] |= 0x00000100u;
-}
-inline void CallSharedPara::clear_has_is_validation() {
-  _has_bits_[0] &= ~0x00000100u;
-}
-inline void CallSharedPara::clear_is_validation() {
-  is_validation_ = false;
-  clear_has_is_validation();
-}
-inline bool CallSharedPara::is_validation() const {
-  return is_validation_;
-}
-inline void CallSharedPara::set_is_validation(bool value) {
-  set_has_is_validation();
-  is_validation_ = value;
-}
-
-// optional bool task_over = 13 [default = false];
-inline bool CallSharedPara::has_task_over() const {
-  return (_has_bits_[0] & 0x00000200u) != 0;
-}
-inline void CallSharedPara::set_has_task_over() {
-  _has_bits_[0] |= 0x00000200u;
-}
-inline void CallSharedPara::clear_has_task_over() {
-  _has_bits_[0] &= ~0x00000200u;
-}
-inline void CallSharedPara::clear_task_over() {
-  task_over_ = false;
-  clear_has_task_over();
-}
-inline bool CallSharedPara::task_over() const {
-  return task_over_;
-}
-inline void CallSharedPara::set_task_over(bool value) {
-  set_has_task_over();
-  task_over_ = value;
 }
 
 // -------------------------------------------------------------------

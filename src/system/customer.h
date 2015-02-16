@@ -5,7 +5,6 @@
 #include "system/executor.h"
 #include "system/path_picker.h"
 #include "system/ocean.h"
-#include "system/validation.h"
 namespace PS {
 
 // An object shared across multiple nodes.
@@ -13,8 +12,7 @@ class Customer {
  public:
   Customer() : sys_(Postoffice::instance()), exec_(*this),
     path_picker_(PathPicker::instance()),
-    ocean_(Postoffice::instance().trainingOcean()),
-    validation_(Postoffice::instance().validation()) {
+    ocean_(Ocean::instance()) {
     exec_thread_ = unique_ptr<std::thread>(new std::thread(&Executor::run, &exec_));
   }
   // process a message received from a remote node
@@ -51,8 +49,6 @@ class Customer {
   const StringList& children() const { return child_customers_; }
   // return the ocean
   Ocean& ocean() { return ocean_; }
-  // return the validation
-  Validation& validation() { return validation_; }
   // return the path_picker_
   PathPicker& pathPicker() { return path_picker_; }
 
@@ -65,7 +61,6 @@ class Customer {
   unique_ptr<std::thread> exec_thread_;
   PathPicker& path_picker_;
   Ocean& ocean_;
-  Validation& validation_;
  private:
   DISALLOW_COPY_AND_ASSIGN(Customer);
 };

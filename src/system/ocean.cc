@@ -736,14 +736,12 @@ bool Ocean::loadFromDiskSynchronously(
   SArray<FullKey> parameter_key(data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_KEY)]);
   SArray<Value> parameter_value(data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_VALUE)]);
   SArray<Value> delta(data_pack->arrays[static_cast<size_t>(DataSource::DELTA)]);
-  if (!parameter_key.empty() && parameter_value.empty() &&
-      !path_pack.path[static_cast<size_t>(DataSource::PARAMETER_VALUE)].empty()) {
+  if (!parameter_key.empty() && parameter_value.empty()) {
     parameter_value.resize(parameter_key.size());
     parameter_value.setValue(0);
     data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_VALUE)] = parameter_value;
   }
-  if (!parameter_key.empty() && delta.empty() &&
-      !path_pack.path[static_cast<size_t>(DataSource::DELTA)].empty()) {
+  if (!parameter_key.empty() && delta.empty()) {
     delta.resize(parameter_key.size());
     delta.setValue(conf_.darling().delta_init_value());
     data_pack->arrays[static_cast<size_t>(DataSource::DELTA)] = delta;
@@ -755,15 +753,10 @@ bool Ocean::loadFromDiskSynchronously(
   if (!offset.empty()) {
     SArray<ShortKey> feature_key(
       data_pack->arrays[static_cast<size_t>(DataSource::FEATURE_KEY)]);
-    CHECK_EQ(offset.size(), parameter_key.size() + 1);
     CHECK_EQ(offset.back() - offset.front(), feature_key.size());
   }
-  if (parameter_value.size() > 0) {
-    CHECK_EQ(parameter_key.size(), parameter_value.size());
-  }
-  if (delta.size() > 0) {
-    CHECK_EQ(parameter_key.size(), delta.size());
-  }
+  CHECK_EQ(parameter_key.size(), parameter_value.size());
+  CHECK_EQ(parameter_key.size(), delta.size());
 
   in_memory_unit_count_++;
   tasks_do_not_prefetch_.insert(task_id);

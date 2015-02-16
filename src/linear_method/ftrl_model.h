@@ -37,7 +37,6 @@ class FTRLModel : public SharedParameter<K> {
   }
   void getValue(const MessagePtr& msg);
   void setValue(const MessagePtr& msg);
-  void setValidationValue(const MessagePtr& msg);
 
   // TODO fault tolerance
   void setReplica(const MessagePtr& msg) { }
@@ -110,11 +109,6 @@ void FTRLModel<K,V>::setValue(const MessagePtr& msg) {
       ++ nnz_;
     }
   }
-}
-
-template <typename K, typename V>
-void FTRLModel<K,V>::setValidationValue(const MessagePtr& msg) {
-  CHECK(false) << "FTRLModel<K,V>::setValidationValue not implemented yet";
 }
 
 } // namespace LM

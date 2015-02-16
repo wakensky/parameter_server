@@ -1,7 +1,7 @@
 #pragma once
 #include "system/remote_node.h"
 #include "system/message.h"
-#include "system/validation.h"
+#include "system/ocean.h"
 
 namespace PS {
 
@@ -24,8 +24,7 @@ class Executor {
  public:
   Executor(Customer& obj) :
     obj_(obj),
-    ocean_(Postoffice::instance().trainingOcean()),
-    validation_(Postoffice::instance().validation()) {
+    ocean_(Ocean::instance()) {
     my_node_ = Postoffice::instance().myNode();
   }
   ~Executor() { }
@@ -103,7 +102,6 @@ class Executor {
   std::mutex node_mu_;
   bool done_ = false;
   Ocean& ocean_;
-  Validation& validation_;
 };
 
 

@@ -24,14 +24,12 @@ void SlotReader::init(const DataConfig& data, const DataConfig& cache,
   data_ = data;
   path_picker_ = path_picker;
   w_ = w;
+  CHECK(w_);
   time_ = start_time;
   finishing_time_ = finishing_time;
   count_min_k_ = count_min_k;
   count_min_n_ = count_min_n;
   identity_ = identity;
-
-  LI << "SlotReader has DataConfig [" << identity_ << "] " <<
-    data.ShortDebugString();
 }
 
 string SlotReader::cacheName(const DataConfig& data, int slot_id) const {
@@ -58,8 +56,7 @@ int SlotReader::read(ExampleInfo* info) {
     if (FLAGS_verbose) {
       for (size_t i = 0; i < data_.file_size(); ++i) {
         LI << "I will load data file [" << i + 1 << "/" <<
-          data_.file_size() << "] [" << data_.file(i) << "] [" <<
-          identity_ << "]";
+          data_.file_size() << "] [" << data_.file(i) << "]";
       }
     }
 
@@ -75,19 +72,16 @@ int SlotReader::read(ExampleInfo* info) {
     slot_info_[info_.slot(i).id()] = info_.slot(i);
   }
 
-  if (w_) {
-    // send the closing message to servers
-    MessagePtr boundary(new Message(kServerGroup, finishing_time_));
-    CHECK_EQ(finishing_time_, w_->push(boundary));
-  }
+  // send the closing message to servers
+  MessagePtr boundary(new Message(kServerGroup, finishing_time_));
+  CHECK_EQ(finishing_time_, w_->push(boundary));
   return 0;
 }
 
 bool SlotReader::readOneFile(const DataConfig& data) {
   if (FLAGS_verbose) {
     LI << "loading data file [" << data.file(0) << "]; loaded [" <<
-      loaded_file_count_ << "/" << data_.file_size() << "] [" <<
-      identity_ << "]";
+      loaded_file_count_ << "/" << data_.file_size() << "]";
   }
 
   string info_name = path_picker_->getPath(
@@ -100,8 +94,7 @@ bool SlotReader::readOneFile(const DataConfig& data) {
     info_ = mergeExampleInfo(info_, info);
     if (FLAGS_verbose) {
       LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
-        loaded_file_count_++ << "/" << data_.file_size() << "] [" <<
-        identity_ << "]";
+        loaded_file_count_++ << "/" << data_.file_size() << "]";
     }
     return true;
   }
@@ -201,19 +194,17 @@ bool SlotReader::readOneFile(const DataConfig& data) {
         unique_key.pushBack(current_key);
         count_key.pushBack(current_cnt < kuint8max ? current_cnt : kuint8max);
 
-        if (w) {
-          // push unique keys with their counts to servers
-          MessagePtr count(new Message(kServerGroup, push_time));
-          count->setKey(unique_key);
-          count->addValue(count_key);
-          count->task.set_key_channel(slot_id);
-          Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
-            count->task.mutable_key_range());
-          w->set(count)->set_insert_key_freq(true);
-          w->set(count)->set_countmin_k(count_min_k);
-          w->set(count)->set_countmin_n(count_min_n);
-          CHECK_EQ(push_time, w->push(count));
-        }
+        // push unique keys with their counts to servers
+        MessagePtr count(new Message(kServerGroup, push_time));
+        count->setKey(unique_key);
+        count->addValue(count_key);
+        count->task.set_key_channel(slot_id);
+        Range<uint64>(unique_key.front(), unique_key.back() + 1).to(
+          count->task.mutable_key_range());
+        w->set(count)->set_insert_key_freq(true);
+        w->set(count)->set_countmin_k(count_min_k);
+        w->set(count)->set_countmin_n(count_min_n);
+        CHECK_EQ(push_time, w->push(count));
 
         // dump unique keys to disk
         path = path_picker->getPath(prefix + ".colidx_sorted_uniq");

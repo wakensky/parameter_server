@@ -22,8 +22,6 @@ void BatchSolver::init() {
   w_ = KVVectorPtr(new KVVector<Key, double>());
   w_->name() = app_cf_.parameter_name(0);
   sys_.yp().add(std::static_pointer_cast<Customer>(w_));
-  validation_.init(myNodeID() + "-validation", conf_, &path_picker_,
-    std::shared_ptr<SlotReader>(new SlotReader()));
 }
 
 void BatchSolver::run() {
@@ -106,13 +104,7 @@ void BatchSolver::run() {
     }
     if (tmp.empty()) continue;
     hit_blk.push_back(std::to_string(grp_id));
-
-    int num_iter_for_prior = sol_cf.num_iter_for_prior_fea_group();
-    if (1023 == grp_id && sol_cf.has_beta_feature_prior_num_iter()) {
-      num_iter_for_prior = sol_cf.beta_feature_prior_num_iter();
-    }
-
-    for (int j = 0; j < num_iter_for_prior; ++j) {
+    for (int j = 0; j < sol_cf.num_iter_for_prior_fea_group(); ++j) {
       if (sol_cf.random_feature_block_order()) {
         std::random_shuffle(tmp.begin(), tmp.end());
       }
@@ -221,15 +213,6 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   const int finishing_time = starting_time + 1000000;
   if (IamWorker()) {
     CHECK(conf_.has_local_cache());
-
-    // download validation data with another thread
-    ThreadPool load_validation_pool(1);
-    load_validation_pool.add([this]() {
-                                CHECK(validation_.download());
-                             });
-    load_validation_pool.startWorkers();
-
-    // download training data
     slot_reader_.init(
       conf_.training_data(), conf_.local_cache(), &pathPicker(),
       w_, starting_time, finishing_time,
@@ -237,9 +220,6 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
       conf_.solver().countmin_n_ratio(),
       myNodeID());
     slot_reader_.read(info);
-
-    // ThreadPool could guarantee that
-    //   validation_::download finishes before leaving the scope
   } else {
     w_->waitInMsg(kWorkerGroup, finishing_time);
   }
