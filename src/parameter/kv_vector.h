@@ -32,6 +32,7 @@ class KVVector : public SharedParameter<K> {
   MessagePtrList slice(const MessagePtr& msg, const KeyList& sep);
   void getValue(const MessagePtr& msg);
   void setValue(const MessagePtr& msg);
+  void setValidationValue(const MessagePtr& msg);
 
   // TODO
   void setReplica(const MessagePtr& msg) { }
@@ -101,6 +102,40 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
           recv_key, recv_data, parameter_key,
           OpPlus<V>(), FLAGS_num_threads, &matched.second[i]), recv_key.size());
     }
+  }
+}
+
+template <typename K, typename V>
+void KVVector<K,V>::setValidationValue(const MessagePtr& msg) {
+  SArray<K> recv_key(msg->key);
+  if (recv_key.empty()) return;
+  int chl = msg->task.key_channel();
+
+  Range<K> key_range(msg->task.key_range());
+  SizeR idx_range = this->validation().fetchAnchor(chl, key_range);
+
+  // load validation keys
+  SArray<K> parameter_key = this->validation().getKey(
+    chl, key_range, msg->task.owner_time());
+
+  recved_val_mu_.lock();
+  auto& matched = recved_val_[msg->task.time()];
+  recved_val_mu_.unlock();
+
+  SArray<V> recv_data(msg->value[0]);
+  CHECK_EQ(recv_data.size(), recv_key.size());
+
+  if (matched.second.empty()) {
+    matched.first = idx_range;
+    matched.second.push_back(SArray<V>());
+    CHECK_EQ(parallelOrderedMatch(
+      recv_key, recv_data, parameter_key,
+      OpAssign<V>(), FLAGS_num_threads, &matched.second[0]), recv_key.size());
+  } else {
+    CHECK_EQ(matched.first, idx_range);
+    CHECK_EQ(parallelOrderedMatch(
+      recv_key, recv_data, parameter_key,
+      OpPlus<V>(), FLAGS_num_threads, &matched.second[0]), recv_key.size());
   }
 }
 

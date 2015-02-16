@@ -59,8 +59,8 @@ bool Validation::download() {
 }
 
 bool Validation::preprocess(const Task& task) {
-  if (!enable_) { return true; }
   ocean_.init(identity_, conf_, task, path_picker_);
+  if (!enable_) { return true; }
 
   const int grp_size = task.linear_method().fea_grp_size();
   std::vector<Ocean::GroupID> fea_grp;

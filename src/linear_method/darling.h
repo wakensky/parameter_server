@@ -1,5 +1,6 @@
 #pragma once
 #include <float.h>
+#include "tbb/concurrent_hash_map.h"
 #include "linear_method/batch_solver.h"
 #include "base/bitmap.h"
 #include "filter/sparse_filter.h"
@@ -57,6 +58,10 @@ class Darling : public BatchSolver {
   double violation_;
 
   DarlingConfig darling_conf_;
+
+  // validation_pull's task ID -> promise
+  using WaitValidationQueue = tbb::concurrent_queue<std::shared_ptr<std::promise<void>>>;
+  WaitValidationQueue wait_validation_pulls_;
 };
 
 } // namespace LM

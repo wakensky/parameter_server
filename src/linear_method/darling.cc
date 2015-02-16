@@ -42,6 +42,7 @@ void Darling::runIteration() {
       if (iter == 0 && i < prior_blk_order_.size()) {
         // force zero delay for important feature blocks
         update.set_wait_time(time);
+        update.set_is_priority(true);
       } else {
         update.set_wait_time(time - tau);
       }
@@ -230,9 +231,54 @@ void Darling::updateModel(const MessagePtr& msg) {
     }
 
     // time 1: servers do update, none of my business
-    // time 2: pull the updated model from servers
+    // time 2: pull the updated model for validation
+    // Whether I need send a pull request for validation
+
+    // wakensky
+    LI << "is_priority: " << msg->task.is_priority() <<
+      " " << validation_.isEnabled() <<
+      ": " << validation_.identity_;;
+
+    bool validation_pull_sent = false;
+    if (!msg->task.is_priority() && validation_.isEnabled()) {
+      validation_pull_sent = true;
+
+      LI << "ready to send validation pull: " <<
+        grp << " " << grp << " " << g_key_range.toString() <<
+        " " << msg->task.time() <<
+        " " << validation_.isEnabled();
+
+      std::shared_ptr<std::promise<void>> promise_ptr(new std::promise<void>());
+      wait_validation_pulls_.push(promise_ptr);
+
+      MessagePtr validation_pull_msg(
+        new Message(kServerGroup, time+2, time+1));
+      validation_pull_msg->task.mutable_shared_para()->set_is_validation(true);
+      g_key_range.to(validation_pull_msg->task.mutable_key_range());
+      validation_pull_msg->setKey(
+        validation_.getKey(grp, g_key_range, msg->task.time()));
+      validation_pull_msg->task.set_key_channel(grp);
+      validation_pull_msg->task.set_owner_time(msg->task.time());
+      validation_pull_msg->fin_handle = [this, grp, time, msg,
+                                         g_key_range, promise_ptr]() {
+        if (!validation_.fetchAnchor(grp, g_key_range).empty()) {
+          validation_.submit(
+            grp, g_key_range, msg->task.time(),
+            w_->received(time+2).second[0]);
+        } else {
+          validation_.submit(
+            grp, g_key_range, msg->task.time(), SArray<double>());
+        }
+
+        // let go
+        promise_ptr->set_value();
+      };
+      CHECK_EQ(time+2, w_->pull(validation_pull_msg));
+    }
+
+    // time 3: pull the updated model from Servers
     msg->finished = false; // not finished until model updates are pulled
-    MessagePtr pull_msg(new Message(kServerGroup, time+2, time+1));
+    MessagePtr pull_msg(new Message(kServerGroup, time+3, time+1));
     pull_msg->setKey(parameter_key);
     g_key_range.to(pull_msg->task.mutable_key_range());
     pull_msg->task.set_key_channel(grp);
@@ -241,7 +287,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     // the callback for updating the local dual variable
     pull_msg->fin_handle = [this, grp, anchor, time, msg, g_key_range] () {
       if (!anchor.empty()) {
-        auto data = w_->received(time+2);
+        auto data = w_->received(time+3);
         CHECK_EQ(anchor, data.first); CHECK_EQ(data.second.size(), 1);
         mu_.lock();
 
@@ -274,6 +320,7 @@ void Darling::updateModel(const MessagePtr& msg) {
 
         mu_.unlock();
       }
+
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
       sys_.reply(msg->sender, msg->task);
@@ -281,7 +328,7 @@ void Darling::updateModel(const MessagePtr& msg) {
       // ocean drop
       ocean_.drop(grp, g_key_range, msg->task.time());
     };
-    CHECK_EQ(time+2, w_->pull(pull_msg));
+    CHECK_EQ(time+3, w_->pull(pull_msg));
   } else if (IamServer()) {
     // none of my bussiness
     if (w_->myKeyRange().setIntersection(g_key_range).empty()) {

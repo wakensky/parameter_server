@@ -77,6 +77,9 @@ message Task {
   repeated PartitionInfo partition_info = 401;
 
   optional HeartbeatReport heartbeat_report = 601;
+
+  // important task for priority groups
+  optional bool is_priority = 602 [default=false];
 }
 
 message ManageNode {
@@ -124,6 +127,7 @@ message CallSharedPara {
   // it's a replica request
   optional bool replica = 10;
   repeated Timestamp backup = 11;
+  optional bool is_validation = 12 [default=false];
 }
 
 message CallSketch {

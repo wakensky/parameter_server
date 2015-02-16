@@ -1,5 +1,6 @@
 #pragma once
 #include "system/customer.h"
+#include "system/validation.h"
 #include "parameter/frequency_filter.h"
 namespace PS {
 
@@ -64,6 +65,8 @@ class SharedParameter : public Customer {
   virtual void getValue(const MessagePtr& msg) = 0;
   // set the received KV pairs into my data strcuture
   virtual void setValue(const MessagePtr& msg) = 0;
+  // set the received KV pairs into my data strcuture for validation
+  virtual void setValidationValue(const MessagePtr& msg) = 0;
   // the message contains the backup KV pairs sent by the master node of the key
   // segment to its replica node. merge these pairs into my replica, say
   // replica_[msg->sender] = ...
@@ -155,19 +158,16 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
       }
     }
   } else {
-    if ((push && req) || (pull && !req)) {
+    if (push && req) {
       setValue(msg);
-      if (IamServer() && msg->task.has_owner_time()) {
-        ++push_pull_count_[msg->task.owner_time()];
+    } else if (pull && !req) {
+      if (call.is_validation()) {
+        setValidationValue(msg);
+      } else {
+        setValue(msg);
       }
     } else if (pull && req) {
       getValue(reply);
-      if (IamServer() && msg->task.has_owner_time() &&
-          (--push_pull_count_[msg->task.owner_time()]) <= 0) {
-        LI << "I will drop " << chl << " " << g_key_range.toString() <<
-          " " << msg->task.owner_time();
-        this->ocean().drop(chl, g_key_range, msg->task.owner_time());
-      }
     }
   }
   milli_timer.stop();

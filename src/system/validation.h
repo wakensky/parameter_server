@@ -108,7 +108,7 @@ class Validation {
       SArray<Ocean::Offset> feature_offset,
       std::shared_ptr<WeightLookupTable> weight_lookup);
 
-  private:
+  public:
     string identity_;
     std::shared_ptr<SlotReader> slot_reader_ptr_;
     PathPicker* path_picker_;
