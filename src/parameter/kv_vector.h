@@ -161,7 +161,12 @@ void KVVector<K,V>::getValue(const MessagePtr& msg) {
   // auto op = [](const V* src, V* dst) { *dst = *src; };
   size_t n = parallelOrderedMatch(
     parameter_key, parameter_value, recv_key, OpAssign<V>(), FLAGS_num_threads, &val);
-  CHECK_EQ(n, val.size());
+  if (!get(msg).is_validation()) {
+    // for training data, the size of recv_key and the matched count must be identical
+    // for validation data, such equality cannot be guaranteed
+    CHECK_EQ(n, val.size());
+  }
+
   msg->clearValue();
   msg->addValue(val);
 }

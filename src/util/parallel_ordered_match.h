@@ -9,7 +9,7 @@ void parallelOrderedMatch(
     const Op& op, size_t grainsize, size_t* n) {
   size_t src_len = std::distance(src_key, src_key_end);
   size_t dst_len = std::distance(dst_key, dst_key_end);
-  if (dst_len == 0 || src_len == 0);
+  if (dst_len == 0 || src_len == 0) return;
 
   // drop the unmatched tail of src
   src_key = std::lower_bound(src_key, src_key_end, *dst_key);

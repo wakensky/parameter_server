@@ -1,3 +1,4 @@
+#include "system/validation.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <iomanip>
@@ -9,7 +10,6 @@
 #include <gperftools/malloc_extension.h>
 #include "base/shared_array_inl.h"
 #include "base/localizer.h"
-#include "system/validation.h"
 #include "data/slot_reader.h"
 
 namespace PS {

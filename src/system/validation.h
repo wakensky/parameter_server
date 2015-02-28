@@ -58,13 +58,15 @@ class Validation {
     using WeightLookupTable =
       tbb::concurrent_hash_map<Ocean::FullKey, Ocean::Value>;
 
+    static const Ocean::TaskID kFakeTaskID = -1;
+
     struct PredictionRequest {
       Ocean::UnitID unit_id;
       Ocean::TaskID task_id;
       std::shared_ptr<WeightLookupTable> lookup;
       PredictionRequest():
         unit_id(),
-        task_id(0),
+        task_id(kFakeTaskID),
         lookup() {
         // do nothing
       }
@@ -93,8 +95,6 @@ class Validation {
         return *this;
       }
     };
-
-    const Ocean::TaskID kFakeTaskID = -1;
 
   private:
     void predictThreadFunc();
