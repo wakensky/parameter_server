@@ -96,9 +96,9 @@ class SharedParameter : public Customer {
   // add key_range in the future, it is not necessary now
   std::unordered_map<NodeID, std::vector<int> > clock_replica_;
 
-  // owner task_id -> (push_count - pull_count)
-  // That is how many pulls remaining for each task
-  std::unordered_map<int, int> push_pull_count_;
+  // owner task_id -> task_over_count
+  // That is how many TASK-OVER notification on a task
+  std::unordered_map<int, int> task_over_count_;
 };
 
 template <typename K>
@@ -156,6 +156,10 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
       } else {
         setValue(msg);
       }
+    }
+  } else if (IamServer() && call.task_over()) {
+    if (++task_over_count_[msg->task.owner_time()] >= FLAGS_num_workers) {
+      this->ocean().drop(chl, g_key_range, msg->task.owner_time());
     }
   } else {
     if (push && req) {

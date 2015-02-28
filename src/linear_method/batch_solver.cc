@@ -104,7 +104,13 @@ void BatchSolver::run() {
     }
     if (tmp.empty()) continue;
     hit_blk.push_back(std::to_string(grp_id));
-    for (int j = 0; j < sol_cf.num_iter_for_prior_fea_group(); ++j) {
+
+    int num_iter_for_prior = sol_cf.num_iter_for_prior_fea_group();
+    if (1023 == grp_id && sol_cf.has_beta_feature_prior_num_iter()) {
+      num_iter_for_prior = sol_cf.beta_feature_prior_num_iter();
+    }
+
+    for (int j = 0; j < num_iter_for_prior; ++j) {
       if (sol_cf.random_feature_block_order()) {
         std::random_shuffle(tmp.begin(), tmp.end());
       }

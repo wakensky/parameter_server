@@ -65,7 +65,7 @@ void Darling::runIteration() {
 
     // evaluate the progress
     Task eval = newTask(Call::EVALUATE_PROGRESS);
-    eval.set_wait_time(time - tau);
+    eval.set_wait_time(time);
     time = pool->submitAndWait(
         eval, [this, iter](){ LinearMethod::mergeProgress(iter); });
     showProgress(iter);
@@ -159,39 +159,6 @@ void Darling::updateModel(const MessagePtr& msg) {
   Range<Key> g_key_range(call.key());
   auto anchor = ocean_.fetchAnchor(grp, g_key_range);
 
-#if 0
-  // prefetch column partitioned data
-  LI << "pending prefetch count: " << ocean_.pendingPrefetchCount();
-  if (ocean_.pendingPrefetchCount() < 64 * FLAGS_in_memory_unit_limit) {
-    auto current_time = msg->task.time();
-    auto judge = [current_time](const Task& task) -> bool {
-      if (Call::UPDATE_MODEL == task.linear_method().cmd()) return true;
-      return false;
-
-      if (Call::UPDATE_MODEL == task.linear_method().cmd() &&
-          task.time() < current_time + 64 * FLAGS_in_memory_unit_limit) {
-        return true;
-      }
-      return false;
-    };
-    std::vector<Task> in_coming_tasks;
-    exec().peek(judge, in_coming_tasks);
-
-    // sort by task->time(), ascending
-    std::sort(
-      in_coming_tasks.begin(), in_coming_tasks.end(),
-      [](const Task& a, const Task& b) {return a.time() < b.time();});
-
-    // prefetch
-    for (const auto& task : in_coming_tasks) {
-      ocean_.prefetch(
-        task.linear_method().fea_grp(0),
-        task.linear_method().key(),
-        task.time());
-    }
-  }
-#endif
-
   if (IamWorker()) {
     // compute local gradients
     mu_.lock();
@@ -272,6 +239,19 @@ void Darling::updateModel(const MessagePtr& msg) {
 
         // let go
         promise_ptr->set_value();
+
+        // Check whether training-pull finished.
+        // If finished already, I will make servers release
+        //   column-partitioned parameter value
+        if (w_->tryWaitOutMsg(kServerGroup, time+3)) {
+          MessagePtr task_over_msg(
+            new Message(kServerGroup, time+4));
+          task_over_msg->task.mutable_shared_para()->set_task_over(true);
+          g_key_range.to(task_over_msg->task.mutable_key_range());
+          task_over_msg->task.set_key_channel(grp);
+          task_over_msg->task.set_owner_time(msg->task.time());
+          CHECK_EQ(time+4, w_->push(task_over_msg));
+        }
       };
       CHECK_EQ(time+2, w_->pull(validation_pull_msg));
     }
@@ -285,7 +265,8 @@ void Darling::updateModel(const MessagePtr& msg) {
     pull_msg->task.set_owner_time(msg->task.time());
     // pull_msg->addFilter(FilterConfig::KEY_CACHING);
     // the callback for updating the local dual variable
-    pull_msg->fin_handle = [this, grp, anchor, time, msg, g_key_range] () {
+    pull_msg->fin_handle =
+      [this, grp, anchor, time, msg, g_key_range, validation_pull_sent] () {
       if (!anchor.empty()) {
         auto data = w_->received(time+3);
         CHECK_EQ(anchor, data.first); CHECK_EQ(data.second.size(), 1);
@@ -321,6 +302,19 @@ void Darling::updateModel(const MessagePtr& msg) {
         mu_.unlock();
       }
 
+      // Check whether validation-pull finished.
+      // If finished already, I will make servers release
+      //   column-partitioned parameter value
+      if (!validation_pull_sent || w_->tryWaitOutMsg(kServerGroup, time+2)) {
+        MessagePtr task_over_msg(
+          new Message(kServerGroup, time+4));
+        task_over_msg->task.mutable_shared_para()->set_task_over(true);
+        g_key_range.to(task_over_msg->task.mutable_key_range());
+        task_over_msg->task.set_key_channel(grp);
+        task_over_msg->task.set_owner_time(msg->task.time());
+        CHECK_EQ(time+4, w_->push(task_over_msg));
+      }
+
       // now finished, reply the scheduler
       taskpool(msg->sender)->finishIncomingTask(msg->task.time());
       sys_.reply(msg->sender, msg->task);
@@ -346,7 +340,9 @@ void Darling::updateModel(const MessagePtr& msg) {
       CHECK_EQ(data.second.size(), 2);
 
       MilliTimer weight_milli_timer; weight_milli_timer.start();
-      updateWeight(grp, g_key_range, data.second[0], data.second[1], msg->task.time());
+      updateWeight(
+        grp, g_key_range, data.second[0], data.second[1],
+        msg->task.time(), msg->task.is_priority());
       weight_milli_timer.stop();
       this->sys_.hb_collector().increaseTime(weight_milli_timer.get());
     }
@@ -570,7 +566,7 @@ void Darling::updateDual(
 void Darling::updateWeight(
   int grp, SizeR global_range,
   SArray<double> G, SArray<double> U,
-  const int task_id) {
+  const int task_id, const bool is_priority) {
   // load data
   Ocean::DataPack data_pack = ocean_.get(grp, global_range, task_id);
   // on-demand usage
@@ -590,6 +586,10 @@ void Darling::updateWeight(
   double objv = 0.0;
 
   double eta = conf_.learning_rate().eta();
+  if (1023 == grp && is_priority && conf_.solver().has_beta_feature_learning_rate()) {
+    eta = conf_.solver().beta_feature_learning_rate();
+  }
+
   double lambda = conf_.penalty().lambda(0);
   auto& active_set = active_set_[grp];
   for (size_t i = 0; i < anchor.size(); ++i) {
