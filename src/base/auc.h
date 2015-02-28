@@ -41,21 +41,41 @@ class AUC {
   // evaluate the auc after merging all workers' results
   double evaluate() {
     if (tp_count_.empty() || fp_count_.empty()) return 0.5;
-    double tp_sum = 0, fp_sum = 0, auc = 0;
-    auto tp_it = tp_count_.begin();
 
-    for (auto& fp_it : fp_count_) {
-      auto fp_v = fp_it.second;
-      for (; tp_it != tp_count_.end() && tp_it->second <= fp_v; ++ tp_it)
-        tp_sum += tp_it->second;
-      fp_sum += fp_v;
-      auc += tp_sum * fp_v;
-    }
-    for (; tp_it != tp_count_.end(); ++tp_it) tp_sum += tp_it->second;
+    double area = 0.0;
+    double tp_sum = 0.0;
+    double fp_sum = 0.0;
 
-    // LL << tp_sum << " " << fp_sum;
-    auc = auc / tp_sum / fp_sum;
-    return (auc < .5 ? 1 - auc : auc);
+    auto tp_it = tp_count_.rbegin();
+    auto fp_it = fp_count_.rbegin();
+    while (tp_it != tp_count_.rend() || fp_it != fp_count_.rend()) {
+      auto tp_key = std::numeric_limits<int64>::min();
+      if (tp_it != tp_count_.rend()) {
+        tp_key = tp_it->first;
+      }
+      auto fp_key = std::numeric_limits<int64>::min();
+      if (fp_it != fp_count_.rend()) {
+          fp_key = fp_it->first;
+      }
+
+      size_t new_tp_sum = tp_sum;
+      size_t new_fp_sum = fp_sum;
+      if (tp_key >= fp_key) {
+          new_tp_sum += tp_it->second;
+          ++tp_it;
+      }
+      if (fp_key >= tp_key) {
+          new_fp_sum += fp_it->second;
+          ++fp_it;
+      }
+
+      area += (new_fp_sum - fp_sum) * (new_tp_sum + tp_sum) / 2;
+      tp_sum = new_tp_sum;
+      fp_sum = new_fp_sum;
+    };
+
+    area /= (tp_sum * fp_sum);
+    return (area < .5 ? 1 - area : area);
   }
 
   // clear cached results of workers
@@ -97,7 +117,7 @@ class AUC {
     }
   }
  private:
-  int64 goodness_ = 1000;
+  int64 goodness_ = 1 << 24;
   std::map<int64, uint64> fp_count_, tp_count_;
 
 };

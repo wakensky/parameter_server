@@ -1,6 +1,7 @@
 #include "system/ocean.h"
 #include <unistd.h>
 #include <fcntl.h>
+#include <iomanip>
 #include "util/split.h"
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -322,7 +323,9 @@ bool Ocean::saveModel(const string& path) {
       for (size_t i = 0; i < parameter_key.size(); ++i) {
         double v = parameter_value[i];
         if (!(v != v || 0 == v)) {
-          out << parameter_key[i] << "\t" << v << "\n";
+          out << parameter_key[i] << "\t" <<
+            std::setprecision(std::numeric_limits<double>::digits10+2) <<
+            v << "\n";
         }
       }
     }

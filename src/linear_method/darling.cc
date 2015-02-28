@@ -235,7 +235,7 @@ void Darling::updateModel(const MessagePtr& msg) {
     // Whether I need send a pull request for validation
 
     // wakensky
-    LI << "is_priority: " << msg->task.is_priority() <<
+    LI << "validation summary: " << msg->task.is_priority() <<
       " " << validation_.isEnabled() <<
       ": " << validation_.identity_;;
 
@@ -650,6 +650,7 @@ void Darling::showProgress(int iter) {
     showObjective(i);
     showNNZ(i);
     showKKTFilter(i);
+    showAUC(i);
     showTime(i);
   }
 }
@@ -660,6 +661,15 @@ Progress Darling::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.stop());
     busy_timer_.restart();
+
+    // wait all validation pulls finished
+    std::shared_ptr<std::promise<void>> promise_ptr;
+    while (wait_validation_pulls_.try_pop(promise_ptr)) {
+      promise_ptr->get_future().wait();
+    }
+
+    // wait and get AUC statistic
+    *prog.mutable_validation_auc_data() = validation_.waitAndGetResult();
 
     // label statistics
     if (FLAGS_verbose) {
