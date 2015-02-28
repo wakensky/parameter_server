@@ -226,9 +226,6 @@ void Darling::updateModel(const MessagePtr& msg) {
         " " << msg->task.time() <<
         " " << validation_.isEnabled();
 
-      std::shared_ptr<std::promise<void>> promise_ptr(new std::promise<void>());
-      wait_validation_pulls_.push(promise_ptr);
-
       MessagePtr validation_pull_msg(
         new Message(kServerGroup, time+2, time+1));
       validation_pull_msg->task.mutable_shared_para()->set_is_validation(true);
@@ -238,7 +235,7 @@ void Darling::updateModel(const MessagePtr& msg) {
       validation_pull_msg->task.set_key_channel(grp);
       validation_pull_msg->task.set_owner_time(msg->task.time());
       validation_pull_msg->fin_handle = [this, grp, time, msg,
-                                         g_key_range, promise_ptr]() {
+                                         g_key_range]() {
         if (!validation_.fetchAnchor(grp, g_key_range).empty()) {
           validation_.submit(
             grp, g_key_range, msg->task.time(),
@@ -247,9 +244,6 @@ void Darling::updateModel(const MessagePtr& msg) {
           validation_.submit(
             grp, g_key_range, msg->task.time(), SArray<double>());
         }
-
-        // let go
-        promise_ptr->set_value();
 
         // Check whether training-pull finished.
         // If finished already, I will make servers release
@@ -675,12 +669,6 @@ Progress Darling::evaluateProgress() {
     prog.set_objv(log(1+1/dual_.eigenArray()).sum());
     prog.add_busy_time(busy_timer_.stop());
     busy_timer_.restart();
-
-    // wait all validation pulls finished
-    std::shared_ptr<std::promise<void>> promise_ptr;
-    while (wait_validation_pulls_.try_pop(promise_ptr)) {
-      promise_ptr->get_future().wait();
-    }
 
     // wait and get AUC statistic
     *prog.mutable_validation_auc_data() = validation_.waitAndGetResult();

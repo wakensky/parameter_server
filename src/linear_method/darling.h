@@ -58,10 +58,6 @@ class Darling : public BatchSolver {
   double violation_;
 
   DarlingConfig darling_conf_;
-
-  // validation_pull's task ID -> promise
-  using WaitValidationQueue = tbb::concurrent_queue<std::shared_ptr<std::promise<void>>>;
-  WaitValidationQueue wait_validation_pulls_;
 };
 
 } // namespace LM
