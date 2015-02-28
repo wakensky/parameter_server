@@ -28,6 +28,8 @@ void Darling::runIteration() {
   auto pool = taskpool(kActiveGroup);
   int time = pool->time() + fea_grp_.size() * 2;
   const int first_update_model_task_id = time + 1;
+  // UpdateModel tasks that has been sent in the current iteration
+  std::queue<int> update_model_tasks;
   for (int iter = 0; iter < max_iter; ++iter) {
     // pick up a updating order
     auto order = blk_order_;
@@ -61,6 +63,14 @@ void Darling::runIteration() {
       blk.second.to(cmd->mutable_key());
       cmd->add_fea_grp(blk.first);
       time = pool->submit(update);
+
+      update_model_tasks.push(time);
+    }
+
+    // wait all UpdateModel tasks finished
+    while (!update_model_tasks.empty()) {
+      pool->waitOutgoingTask(update_model_tasks.front());
+      update_model_tasks.pop();
     }
 
     // evaluate the progress
@@ -206,6 +216,7 @@ void Darling::updateModel(const MessagePtr& msg) {
       " " << validation_.isEnabled() <<
       ": " << validation_.identity_;;
 
+    msg->finished = false; // not finished until model updates are pulled
     bool validation_pull_sent = false;
     if (!msg->task.is_priority() && validation_.isEnabled()) {
       validation_pull_sent = true;
@@ -251,13 +262,16 @@ void Darling::updateModel(const MessagePtr& msg) {
           task_over_msg->task.set_key_channel(grp);
           task_over_msg->task.set_owner_time(msg->task.time());
           CHECK_EQ(time+4, w_->push(task_over_msg));
+
+          // now finished, reply the scheduler
+          taskpool(msg->sender)->finishIncomingTask(msg->task.time());
+          sys_.reply(msg->sender, msg->task);
         }
       };
       CHECK_EQ(time+2, w_->pull(validation_pull_msg));
     }
 
     // time 3: pull the updated model from Servers
-    msg->finished = false; // not finished until model updates are pulled
     MessagePtr pull_msg(new Message(kServerGroup, time+3, time+1));
     pull_msg->setKey(parameter_key);
     g_key_range.to(pull_msg->task.mutable_key_range());
@@ -313,11 +327,11 @@ void Darling::updateModel(const MessagePtr& msg) {
         task_over_msg->task.set_key_channel(grp);
         task_over_msg->task.set_owner_time(msg->task.time());
         CHECK_EQ(time+4, w_->push(task_over_msg));
-      }
 
-      // now finished, reply the scheduler
-      taskpool(msg->sender)->finishIncomingTask(msg->task.time());
-      sys_.reply(msg->sender, msg->task);
+        // now finished, reply the scheduler
+        taskpool(msg->sender)->finishIncomingTask(msg->task.time());
+        sys_.reply(msg->sender, msg->task);
+      }
 
       // ocean drop
       ocean_.drop(grp, g_key_range, msg->task.time());
