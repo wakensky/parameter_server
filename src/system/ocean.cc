@@ -8,12 +8,17 @@
 #include <sys/mman.h>
 #include <stdexcept>
 #include <gperftools/malloc_extension.h>
+#include "proto/neo_model.pb.h"
 #include "base/shared_array_inl.h"
 
 namespace PS {
 
 DEFINE_int32(in_memory_unit_limit, 64,
   "control memory usage via limit in-memory unit count");
+DEFINE_bool(keep_invalid_features_in_model, false,
+  "Whether keep those features taking with zero or NAN weight "
+  "in the dumped model. "
+  "false in default. ");
 
 Ocean::Ocean() :
   go_on_(true),
@@ -71,6 +76,7 @@ bool Ocean::dump(
   SArray<FullKey> parameter_key,
   SArray<Value> parameter_value,
   SArray<Value> delta,
+  SArray<Value> second_order_gradient,
   SparseMatrixPtr<ShortKey, Value> matrix) {
   group_key_count_[grp_id] = parameter_key.size();
   if (parameter_key.empty()) {
@@ -99,6 +105,9 @@ bool Ocean::dump(
     dumpColumnPartitionedSArray(
       SArray<char>(delta), UnitID(grp_id, global_range),
       in_group_anchor, DataSource::DELTA, &unit_body);
+    dumpColumnPartitionedSArray(
+      SArray<char>(second_order_gradient), UnitID(grp_id, global_range),
+      in_group_anchor, DataSource::SECOND_ORDER_GRADIENT, &unit_body);
 
     if (matrix) { matrix_info_[grp_id] = matrix->info(); };
     if (matrix && !matrix->empty()) {
@@ -167,7 +176,8 @@ bool Ocean::dumpColumnPartitionedSArray(
       }
     } else if (Ocean::DataSource::FEATURE_VALUE == data_source ||
                Ocean::DataSource::PARAMETER_VALUE == data_source ||
-               Ocean::DataSource::DELTA == data_source) {
+               Ocean::DataSource::DELTA == data_source ||
+               Ocean::DataSource::SECOND_ORDER_GRADIENT == data_source) {
       SArray<Value> array(in);
       if (!array.segment(anchor).writeToFile(full_path)) {
         throw std::runtime_error("Value");
@@ -288,7 +298,12 @@ bool Ocean::saveModel(const string& path) {
   CHECK(out.good());
   LI << "Ocean::saveModel is dumping model... ";
 
+  // neo model features
+  neo::proto::ModelFeatures model_features;
+  size_t model_partition_id = 0;
+
   // traverse all possible UnitID
+  size_t dumped_feature_count = 0;
   for (const auto& gid_ranges : group_partition_ranges_) {
     const GroupID group_id = gid_ranges.first;
     for (const auto& global_range : gid_ranges.second) {
@@ -301,11 +316,14 @@ bool Ocean::saveModel(const string& path) {
       // read model
       SArray<FullKey> parameter_key;
       SArray<Value> parameter_value;
+      SArray<Value> second_order_gradient;
       if (UnitStatus::LOADED == accessor->second.status) {
         parameter_key = accessor->second.data_pack.arrays[
           static_cast<size_t>(DataSource::PARAMETER_KEY)];
         parameter_value = accessor->second.data_pack.arrays[
           static_cast<size_t>(DataSource::PARAMETER_VALUE)];
+        second_order_gradient = accessor->second.data_pack.arrays[
+          static_cast<size_t>(DataSource::SECOND_ORDER_GRADIENT)];
       } else {
         SArray<char> key_stash;
         CHECK(key_stash.readFromFile(accessor->second.path_pack.path[
@@ -316,22 +334,59 @@ bool Ocean::saveModel(const string& path) {
         CHECK(value_stash.readFromFile(accessor->second.path_pack.path[
           static_cast<size_t>(DataSource::PARAMETER_VALUE)]));
         parameter_value = value_stash;
+
+        SArray<char> second_order_gradient_stash;
+        CHECK(second_order_gradient_stash.readFromFile(accessor->second.path_pack.path[
+          static_cast<size_t>(DataSource::SECOND_ORDER_GRADIENT)]));
+        second_order_gradient = second_order_gradient_stash;
       }
       CHECK_EQ(parameter_key.size(), parameter_value.size());
 
       // save model
       for (size_t i = 0; i < parameter_key.size(); ++i) {
         double v = parameter_value[i];
-        if (!(v != v || 0 == v)) {
+        if (!(v != v || 0 == v) || FLAGS_keep_invalid_features_in_model) {
+          // dump model (plain text)
+#if 0
           out << parameter_key[i] << "\t" <<
             std::setprecision(std::numeric_limits<double>::digits10+2) <<
             v << "\n";
+#endif
+
+          // fill neo's model_features
+          model_features.add_fid(parameter_key[i]);
+          // NEO considers those features who are eliminated by L1-regulization
+          //   as zero weighted.
+          if (v != v) { v = 0; }
+          model_features.add_value(v);
+          model_features.add_n(second_order_gradient[i]);
+          dumped_feature_count++;
+
+          // Write model_features to disk periodicly
+          if (dumped_feature_count > 0 && 0 == dumped_feature_count % 10000000) {
+            std::ofstream model_features_out(
+              path + ".neo_model_features." + std::to_string(model_partition_id++));
+            CHECK(model_features_out);
+
+            CHECK(model_features.SerializeToOstream(&model_features_out));
+            model_features.Clear();
+          }
         }
       }
     }
   }
-  LI << "Ocean::saveModel dumped model";
 
+  // Remaining features
+  {
+    std::ofstream model_features_out(
+      path + ".neo_model_features." + std::to_string(model_partition_id++));
+    CHECK(model_features_out);
+
+    CHECK(model_features.SerializeToOstream(&model_features_out));
+    model_features.Clear();
+  }
+
+  LI << "Ocean::saveModel dumped model";
   return true;
 }
 

@@ -139,7 +139,8 @@ void LinearMethod::startSystem() {
   start.set_type(Task::MANAGE);
   start.mutable_mng_node()->set_cmd(ManageNode::INIT);
 
-  Range<Key> key_range = Range<Key>::all();
+  // Range<Key> key_range = Range<Key>::all();
+  Range<Key> key_range(0, std::numeric_limits<Key>::max() & kLower54Bits);
   int s = 0;
   for (auto& it : sys_.yp().nodes()) {
     auto node = it.second;

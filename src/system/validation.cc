@@ -130,7 +130,7 @@ bool Validation::preprocess(const Task& task) {
 
     // dump to Ocean
     CHECK(ocean_.dump(group_id, merged_unique_keys, SArray<Ocean::Value>(),
-      SArray<Ocean::Value>(),
+      SArray<Ocean::Value>(), SArray<Ocean::Value>(),
       std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
   }
 

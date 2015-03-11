@@ -306,19 +306,19 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // global -> local
       MilliTimer compute_milli_timer; compute_milli_timer.start();
       Localizer<Key, double> *localizer = new Localizer<Key, double>();
-      if (FLAGS_verbose) {
+      if (true) {
         LI << "started remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
       auto X = localizer->remapIndex(
         grp_id, keys, &slot_reader_, &path_picker_, myNodeID());
       delete localizer;
       slot_reader_.clear(grp_id);
-      if (FLAGS_verbose) {
+      if (true) {
         LI << "finished remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
 
       // matrix transforms to column major
-      if (FLAGS_verbose) {
+      if (true) {
         LI << "started toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
       if (X) {
@@ -328,14 +328,14 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           X = X->toColMajor();
         }
       }
-      if (FLAGS_verbose) {
+      if (true) {
         LI << "finished toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       }
       compute_milli_timer.stop();
       this->sys_.hb_collector().increaseTime(compute_milli_timer.get());
 
       // record MatrixInfo
-      matrix_info_[grp_id] = X->info();
+      // matrix_info_[grp_id] = X->info();
 
       // reset parameter_value
       SArray<double> values;
@@ -348,7 +348,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // dump to Ocean
       CHECK(ocean_.dump(grp_id, keys, values,
-        delta_[grp_id],
+        delta_[grp_id], SArray<double>(),
         std::static_pointer_cast<SparseMatrix<uint32, double>>(X)));
 
       // release memory resource
@@ -453,13 +453,16 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       w_->value(grp_id).resize(w_->key(grp_id).size());
       w_->value(grp_id).setValue(0);
 
+      // reset second-order gradient
+      SArray<double> second_order_gradient(w_->key(grp_id).size(), 0);
+
       // reset delta
       delta_[grp_id].resize(w_->key(grp_id).size());
       delta_[grp_id].setValue(conf_.darling().delta_init_value());
 
       // dump to Ocean
       ocean_.dump(grp_id, w_->key(grp_id), w_->value(grp_id),
-        delta_[grp_id],
+        delta_[grp_id], second_order_gradient,
         SparseMatrixPtr<uint32, double>());
 
       // release memory resource
@@ -469,6 +472,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 #ifdef TCMALLOC
       MallocExtension::instance()->ReleaseFreeMemory();
 #endif
+
+      LI << "got init keys on group " << grp_id <<
+        "[" << grp_order + 1 << "/" << grp_size << "]";
     }
   }
 }

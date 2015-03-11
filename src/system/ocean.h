@@ -16,6 +16,7 @@ namespace PS {
 
 DECLARE_bool(verbose);
 DECLARE_int32(in_memory_unit_limit);
+DECLARE_bool(keep_invalid_features_in_model);
 
 class Ocean {
   public:
@@ -33,6 +34,7 @@ class Ocean {
       PARAMETER_KEY,
       PARAMETER_VALUE,
       DELTA,
+      SECOND_ORDER_GRADIENT,
       NUM
     };
 
@@ -156,6 +158,7 @@ class Ocean {
       SArray<FullKey> parameter_key,
       SArray<Value> parameter_value,
       SArray<Value> delta,
+      SArray<Value> second_order_gradient,
       SparseMatrixPtr<ShortKey, Value> matrix);
 
     // add prefetch job

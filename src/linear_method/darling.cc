@@ -149,7 +149,7 @@ void Darling::preprocessData(const MessageCPtr& msg) {
 }
 
 void Darling::updateModel(const MessagePtr& msg) {
-  if (FLAGS_verbose) {
+  if (true) {
     LI << "updateModel; msg [" << msg->shortDebugString() << "]";
   }
 
@@ -333,7 +333,10 @@ void Darling::updateModel(const MessagePtr& msg) {
     CHECK_EQ(time+3, w_->pull(pull_msg));
   } else if (IamServer()) {
     // none of my bussiness
-    if (w_->myKeyRange().setIntersection(g_key_range).empty()) {
+    Range<Key> range_in_slot(
+      g_key_range.begin() & kLower54Bits,
+      g_key_range.end() & kLower54Bits);
+    if (w_->myKeyRange().setIntersection(range_in_slot).empty()) {
       ocean_.drop(grp, g_key_range, msg->task.time());
       return;
     }
@@ -446,7 +449,16 @@ void Darling::computeGradients(
   for (size_t j = 0; j < thr_anchor.size(); ++j) {
     size_t k = j + thr_anchor.begin();
     size_t n = offset[j+1] - offset[j];
-    if (!active_set.test(k)) {
+
+    // IMPORTANT NOTE:
+    //   It is an excellent speed-up strategy here,
+    //     which skips a lot of invalid features.
+    //   However, NEO needs second-order gradients
+    //     for all features (invalid features included).
+    //   So if FLAGS_keep_invalid_features_in_model is on,
+    //     workers need calculate gradient for features that
+    //     have been disabled by L1-regulization.
+    if (!FLAGS_keep_invalid_features_in_model && !active_set.test(k)) {
       index += n;
       if (!is_binary) value += n;
       kkt_filter_.mark(&G[j]);
@@ -582,17 +594,27 @@ void Darling::updateWeight(
     data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_VALUE)]);
   SArray<double> delta(
     data_pack.arrays[static_cast<size_t>(Ocean::DataSource::DELTA)]);
+  SArray<double> second_order_gradient(
+    data_pack.arrays[static_cast<size_t>(Ocean::DataSource::SECOND_ORDER_GRADIENT)]);
   SizeR anchor = ocean_.fetchAnchor(grp, global_range);
 
   // check
   CHECK_EQ(G.size(), anchor.size());
   CHECK_EQ(U.size(), anchor.size());
   CHECK_EQ(value.size(), delta.size());
+  CHECK_EQ(second_order_gradient.size(), U.size());
+
+  // copy second-order gradient
+  __gnu_parallel::transform(
+    U.begin(), U.end(),
+    second_order_gradient.begin(),
+    [](const double& a) { return a; });
 
   // progress statistic
   size_t nnz_w = 0;
   double objv = 0.0;
 
+  // learning rate
   double eta = conf_.learning_rate().eta();
   if (1023 == grp && is_priority && conf_.solver().has_beta_feature_learning_rate()) {
     eta = conf_.solver().beta_feature_learning_rate();

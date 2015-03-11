@@ -118,8 +118,15 @@ MessagePtrList sliceKeyOrderedMsg(const MessagePtr& msg, const KeyList& sep) {
   SArray<K> key(msg->key);
   Range<K> msg_key_range(msg->task.key_range());
   for (auto p : sep) {
-    K k = std::max(msg_key_range.begin(), std::min(msg_key_range.end(), (K)p));
-    pos.push_back(std::lower_bound(key.begin(), key.end(), k) - key.begin());
+    K k = std::max(
+      msg_key_range.begin() & kLower54Bits,
+      std::min(msg_key_range.end() & kLower54Bits, (K)p));
+    pos.push_back(
+      std::lower_bound(
+        key.begin(), key.end(), k,
+        [](const K& a, const K& b) -> bool {
+          return (a & kLower54Bits) < (b & kLower54Bits);
+        }) - key.begin());
   }
 
   // split the message according to *pos*
@@ -127,7 +134,10 @@ MessagePtrList sliceKeyOrderedMsg(const MessagePtr& msg, const KeyList& sep) {
   for (int i = 0; i < n-1; ++i) {
     ret[i] = MessagePtr(new Message());
     ret[i]->miniCopyFrom(*msg);
-    if (Range<K>(sep[i], sep[i+1]).setIntersection(msg_key_range).empty()) {
+    Range<K> range_in_slot(
+      msg_key_range.begin() & kLower54Bits,
+      msg_key_range.end() & kLower54Bits);
+    if (Range<K>(sep[i], sep[i+1]).setIntersection(range_in_slot).empty()) {
       // the remote node does not maintain this key range. mark this message as
       // valid, which will not be sent
       ret[i]->valid = false;

@@ -82,7 +82,7 @@ int SlotReader::read(std::shared_ptr<KVVector<Key,double>> w, ExampleInfo* info)
 bool SlotReader::readOneFile(
   const DataConfig& data,
   std::shared_ptr<KVVector<Key,double>> w) {
-  if (FLAGS_verbose) {
+  if (true) {
     LI << "loading data file [" << data.file(0) << "]; loaded [" <<
       loaded_file_count_ << "/" << data_.file_size() << "]";
   }
@@ -95,7 +95,7 @@ bool SlotReader::readOneFile(
     // the data is already in cache_dir
     Lock l(mu_);
     info_ = mergeExampleInfo(info_, info);
-    if (FLAGS_verbose) {
+    if (true) {
       LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
         loaded_file_count_++ << "/" << data_.file_size() << "]";
     }
@@ -143,9 +143,9 @@ bool SlotReader::readOneFile(
         const size_t start, const size_t size, const string& partition_file_path) {
         std::stringstream ss;
         ss << start << "\t" << size << "\n";
-        File *file = File::open(partition_file_path, "a+");
-        file->writeString(ss.str());
-        file->close();
+        File *file = File::openOrDie(partition_file_path, "a+");
+        CHECK_EQ(file->writeString(ss.str()), ss.str().size());
+        CHECK(file->close());
       };
 
       // partitioned value
@@ -315,7 +315,7 @@ bool SlotReader::readOneFile(
     info_ = mergeExampleInfo(info_, info);
     loaded_file_count_++;
 
-    if (FLAGS_verbose) {
+    if (true) {
       LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
         loaded_file_count_ << "/" << data_.file_size() << "]";
     }
@@ -421,7 +421,9 @@ void SlotReader::getAllPartitions(
       ithFile(data_, file_idx), slot_id) + "." + type_str);
 
     string partition_info_path = data_path + ".partition";
-    File* partition_info_file = File::openOrDie(partition_info_path, "r");
+    File* partition_info_file = File::open(partition_info_path, "r");
+    if (nullptr == partition_info_file) { continue; }
+
     const size_t kLineMaxLen = 1024;
     char line[kLineMaxLen + 1];
     while (nullptr != partition_info_file->readLine(line, kLineMaxLen)) {

@@ -184,15 +184,35 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
       // label
       int32 label;
       if (!strtoi32(tk, &label)) return false;
+
+      // patch for abtest
+      // It seems that some large group may produce segment fault
+      {
+        if (!(label > 0) && (rand() % 10 < 5)) {
+          return false;
+        }
+      }
+
       slot->add_val(label > 0 ? 1.0 : -1.0);
     } else if (i == 1) {
       // skip, line_id
     } else {
       uint64 key = -1;
       if (!strtou64(tk, &key)) return false;
+
+      // patch for abtest
+      {
+        const uint64 grp_id = key >> 54;
+        if (20 == grp_id || 25 == grp_id ||
+            26 == grp_id || 29 == grp_id) {
+          continue;
+        }
+      }
+
       group_feature_vec.push_back(key);
     }
   }
+  if (group_feature_vec.empty()) { return false; }
 
   // sort; make same group_ids appear together
   std::sort(group_feature_vec.begin(), group_feature_vec.end());

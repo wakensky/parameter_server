@@ -51,7 +51,7 @@ class BatchSolver : public LinearMethod {
   SlotReader slot_reader_;
   // dual_ = X * w
   SArray<double> dual_;
-  std::array<MatrixInfo, 2048> matrix_info_;
+  // std::array<MatrixInfo, 2048> matrix_info_;
   std::unordered_map<int, Bitmap> active_set_;
   std::unordered_map<int, SArray<double>> delta_;
 
@@ -98,7 +98,7 @@ class BatchSolver : public LinearMethod {
       }
 
       // Send next keys batch to servers
-      // If something been sent indeed, return time+1;
+      // If something been sent actually, return time+1;
       //   else, return time
       int pullNextFilter(int time) {
         if (all_filters_sent_) {

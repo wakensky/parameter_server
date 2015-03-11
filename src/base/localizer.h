@@ -116,7 +116,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
     [this, &global_key_partitions, &partition_idx, &remapped_idx_path,
      &idx_dict, &node_id, path_picker, &global_matched]() {
     while (true) {
-      size_t my_partition_idx = partition_idx++;
+      size_t my_partition_idx = partition_idx++;  // wakensky buggy
       if (my_partition_idx >= global_key_partitions.size()) {
         // all partitions done
         break;

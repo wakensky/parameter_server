@@ -108,4 +108,6 @@ static uint32_t DJBHash32(const std::string& str) {
   return hash;
 }
 
+const uint64 kLower54Bits = 0x3FFFFFFFFFFFFF;
+
 } // namespace PS
