@@ -368,7 +368,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
         if (helper->allFiltersFinished()) {
           // stash w_->key(grp_id) on disk
           std::stringstream ss;
-          ss << "key_stash." << fea_grp_.at(grp_order);
+          ss << myNodeID() << ".key_stash." << fea_grp_.at(grp_order);
           const string key_path = path_picker_.getPath(ss.str());
           CHECK(w_->key(fea_grp_.at(grp_order)).writeToFile(key_path));
 
@@ -396,7 +396,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
     for (int grp_order = 0; grp_order < grp_size; ++grp_order) {
       // load keys from disk
       std::stringstream ss;
-      ss << "key_stash." << fea_grp_.at(grp_order);
+      ss << myNodeID() << ".key_stash." << fea_grp_.at(grp_order);
       const string key_path = path_picker_.getPath(ss.str());
       SArray<char> stash;
       CHECK(stash.readFromFile(key_path));
@@ -418,7 +418,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
       // load keys from disk
       std::stringstream ss;
-      ss << "key_stash." << fea_grp_.at(grp_order);
+      ss << myNodeID() << ".key_stash." << fea_grp_.at(grp_order);
       const string key_path = path_picker_.getPath(ss.str());
       SArray<char> stash;
       CHECK(stash.readFromFile(key_path));

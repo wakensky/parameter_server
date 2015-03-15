@@ -1,7 +1,7 @@
 CC = g++
 
-# OPT = -O3 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp -fsanitize=address
-OPT = -O0 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp # -fsanitize=address
+OPT = -O3 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp # -fsanitize=address
+# OPT = -O0 -ggdb -g -gdwarf-2 -fno-omit-frame-pointer -fopenmp -fsanitize=address
 
 BIN = ../bin
 LIB = ../lib

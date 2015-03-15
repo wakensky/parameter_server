@@ -148,6 +148,8 @@ void LinearMethod::startSystem() {
                key_range.evenDivide(FLAGS_num_servers, s++);
     key.to(node.mutable_key());
     *start.mutable_mng_node()->add_node() = node;
+
+    LI << node.id() << " got key range: " << key.toString();
   }
   // let the scheduler connect all other nodes
   sys_.manageNode(start);

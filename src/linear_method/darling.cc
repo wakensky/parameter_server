@@ -168,6 +168,8 @@ void Darling::updateModel(const MessagePtr& msg) {
   auto anchor = ocean_.fetchAnchor(grp, g_key_range);
 
   if (IamWorker()) {
+    LI << "I am working on UPDATE_MODEL [" << msg->shortDebugString() << "]";
+
     // compute local gradients
     mu_.lock();
 
@@ -339,6 +341,7 @@ void Darling::updateModel(const MessagePtr& msg) {
       return;
     }
 
+    LI << "I am working on UPDATE_MODEL [" << msg->shortDebugString() << "]";
     // time 0: aggregate all workers' local gradients
     w_->waitInMsg(kWorkerGroup, time);
 

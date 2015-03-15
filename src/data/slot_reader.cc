@@ -276,16 +276,14 @@ bool SlotReader::readOneFile(
     // dump memory image to file
     // release vslots
     for (int i = 0; i < kSlotIDmax; ++i) {
-      auto& slot = vslots[i];
-      if (slot.row_siz.empty() && slot.val.empty()) {
-        // slot is empty
-        continue;
-      }
+      auto& vslot = vslots[i];
+      // skip empty slot
+      // if (vslot.row_siz.empty() && vslot.val.empty()) { continue; }
       // append to disk file
-      CHECK(slot.appendToFile(
+      CHECK(vslot.appendToFile(
         this->path_picker_, i, cacheName(data, i),
         w, time_++, count_min_k_, count_min_n_));
-      slot.clear();
+      vslot.clear();
     }
 
     if (FLAGS_verbose) {
@@ -301,11 +299,14 @@ bool SlotReader::readOneFile(
   // dump the last partition remaining in VSlot
   for (int i = 0; i < kSlotIDmax; ++i) {
     auto& vslot = vslots[i];
+    // skip empty slot
     // if (vslot.row_siz.empty() && vslot.val.empty()) continue;
+
     while (vslot.cumulative_row_siz_size < num_ex) {
       vslot.row_siz.pushBack(0);
       ++vslot.cumulative_row_siz_size;
     }
+    // append to disk file
     CHECK(vslot.appendToFile(
       this->path_picker_, i, cacheName(data, i),
       w, time_++, count_min_k_, count_min_n_));

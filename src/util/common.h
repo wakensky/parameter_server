@@ -109,5 +109,6 @@ static uint32_t DJBHash32(const std::string& str) {
 }
 
 const uint64 kLower54Bits = 0x3FFFFFFFFFFFFF;
+const uint64 kHigher10Bits = 0xFFC0000000000000;
 
 } // namespace PS

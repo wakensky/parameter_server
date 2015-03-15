@@ -14,7 +14,10 @@ class SharedParameter : public Customer {
   // convenient wrappers of functions in remote_node.h
   int sync(MessagePtr msg) {
     CHECK(msg->task.shared_para().has_cmd()) << msg->debugString();
-    if (!msg->task.has_key_range()) Range<K>::all().to(msg->task.mutable_key_range());
+    if (!msg->task.has_key_range()) {
+      Range<Key> key_range(0, std::numeric_limits<Key>::max());
+      key_range.to(msg->task.mutable_key_range());
+    }
     return taskpool(msg->recver)->submit(msg);
   }
   int push(MessagePtr msg) {

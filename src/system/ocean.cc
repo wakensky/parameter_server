@@ -80,7 +80,7 @@ bool Ocean::dump(
   SparseMatrixPtr<ShortKey, Value> matrix) {
   group_key_count_[grp_id] = parameter_key.size();
   if (parameter_key.empty()) {
-    // LL << "parameter_key empty in group [" << grp_id << "]";
+    CHECK(parameter_value.empty());
     return true;
   }
   auto iterator = group_partition_ranges_.find(grp_id);
@@ -210,10 +210,22 @@ void Ocean::prefetch(
   prefetched_tasks_.insert(task_id);
   UnitID unit_id(grp_id, global_range);
 
+  // make sure {grp_id, global_range} has already resides in units_
+  // otherwise, I do not know how to load it
+  UnitHashMap::accessor accessor;
+  if (!units_.find(accessor, unit_id)) {
+    LI << "prefetch skipped [" << unit_id.toString() <<
+      "] [" << task_id << "]";
+    return;
+  }
+
+  // append TaskID to in_use_tasks
+  InUseTaskHashMap::const_accessor task_const_accessor;
+  accessor->second.in_use_tasks.insert(task_const_accessor, task_id);
+
   // enqueue
   prefetch_queue_.push(std::make_pair(unit_id, task_id));
 
-  // wakensky
   LI << "prefetch added [" << unit_id.toString() <<
     "] [" << task_id << "]";
 }
@@ -700,9 +712,16 @@ void Ocean::prefetchThreadFunc() {
       continue;
     }
 
+    if (FLAGS_verbose) {
+      LI << "prefetch thread get accessor [" <<
+        unit_id.toString() << "] [" << task_id << "]";
+    }
+
+#if 0
     // append TaskID to in_use_tasks
     InUseTaskHashMap::const_accessor task_const_accessor;
     accessor->second.in_use_tasks.insert(task_const_accessor, task_id);
+#endif
 
     // check unit status
     // skip those units who are being loaded or has been loaded
