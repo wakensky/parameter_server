@@ -185,6 +185,7 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
       int32 label;
       if (!strtoi32(tk, &label)) return false;
 
+#if 0
       // patch for abtest
       // It seems that some large group may produce segment fault
       {
@@ -192,6 +193,7 @@ bool ExampleParser::parseTerafea(char* line, Example* ex) {
           return false;
         }
       }
+#endif
 
       slot->add_val(label > 0 ? 1.0 : -1.0);
     } else if (i == 1) {

@@ -28,6 +28,8 @@ template<typename K>
 SArray<K> FreqencyFilter<K>::queryKeys(const SArray<K>& key, int freqency) {
   CHECK_LT(freqency, kuint8max) << "change to uint16 or uint32...";
   SArray<K> filtered_key;
+  if (count_.empty()) { return filtered_key; }
+
   for (auto k : key) {
     if (count_.query(k) > freqency) filtered_key.pushBack(k);
   }

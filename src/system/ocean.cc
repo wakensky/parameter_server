@@ -80,8 +80,8 @@ bool Ocean::dump(
   SparseMatrixPtr<ShortKey, Value> matrix) {
   group_key_count_[grp_id] = parameter_key.size();
   if (parameter_key.empty()) {
-    LL << "parameter_key empty in group [" << grp_id << "]";
-    return false;
+    // LL << "parameter_key empty in group [" << grp_id << "]";
+    return true;
   }
   auto iterator = group_partition_ranges_.find(grp_id);
   if (group_partition_ranges_.end() == iterator) {

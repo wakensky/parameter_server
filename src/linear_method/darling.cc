@@ -114,15 +114,10 @@ void Darling::preprocessData(const MessageCPtr& msg) {
   const int grp_size = get(msg).fea_grp_size();
   fea_grp_.clear();
   for (int i = 0; i < grp_size; ++i) fea_grp_.push_back(get(msg).fea_grp(i));
+  std::thread validation_thread(&Validation::preprocess, &validation_, msg->task);
 
-  std::shared_ptr<std::thread> validation_thread_ptr;
   ocean_.init(myNodeID(), conf_, msg->task, &path_picker_);
   if (IamWorker()) {
-    // validation preprocess
-    validation_thread_ptr.reset(new std::thread([this, msg]() {
-      CHECK(validation_.preprocess(msg->task));
-    }));
-
     // load labels
     y_ = MatrixPtr<double>(new DenseMatrix<double>(
       slot_reader_.info<double>(0), slot_reader_.value<double>(0)));
@@ -133,9 +128,14 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     dual_.eigenArray() = exp(y_->value().eigenArray() * dual_.eigenArray());
   }
 
-  if (!ocean_.resume()) {
-    BatchSolver::preprocessData(msg);
-    ocean_.snapshot();
+  try {
+    if (!ocean_.resume()) {
+      BatchSolver::preprocessData(msg);
+      ocean_.snapshot();
+    }
+  } catch (std::exception& e) {
+      LL << "preprocessData Exception: " << e.what() <<
+        " " << myNodeID();
   }
 
   // reset active_set_
@@ -143,9 +143,7 @@ void Darling::preprocessData(const MessageCPtr& msg) {
     active_set_[grp_id].resize(ocean_.getGroupKeyCount(grp_id), true);
   }
 
-  if (validation_thread_ptr) {
-    validation_thread_ptr->join();
-  }
+  validation_thread.join();
 }
 
 void Darling::updateModel(const MessagePtr& msg) {

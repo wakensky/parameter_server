@@ -111,12 +111,17 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
   // sub thread function, generate local keys partition by partition
   std::atomic_size_t partition_idx(0);
   std::atomic_size_t global_matched(0);
-  tbb::concurrent_vector<string> remapped_idx_path(global_key_partitions.size());
+  std::mutex partition_mu;
+  std::vector<string> remapped_idx_path(global_key_partitions.size());
   auto thr_generate_remapped_idx =
     [this, &global_key_partitions, &partition_idx, &remapped_idx_path,
-     &idx_dict, &node_id, path_picker, &global_matched]() {
+     &idx_dict, &node_id, path_picker, &global_matched, &partition_mu]() {
     while (true) {
-      size_t my_partition_idx = partition_idx++;  // wakensky buggy
+      size_t my_partition_idx = 0;
+      {
+        Lock l(partition_mu);
+        my_partition_idx = partition_idx++;
+      }
       if (my_partition_idx >= global_key_partitions.size()) {
         // all partitions done
         break;
@@ -165,7 +170,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       string path = path_picker->getPath(
         node_id + ".partitioned_remapped_idx." + std::to_string(my_partition_idx));
       CHECK(remapped_idx.writeToFile(path));
-      remapped_idx_path[my_partition_idx] = path;
+      remapped_idx_path.at(my_partition_idx) = path;
       global_matched += in_partition_matched;
     };
   };
@@ -187,6 +192,7 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
   size_t row_count = 0; // examples number across partitions
   std::vector<std::pair<string, SizeR>> rowsiz_partitions;
   slot_reader->getAllPartitions(grp_id, "rowsiz", rowsiz_partitions);
+  CHECK_EQ(remapped_idx_path.size(), rowsiz_partitions.size());
   for (size_t partition_idx = 0;
        partition_idx < rowsiz_partitions.size(); ++partition_idx) {
     // load remapped_idx from disk
@@ -223,7 +229,12 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       row_count++;
     }
   }
+  CHECK_EQ(new_offset.size(), row_count + 1);
   CHECK_EQ(k, global_matched);
+
+  LI << "global_matched: " << global_matched <<
+    " len(new_index): " << new_index.size() <<
+    " len(new_offset): " << new_offset.size();
 
   // establish matrix info
   auto new_info = info;

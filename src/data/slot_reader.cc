@@ -137,12 +137,13 @@ bool SlotReader::readOneFile(
       const int count_min_k, const float count_min_n) {
       const string kPartitionSuffix = ".partition";
       CHECK(nullptr != path_picker);
-      // lambda: append "start\tsize\n" to the file that contains partition info
+      // lambda: append "start\tsize\tEleNum\n" to the file that contains partition info
       //   We named a compressed block "partition" here
       auto appendPartitionInfo = [] (
-        const size_t start, const size_t size, const string& partition_file_path) {
+        const size_t start, const size_t size, const size_t ele_num,
+        const string& partition_file_path) {
         std::stringstream ss;
-        ss << start << "\t" << size << "\n";
+        ss << start << "\t" << size << "\t" << ele_num << "\n";
         File *file = File::openOrDie(partition_file_path, "a+");
         CHECK_EQ(file->writeString(ss.str()), ss.str().size());
         CHECK(file->close());
@@ -153,21 +154,24 @@ bool SlotReader::readOneFile(
       size_t start = File::size(path);
       auto val_compressed = val.compressTo();
       CHECK(val_compressed.appendToFile(path));
-      appendPartitionInfo(start, val_compressed.activeMemSize(), path + kPartitionSuffix);
+      appendPartitionInfo(start, val_compressed.activeMemSize(),
+                          val.size(), path + kPartitionSuffix);
 
       // partitioned colidx
       path = path_picker->getPath(prefix + ".colidx");
       start = File::size(path);
       auto col_compressed = col_idx.compressTo();
       CHECK(col_compressed.appendToFile(path));
-      appendPartitionInfo(start, col_compressed.activeMemSize(), path + kPartitionSuffix);
+      appendPartitionInfo(start, col_compressed.activeMemSize(),
+                          col_idx.size(), path + kPartitionSuffix);
 
       // partitioned rowsiz
       path = path_picker->getPath(prefix + ".rowsiz");
       start = File::size(path);
       auto row_compressed = row_siz.compressTo();
       CHECK(row_compressed.appendToFile(path));
-      appendPartitionInfo(start, row_compressed.activeMemSize(), path + kPartitionSuffix);
+      appendPartitionInfo(start, row_compressed.activeMemSize(),
+                          row_siz.size(), path + kPartitionSuffix);
 
       if (!col_idx.empty()) {
         // sort
@@ -216,7 +220,8 @@ bool SlotReader::readOneFile(
         start = File::size(path);
         auto unique_key_compressed = unique_key.compressTo();
         CHECK(unique_key_compressed.appendToFile(path));
-        appendPartitionInfo(start, unique_key_compressed.activeMemSize(), path + kPartitionSuffix);
+        appendPartitionInfo(start, unique_key_compressed.activeMemSize(),
+                            unique_key.size(), path + kPartitionSuffix);
       }
 
       return true;
@@ -296,7 +301,7 @@ bool SlotReader::readOneFile(
   // dump the last partition remaining in VSlot
   for (int i = 0; i < kSlotIDmax; ++i) {
     auto& vslot = vslots[i];
-    if (vslot.row_siz.empty() && vslot.val.empty()) continue;
+    // if (vslot.row_siz.empty() && vslot.val.empty()) continue;
     while (vslot.cumulative_row_siz_size < num_ex) {
       vslot.row_siz.pushBack(0);
       ++vslot.cumulative_row_siz_size;
@@ -304,6 +309,7 @@ bool SlotReader::readOneFile(
     CHECK(vslot.appendToFile(
       this->path_picker_, i, cacheName(data, i),
       w, time_++, count_min_k_, count_min_n_));
+    vslot.clear();
   }
 
   // generate info
@@ -389,7 +395,7 @@ bool SlotReader::assemblePartitions(
   char line_buffer[kLineMaxLen + 1];
   while (nullptr != partition_file->readLine(line_buffer, kLineMaxLen)) {
     auto vec = split(line_buffer, '\t');
-    CHECK_EQ(2, vec.size());
+    CHECK_EQ(3, vec.size());
 
     partitions.push_back(std::make_pair(
       std::stoull(vec[0], nullptr),
@@ -419,6 +425,7 @@ void SlotReader::getAllPartitions(
   for (int file_idx = 0; file_idx < data_.file_size(); ++file_idx) {
     string data_path = path_picker_->getPath(cacheName(
       ithFile(data_, file_idx), slot_id) + "." + type_str);
+    LI << data_path;
 
     string partition_info_path = data_path + ".partition";
     File* partition_info_file = File::open(partition_info_path, "r");
@@ -428,7 +435,7 @@ void SlotReader::getAllPartitions(
     char line[kLineMaxLen + 1];
     while (nullptr != partition_info_file->readLine(line, kLineMaxLen)) {
       auto vec = split(line, '\t');
-      CHECK_EQ(2, vec.size());
+      CHECK_EQ(3, vec.size());
 
       out_partitions.push_back(std::make_pair(
         data_path,

@@ -91,8 +91,8 @@ template<typename V> class SArray {
   // Element access:
   V back() const { CHECK(!empty()); return data_[size_-1]; }
   V front() const { CHECK(!empty()); return data_[0]; }
-  V& operator[] (int i) { return data_[i]; }
-  const V& operator[] (int i) const { return data_[i]; }
+  V& operator[] (size_t i) { return data_[i]; }
+  const V& operator[] (size_t i) const { return data_[i]; }
 
   // Modifiers
   void append(const SArray<V>& tail);

@@ -80,6 +80,7 @@ void KVVector<K,V>::setValue(const MessagePtr& msg) {
     chl, key_range, msg->task.owner_time());
   SArray<Key> parameter_key(
     data_pack.arrays[static_cast<size_t>(Ocean::DataSource::PARAMETER_KEY)]);
+  CHECK_GE(parameter_key.size(), recv_key.size());
 
   recved_val_mu_.lock();
   auto& matched = recved_val_[t];

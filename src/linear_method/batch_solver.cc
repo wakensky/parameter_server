@@ -217,11 +217,12 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   bool hit_cache = loadCache("train");
   const int starting_time = msg->task.time() + 1;
   const int finishing_time = starting_time + 1000000;
+
+  validation_.init(myNodeID() + "-validation", conf_, &path_picker_);
   if (IamWorker()) {
     CHECK(conf_.has_local_cache());
 
     // download validation data
-    validation_.init(myNodeID() + "-validation", conf_, &path_picker_);
     ThreadPool load_validation_pool(1);
     load_validation_pool.add([this]() {
                                 CHECK(validation_.download());
@@ -432,6 +433,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       };
       CHECK_EQ(push_initial_key_time, w_->push(push_initial_key));
       pushed_initial_time.at(grp_order) = push_initial_key_time++;
+
+      LI << "Has pushed initial keys for group [" << fea_grp_.at(grp_order) <<
+        "] [" << grp_order + 1 << "/" << grp_size << "]";
 
 #ifdef TCMALLOC
       MallocExtension::instance()->ReleaseFreeMemory();

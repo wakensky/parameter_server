@@ -1,6 +1,6 @@
 #pragma once
-#include <parallel/algorithm>
 #include "base/shared_array.h"
+#include <parallel/algorithm>
 #include "base/dense_matrix.h"
 #include <random>
 #include "snappy.h"
@@ -156,12 +156,13 @@ SArray<V> SArray<V>::setIntersection(const SArray<V>& other) const {
 template <typename V>
 SArray<V> SArray<V>::setUnion(const SArray<V>& other) const {
   SArray<V> result(other.size() + size());
-#if 0
+
   V* last = std::set_union(
       begin(), end(), other.begin(), other.end(), result.begin());
-#endif
+#if 0
   V* last = __gnu_parallel::set_union(
     (V*)begin(), (V*)end(), (V*)other.begin(), (V*)other.end(), (V*)result.begin());
+#endif
   result.size_ = last - result.begin();
   return result;
 }
@@ -228,7 +229,7 @@ bool SArray<V>::writeToFile(SizeR range, const string& file_name, const bool syn
 
 template <typename V>
 bool SArray<V>::appendToFile(SizeR range, const string& file_name) const {
-  if (range.empty()) return true;
+  // if (range.empty()) return true;
   CHECK(range.valid());
   CHECK_LE(range.end(), size_);
 
