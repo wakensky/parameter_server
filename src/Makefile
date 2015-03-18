@@ -96,7 +96,7 @@ TESTS = \
         sparse_matrix_multi_thread_perf \
 	fault_tolerance_press \
 
-all: dir $(addprefix $(BIN)/, ps_cdn) # text2proto
+all: dir $(addprefix $(BIN)/, ps_cdn models_for_neo) # text2proto
 data: $(addprefix $(BIN)/, showins proto2bin)
 test: $(addprefix $(BIN)/, $(TESTS))
 
@@ -132,6 +132,8 @@ $(LIB)/libps.a: $(OBJS) #gtest
 
 $(BIN)/ps_cdn: main.cc $(LIB)/libps.a
 	$(CC) $(CFLAGS) main.cc $(LDFLAGS) -o $@
+$(BIN)/models_for_neo: models_for_neo.cc $(LIB)/libps.a
+	$(CC) $(CFLAGS) models_for_neo.cc $(LDFLAGS) -o $@
 
 # =====================
 

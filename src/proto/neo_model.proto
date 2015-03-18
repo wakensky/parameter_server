@@ -1,0 +1,44 @@
+package neo.proto;
+
+message RealtimeConfig
+{
+    optional string fifo_path = 1;
+    optional int64 period = 2;
+}
+
+message ModelMeta
+{
+    optional string name = 1;
+    optional double alpha = 2;
+    optional double beta = 3;
+    optional double lambda1 = 4;
+    optional double lambda2 = 5;
+    optional int64 dump_timestamp = 6;
+    optional double sample_rate = 7;
+    optional bool use_filter = 8;
+    optional int64 filter_capacity = 9;
+    optional int32 occurrence_threshold = 10;
+    repeated int32 slot_mask = 11;
+    optional uint64 model_size = 12;
+    repeated int32 sparse_slot = 13 [packed=true];
+    optional uint64 sparse_model_size = 14;
+    optional RealtimeConfig realtime_config = 15;
+}
+
+message ModelFeatures
+{
+    repeated fixed64 fid = 1 [packed=true];
+    repeated float value = 2 [packed=true];
+    repeated int64 timestamp = 3 [packed=true];
+    repeated float z = 4 [packed=true];
+    repeated float n = 5 [packed=true];
+    repeated float covariance = 6 [packed=true];
+}
+
+message SparseModel
+{
+    repeated ModelFeatures features = 1;
+    repeated ModelFeatures packed_features = 2;
+    repeated int64 sparse_id = 3 [packed=true];
+    repeated int32 timestamp = 4 [packed=true];
+}

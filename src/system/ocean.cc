@@ -375,7 +375,7 @@ bool Ocean::saveModel(const string& path) {
           dumped_feature_count++;
 
           // Write model_features to disk periodicly
-          if (dumped_feature_count > 0 && 0 == dumped_feature_count % 10000000) {
+          if (dumped_feature_count > 0 && 0 == dumped_feature_count % 500000) {
             std::ofstream model_features_out(
               path + ".neo_model_features." + std::to_string(model_partition_id++));
             CHECK(model_features_out);
@@ -529,7 +529,8 @@ bool Ocean::resume() {
         throw std::runtime_error("illegal data source");
       }
       if (DataSource::PARAMETER_VALUE != static_cast<DataSource>(data_source) &&
-          DataSource::DELTA != static_cast<DataSource>(data_source)) {
+          DataSource::DELTA != static_cast<DataSource>(data_source) &&
+          DataSource::SECOND_ORDER_GRADIENT != static_cast<DataSource>(data_source)) {
         if (size != File::size(path)) {
           throw std::runtime_error(
             std::to_string(size) + " vs " + std::to_string(File::size(path)) +
@@ -767,7 +768,8 @@ void Ocean::writeThreadFunc() {
          data_source < static_cast<size_t>(DataSource::NUM);
          ++data_source) {
       if (DataSource::PARAMETER_VALUE == static_cast<DataSource>(data_source) ||
-          DataSource::DELTA == static_cast<DataSource>(data_source)) {
+          DataSource::DELTA == static_cast<DataSource>(data_source) ||
+          DataSource::SECOND_ORDER_GRADIENT == static_cast<DataSource>(data_source)) {
         SArray<char> array = unit_body.data_pack.arrays.at(data_source);
         if (!array.empty()) {
           CHECK(array.writeToFile(unit_body.path_pack.path.at(data_source), false));
@@ -810,9 +812,14 @@ bool Ocean::loadFromDiskSynchronously(
   // adjust
   // If mutable data got empty dump file and associated parameter_key is NOT empty,
   // I should allocate mutable data on the fly
-  SArray<FullKey> parameter_key(data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_KEY)]);
-  SArray<Value> parameter_value(data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_VALUE)]);
-  SArray<Value> delta(data_pack->arrays[static_cast<size_t>(DataSource::DELTA)]);
+  SArray<FullKey> parameter_key(
+    data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_KEY)]);
+  SArray<Value> parameter_value(
+    data_pack->arrays[static_cast<size_t>(DataSource::PARAMETER_VALUE)]);
+  SArray<Value> delta(
+    data_pack->arrays[static_cast<size_t>(DataSource::DELTA)]);
+  SArray<Value> second_order_gradient(
+    data_pack->arrays[static_cast<size_t>(DataSource::SECOND_ORDER_GRADIENT)]);
   if (!parameter_key.empty() && parameter_value.empty() &&
       !path_pack.path[static_cast<size_t>(DataSource::PARAMETER_VALUE)].empty()) {
     parameter_value.resize(parameter_key.size());
@@ -824,6 +831,13 @@ bool Ocean::loadFromDiskSynchronously(
     delta.resize(parameter_key.size());
     delta.setValue(conf_.darling().delta_init_value());
     data_pack->arrays[static_cast<size_t>(DataSource::DELTA)] = delta;
+  }
+  if (!parameter_key.empty() && second_order_gradient.empty() &&
+      !path_pack.path[static_cast<size_t>(DataSource::SECOND_ORDER_GRADIENT)].empty()) {
+    second_order_gradient.resize(parameter_key.size());
+    second_order_gradient.setValue(0);
+    data_pack->arrays[
+      static_cast<size_t>(DataSource::SECOND_ORDER_GRADIENT)] = second_order_gradient;
   }
 
   // check
@@ -840,6 +854,9 @@ bool Ocean::loadFromDiskSynchronously(
   }
   if (!delta.empty()) {
     CHECK_EQ(parameter_key.size(), delta.size());
+  }
+  if (!second_order_gradient.empty()) {
+    CHECK_EQ(parameter_key.size(), second_order_gradient.size());
   }
 
   in_memory_unit_count_++;
@@ -861,6 +878,8 @@ string Ocean::printDataSource(const DataSource data_source) {
       return "PARAMETER_KEY";
     case Ocean::DataSource::PARAMETER_VALUE:
       return "PARAMETER_VALUE";
+    case Ocean::DataSource::SECOND_ORDER_GRADIENT:
+      return "SECOND_ORDER_GRADIENT";
     default:
       return "UNKNOWN_DATASOURCE";
   };
