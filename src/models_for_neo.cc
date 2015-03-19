@@ -137,7 +137,7 @@ void showNeoModel(const PS::string& path) {
       CHECK_EQ(features.fid_size(), features.n_size());
       CHECK_EQ(features.fid_size(), features.z_size());
       CHECK_EQ(features.fid_size(), features.value_size());
-      for (size_t i = 0; i < features.fid_size() /*&& i < 32*/; ++i) {
+      for (size_t i = 0; i < features.fid_size() && i < 32; ++i) {
         std::cerr << "fid: " << features.fid(i) <<
           "; n: " << features.n(i) <<
           "; z: " << features.z(i) <<

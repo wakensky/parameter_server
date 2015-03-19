@@ -131,7 +131,6 @@ bool Ocean::dump(
       CHECK_EQ(
         segmented_offset.back() - segmented_offset.front(),
         segmented_feature_key.size());
-      // wakensky
       LI << "dumped unit [" << UnitID(grp_id, global_range).toString() <<
         "]; off.front: " << segmented_offset.front() <<
         "; off.back: " << segmented_offset.back() <<
