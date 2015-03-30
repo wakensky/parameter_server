@@ -8,7 +8,6 @@
 namespace PS {
 
 DEFINE_bool(enable_fault_tolerance, false, "enable fault tolerance feature");
-DEFINE_int32(num_replicas, 0, "number of replica");
 DEFINE_int32(num_servers, 0, "number of servers");
 DEFINE_int32(num_workers, 0, "number of clients");
 DEFINE_int32(num_unused, 0, "number of unused nodes");
@@ -63,7 +62,7 @@ void Postoffice::run() {
     yellow_pages_.add(myNode());
     if (FLAGS_num_workers || FLAGS_num_servers) {
       nodes_are_ready_.get_future().wait();
-      LI << "Scheduler connected " << FLAGS_num_servers << " servers and "
+      LL << "Scheduler connected " << FLAGS_num_servers << " servers and "
          << FLAGS_num_workers << " workers";
     }
 

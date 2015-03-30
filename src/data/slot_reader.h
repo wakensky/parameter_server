@@ -55,6 +55,7 @@ class SlotReader {
     std::vector<std::pair<string, SizeR>>& out_partitions);
 
  private:
+  // Produce regularized file name
   string cacheName(const DataConfig& data, int slot_id) const;
   size_t nnzEle(int slot_id) const;
   bool readOneFile(

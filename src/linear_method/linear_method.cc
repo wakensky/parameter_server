@@ -15,7 +15,9 @@ AppPtr LinearMethod::create(const Config& conf) {
     if (conf.has_darling()) {
       return AppPtr(new Darling());
     } else {
-      return AppPtr(new BatchSolver());
+      CHECK(false) <<
+        "Darling must be specified, " <<
+        "since BatchSolver is an abstract base class now";
     }
   }
   return AppPtr(nullptr);
@@ -72,7 +74,6 @@ void LinearMethod::process(const MessagePtr& msg) {
       break;
     case Call::COMPUTE_VALIDATION_AUC: {
       AUCData data;
-      computeEvaluationAUC(&data);
       sys_.replyProtocalMessage(msg, data);
       break;
     }

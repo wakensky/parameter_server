@@ -33,15 +33,10 @@ void BatchSolver::run() {
   Task load = newTask(Call::LOAD_DATA);
   int hit_cache = 0;
   active_nodes->submitAndWait(load, [this, &hit_cache](){
-      DataInfo info; CHECK(info.ParseFromString(exec_.lastRecvReply()));
-      // LL << info.DebugString();
-      g_train_info_ = mergeExampleInfo(g_train_info_, info.example_info());
-      hit_cache += info.hit_cache();
-    });
-  if (hit_cache > 0) {
-    CHECK_EQ(hit_cache, FLAGS_num_workers) << "clear the local caches";
-    LI << "Hit local caches for the training data";
-  }
+    DataInfo info; CHECK(info.ParseFromString(exec_.lastRecvReply()));
+    g_train_info_ = mergeExampleInfo(g_train_info_, info.example_info());
+    hit_cache += info.hit_cache();
+  });
   LI << "Loaded " << g_train_info_.num_ex() << " examples in "
      << toc(load_time) << " sec";
 
@@ -122,53 +117,10 @@ void BatchSolver::run() {
   total_timer_.restart();
   runIteration();
 
-  if (conf_.has_validation_data()) {
-    // LI << "\tEvaluate with " << g_validation_info_[0].row().end()
-    //    << " validation examples\n";
-    Task test = newTask(Call::COMPUTE_VALIDATION_AUC);
-    AUC validation_auc;
-    active_nodes->submitAndWait(test, [this, &validation_auc](){
-        mergeAUC(&validation_auc); });
-    LI << "\tEvaluation accuracy: " << validation_auc.accuracy(0)
-       << ", auc: " << validation_auc.evaluate();
-  }
-
 #if 0
   Task save_model = newTask(Call::SAVE_MODEL);
   active_nodes->submitAndWait(save_model);
 #endif
-}
-
-void BatchSolver::runIteration() {
-  auto sol_cf = conf_.solver();
-  auto pool = taskpool(kActiveGroup);
-  int time = pool->time();
-  int tau = sol_cf.max_block_delay();
-  for (int iter = 0; iter < sol_cf.max_pass_of_data(); ++iter) {
-    if (sol_cf.random_feature_block_order())
-      std::random_shuffle(blk_order_.begin(), blk_order_.end());
-
-    for (int b : blk_order_)  {
-      Task update = newTask(Call::UPDATE_MODEL);
-      update.set_wait_time(time - tau);
-      // set the feature key range will be updated in this block
-      fea_blk_[b].second.to(set(&update)->mutable_key());
-      time = pool->submit(update);
-    }
-
-    Task eval = newTask(Call::EVALUATE_PROGRESS);
-    eval.set_wait_time(time - tau);
-    time = pool->submitAndWait(
-        eval, [this, iter](){ LinearMethod::mergeProgress(iter); });
-
-    showProgress(iter);
-
-    double rel = g_progress_[iter].relative_objv();
-    if (rel > 0 && rel <= sol_cf.epsilon()) {
-      LI << "\tStopped: relative objective <= " << sol_cf.epsilon();
-      break;
-    }
-  }
 }
 
 int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
@@ -264,36 +216,23 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       // global -> local
       MilliTimer compute_milli_timer; compute_milli_timer.start();
       Localizer<Key, double> *localizer = new Localizer<Key, double>();
-      if (true) {
-        LI << "started remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
-      }
+      LI << myNodeID() << " started remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       auto X = localizer->remapIndex(
         grp_id, keys, &slot_reader_, &path_picker_, myNodeID());
       delete localizer;
       slot_reader_.clear(grp_id);
-      if (true) {
-        LI << "finished remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
-      }
+      LI << myNodeID() << " finished remapIndex [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
 
       // matrix transforms to column major
-      if (true) {
-        LI << "started toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
-      }
+      LI << myNodeID() << " started toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       if (X) {
-        // TODO toColMajor is necessary since I have assumed that
-        //   training data could be partition column-wise
         if (conf_.solver().has_feature_block_ratio()) {
           X = X->toColMajor();
         }
       }
-      if (true) {
-        LI << "finished toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
-      }
+      LI << myNodeID() << " finished toColMajor [" << grp_order + 1 << "/" << grp_size << "]; grp: " << grp_id;
       compute_milli_timer.stop();
       this->sys_.hb_collector().increaseTime(compute_milli_timer.get());
-
-      // record MatrixInfo
-      // matrix_info_[grp_id] = X->info();
 
       // reset parameter_value
       SArray<double> values;
@@ -391,7 +330,7 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       CHECK_EQ(push_initial_key_time, w_->push(push_initial_key));
       pushed_initial_time.at(grp_order) = push_initial_key_time++;
 
-      LI << "Has pushed initial keys for group [" << fea_grp_.at(grp_order) <<
+      LI << myNodeID() << " has pushed initial keys for group [" << fea_grp_.at(grp_order) <<
         "] [" << grp_order + 1 << "/" << grp_size << "]";
 
 #ifdef TCMALLOC
@@ -434,27 +373,10 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
       MallocExtension::instance()->ReleaseFreeMemory();
 #endif
 
-      LI << "got init keys on group " << grp_id <<
+      LI << myNodeID() << " got init keys on group " << grp_id <<
         "[" << grp_order + 1 << "/" << grp_size << "]";
     }
   }
-}
-
-Progress BatchSolver::evaluateProgress() {
-  Progress prog;
-  // if (IamWorker()) {
-  //   mu_.lock();
-  //   busy_timer_.start();
-  //   prog.set_objv(loss_->evaluate({y_, dual_.matrix()}));
-  //   prog.add_busy_time(busy_timer_.get());
-  //   busy_timer_.reset();
-  //   mu_.unlock();
-  // } else if (IamServer()) {
-  //   if (penalty_) prog.set_objv(penalty_->evaluate(w_->value().matrix()));
-  //   prog.set_nnz_w(w_->nnz());
-  // }
-  // // LL << myNodeID() << ": objv " << prog.objv();
-  return prog;
 }
 
 void BatchSolver::saveModel(const MessageCPtr& msg) {
@@ -477,141 +399,6 @@ void BatchSolver::saveModel(const MessageCPtr& msg) {
   } else {
     LL << "didn't implement yet";
   }
-}
-
-void BatchSolver::showProgress(int iter) {
-  int s = iter == 0 ? -3 : iter;
-  for (int i = s; i <= iter; ++i) {
-    showObjective(i);
-    showNNZ(i);
-    showTime(i);
-  }
-}
-
-void BatchSolver::computeEvaluationAUC(AUCData *data) {
-  if (!IamWorker()) return;
-
-  // TODO
-  // load data
-  // CHECK(XXXX.has_validation_data());
-  // if (!loadCache("valid")) {
-  //   auto list = readMatricesOrDie<double>(XXXX.training_data());
-  //   CHECK_EQ(list.size(), 2);
-  //   y_ = list[0];
-  //   auto X = std::static_pointer_cast<SparseMatrix<Key, double>>(list[1]);
-  //   X->countUniqIndex(&w_->key());
-  //   X_ = X->remapIndex(w_->key());
-  //   saveCache("valid");
-  // }
-
-  // // fetch the model
-  // MessagePtr pull_msg(new Message(kServerGroup, Message::kInvalidTime));
-  // pull_msg->key = w_->key();
-  // pull_msg->wait = true;
-  // int time = w_->pull(pull_msg);
-  // w_->value() = w_->received(time)[0].second;
-  // CHECK_EQ(w_->key().size(), w_->value().size());
-
-  // // w_->fetchValueFromServers();
-
-  // // compute auc
-  // AUC auc; auc.setGoodness(XXXX.block_solver().auc_goodness());
-  // SArray<double> Xw(X_->rows());
-  // for (auto& v : w_->value()) if (v != v) v = 0;
-  // Xw.eigenVector() = *X_ * w_->value().eigenVector();
-  // auc.compute(y_->value(), Xw, data);
-
-  // debug
-  // w.writeToFile("w");
-  // double correct = 0;
-  // for (int i = 0; i < Xw.size(); ++i)
-  //   if (y_->value()[i] * Xw[i] >= 0) correct += 1;
-  // LL << correct / Xw.size();
-
-  // Xw.writeToFile("Xw_"+myNodeID());
-  // y_->value().writeToFile("y_"+myNodeID());
-  // LL << auc.evaluate();
-}
-
-// void BatchSolver::saveAsDenseData(const Message& msg) {
-//   if (!exec_.isWorker()) return;
-//   auto call = RiskMinimization::getCall(msg);
-//   int n = call.reduce_range_size();
-//   if (n == 0) return;
-//   if (X_->rowMajor()) {
-//     X_ = X_->toColMajor();
-//   }
-//   DenseMatrix<double> Xw(X_->rows(), n, false);
-//   for (int i = 0; i < n; ++i) {
-//     auto lr = w_->localRange(Range<Key>(call.reduce_range(i)));
-//     Xw.colBlock(SizeR(i, i+1))->eigenArray() =
-//         *(X_->colBlock(lr)) * w_->segment(lr).eigenVector();
-//   }
-
-//   Xw.writeToBinFile(call.name()+"_Xw");
-//   y_->writeToBinFile(call.name()+"_y");
-// }
-
-
-void BatchSolver::updateModel(const MessagePtr& msg) {
-  // FIXME several tiny bugs here...
-  // int time = msg->task.time() * 10;
-  // Range<Key> global_range(msg->task.risk().key());
-  // auto local_range = w_->localRange(global_range);
-
-  // if (exec_.isWorker()) {
-  //   auto X = X_->colBlock(local_range);
-
-  //   SArrayList<double> local_grads(2);
-  //   local_grads[0].resize(local_range.size());
-  //   local_grads[1].resize(local_range.size());
-  //   AggGradLearnerArg arg;
-  //   {
-  //     Lock l(mu_);
-  //     busy_timer_.start();
-  //     learner_->compute({y_, X, dual_.matrix()}, arg, local_grads);
-  //     busy_timer_.stop();
-  //   }
-
-  //   msg->finished = false;
-  //   auto sender = msg->sender;
-  //   auto task = msg->task;
-  //   w_->roundTripForWorker(time, global_range, local_grads,
-  //                          [this, X, local_range, sender, task] (int time) {
-  //       Lock l(mu_);
-  //       busy_timer_.start();
-
-  //       if (!local_range.empty()) {
-  //         auto data = w_->received(time);
-
-  //         CHECK_EQ(data.size(), 1);
-  //         CHECK_EQ(local_range, data[0].first);
-  //         auto new_w = data[0].second;
-
-  //         auto delta = new_w.eigenVector() - w_->segment(local_range).eigenVector();
-  //         dual_.eigenVector() += *X * delta;
-  //         w_->segment(local_range).eigenVector() = new_w.eigenVector();
-  //       }
-
-  //       busy_timer_.stop();
-
-  //       taskpool(sender)->finishIncomingTask(task.time());
-  //       sys_.reply(sender, task);
-  //       // LL << myNodeID() << " done " << d.task.time();
-  //     });
-  // } else {
-  //   // aggregate local gradients, then update model
-  //   w_->roundTripForServer(time, global_range, [this, local_range] (int time) {
-  //       SArrayList<double> aggregated_gradient;
-  //       for (auto& d : w_->received(time)) {
-  //         CHECK_EQ(local_range, d.first);
-  //         aggregated_gradient.push_back(d.second);
-  //       }
-  //       AggGradLearnerArg arg;
-  //       arg.set_learning_rate(XXXX.learning_rate().eta());
-  //       learner_->update(aggregated_gradient, arg, w_->segment(local_range));
-  //     });
-  // }
 }
 
 } // namespace LM

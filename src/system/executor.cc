@@ -9,7 +9,7 @@ DECLARE_bool(verbose);
 void Executor::init(const std::vector<Node>& nodes) {
   // insert virtual group nodes
   for (auto id : {
-      kServerGroup, kWorkerGroup, kActiveGroup, kReplicaGroup, kOwnerGroup, kLiveGroup}) {
+      kServerGroup, kWorkerGroup, kActiveGroup, kLiveGroup}) {
     Node node;
     node.set_role(Node::GROUP);
     node.set_id(id);
@@ -23,32 +23,6 @@ void Executor::init(const std::vector<Node>& nodes) {
     std::sort(it.second.begin(), it.second.end(), [](const RNodePtr& a, const RNodePtr& b) {
         return a->keyRange().begin() < b->keyRange().begin();
       });
-  }
-  // construct replica group and owner group (just after my_node_)
-  if (my_node_.role() == Node::SERVER) {
-    int my_pos = 0;
-    auto servers = group(kServerGroup);
-    int n = servers.size();
-    for (auto s : servers) {
-      if (s->node_.id() == my_node_.id()) break;
-      ++ my_pos;
-    }
-    CHECK_LT(my_pos, n);
-
-    int nrep = FLAGS_num_replicas; CHECK_LT(nrep, n);
-    for (int i = 1; i <= nrep; ++i) {
-      // the replica group is just before me
-      node_groups_[kReplicaGroup].push_back(
-          servers[my_pos - i < 0 ? n + my_pos - i : my_pos - i]);
-      // the owner group is just after me
-      node_groups_[kOwnerGroup].push_back(
-          servers[my_pos + i < n ? my_pos + i : my_pos + i - n]);
-    }
-    // make an empty group otherwise
-    if (nrep <= 0) {
-      node_groups_[kReplicaGroup].clear();
-      node_groups_[kOwnerGroup].clear();
-    }
   }
   // store the key ranges in each group
   for (auto& it : node_groups_) {

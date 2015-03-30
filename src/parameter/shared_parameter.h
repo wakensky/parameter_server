@@ -70,18 +70,6 @@ class SharedParameter : public Customer {
   virtual void setValue(const MessagePtr& msg) = 0;
   // set the received KV pairs into my data strcuture for validation
   virtual void setValidationValue(const MessagePtr& msg) = 0;
-  // the message contains the backup KV pairs sent by the master node of the key
-  // segment to its replica node. merge these pairs into my replica, say
-  // replica_[msg->sender] = ...
-  virtual void setReplica(const MessagePtr& msg) = 0; //
-  // retrieve the replica. a new server node replacing a dead server will first
-  // ask for the dead's replica node for the data
-  virtual void getReplica(const MessagePtr& msg)  = 0;
-  // a new server node fill its own datastructure via the the replica data from
-  // the dead's replica node
-  virtual void recoverFrom(const MessagePtr& msg) = 0; //
-  // recover from a replica node
-  void recover(Range<K> range);
 
   Range<K> myKeyRange() {
     return keyRange(Customer::myNodeID());
@@ -121,15 +109,7 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
 
   MilliTimer milli_timer; milli_timer.start();
   // process
-  if (call.replica()) {
-    if (pull && !req && Range<K>(msg->task.key_range()) == myKeyRange()) {
-      recoverFrom(msg);
-    } else if ((push && req) || (pull && !req)) {
-      setReplica(msg);
-    } else if (pull && req) {
-      getReplica(reply);
-    }
-  } else if (call.insert_key_freq() || call.has_query_key_freq()) {
+  if (call.insert_key_freq() || call.has_query_key_freq()) {
     // deal with tail features
     if (key_filter_ignore_chl_) chl = 0;
     if (call.insert_key_freq() && req && !msg->value.empty()) {
@@ -196,31 +176,4 @@ void SharedParameter<K>::process(const MessagePtr& msg) {
   using SharedParameter<K>::myKeyRange;         \
   using SharedParameter<K>::keyRange;           \
   using SharedParameter<K>::sync
-
-
-// template <typename K, typename V>
-// void SharedParameter<K,V>::recover(Range<K> range) {
-//   // TODO recover from checkpoint
-
-//   // CHECK_GT(FLAGS_num_replicas, 0);
-//   // Task task;
-//   // task.set_type(Task::CALL_CUSTOMER);
-//   // auto arg = task.mutable_shared_para();
-//   // arg->set_cmd(CallSharedPara::PULL_REPLICA);
-//   // range.to(arg->mutable_key());
-
-//   // auto slave = exec_.group(kReplicaGroup)[0];
-//   // slave->submitAndWait(task);
-
-//   // for (auto owner : exec_.group(kOwnerGroup)) {
-//   //   LL << "ask for " << owner->id() << " for replica";
-//   //   keyRange(owner->id()).to(arg->mutable_key());
-//   //   owner->submitAndWait(task);
-//   //   LL << "done";
-//   // }
-// }
-
-
-
-
 } // namespace PS

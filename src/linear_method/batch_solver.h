@@ -19,14 +19,13 @@ class BatchSolver : public LinearMethod {
 
   virtual int loadData(const MessageCPtr& msg, ExampleInfo* info);
   virtual void preprocessData(const MessageCPtr& msg);
-  virtual void updateModel(const MessagePtr& msg);
-  virtual void runIteration();
+  virtual void updateModel(const MessagePtr& msg) = 0;
+  virtual void runIteration() = 0;
 
-  virtual Progress evaluateProgress();
-  virtual void showProgress(int iter);
+  virtual Progress evaluateProgress() = 0;
+  virtual void showProgress(int iter) = 0;
 
-  void computeEvaluationAUC(AUCData *data);
-  void saveModel(const MessageCPtr& msg);
+  virtual void saveModel(const MessageCPtr& msg);
 
   typedef shared_ptr<KVVector<Key, double>> KVVectorPtr;
   KVVectorPtr w_;
@@ -75,13 +74,6 @@ class BatchSolver : public LinearMethod {
           all_filters_sent_(false),
           partition_idx_(0) {
         slot_reader_->getAllPartitions(grp_id, "colidx_sorted_uniq", partitions_);
-
-        // wakensky
-        for (const auto& item : partitions_) {
-          LI << "PreprocessHelper got partitions: " <<
-            item.first << "; " <<
-            item.second.toString();
-        }
       }
       PreprocessHelper(const PreprocessHelper& other) = delete;
       PreprocessHelper& operator= (const PreprocessHelper& rhs) = delete;
@@ -137,9 +129,6 @@ class BatchSolver : public LinearMethod {
           w_->set(filter)->set_query_key_freq(tail_frequency_);
           CHECK_EQ(time, w_->pull(filter));
           pulled_filters_.push_back(time);
-
-          // wakensky
-          LI << "sent filter msg: " << filter->shortDebugString();
         }
 
         if (partition_idx_ >= partitions_.size()) {

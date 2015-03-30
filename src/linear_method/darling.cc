@@ -146,9 +146,7 @@ void Darling::preprocessData(const MessageCPtr& msg) {
 }
 
 void Darling::updateModel(const MessagePtr& msg) {
-  if (true) {
-    LI << "updateModel; msg [" << msg->shortDebugString() << "]";
-  }
+  LI << "updateModel; msg [" << msg->shortDebugString() << "]";
 
   CHECK_GT(FLAGS_num_threads, 0);
   // auto time = msg->task.time() * kPace;
@@ -167,8 +165,6 @@ void Darling::updateModel(const MessagePtr& msg) {
   auto anchor = ocean_.fetchAnchor(grp, g_key_range);
 
   if (IamWorker()) {
-    LI << "I am working on UPDATE_MODEL [" << msg->shortDebugString() << "]";
-
     // compute local gradients
     mu_.lock();
 
@@ -206,24 +202,17 @@ void Darling::updateModel(const MessagePtr& msg) {
       LL << myNodeID() << " [after computeGradients] sum_dual: " << sum_dual;
     }
 
-    // time 1: servers do update, none of my business
-    // time 2: pull the updated model for validation
-    // Whether I need send a pull request for validation
-
-    // wakensky
-    LI << "validation summary: " << msg->task.is_priority() <<
-      " " << validation_.isEnabled() <<
-      ": " << validation_.identity_;;
-
     msg->finished = false; // not finished until model updates are pulled
     bool validation_pull_sent = false;
     if (!msg->task.is_priority() && validation_.isEnabled()) {
       validation_pull_sent = true;
 
-      LI << "ready to send validation pull: " <<
-        grp << " " << grp << " " << g_key_range.toString() <<
-        " " << msg->task.time() <<
-        " " << validation_.isEnabled();
+      if (FLAGS_verbose) {
+        LI << "ready to send validation pull: " <<
+          grp << " " << grp << " " << g_key_range.toString() <<
+          " " << msg->task.time() <<
+          " " << validation_.isEnabled();
+      }
 
       MessagePtr validation_pull_msg(
         new Message(kServerGroup, time+2, time+1));
@@ -340,7 +329,6 @@ void Darling::updateModel(const MessagePtr& msg) {
       return;
     }
 
-    LI << "I am working on UPDATE_MODEL [" << msg->shortDebugString() << "]";
     // time 0: aggregate all workers' local gradients
     w_->waitInMsg(kWorkerGroup, time);
 

@@ -28,7 +28,6 @@ class LinearMethod : public App {
   virtual void saveModel(const MessageCPtr& msg) { }
   virtual void updateModel(const MessagePtr& msg) { }
   virtual Progress evaluateProgress() { return Progress(); }
-  virtual void computeEvaluationAUC(AUCData *data) { }
 
   void showTime(int iter);
   void showObjective(int iter);

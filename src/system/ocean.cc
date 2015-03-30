@@ -131,7 +131,7 @@ bool Ocean::dump(
       CHECK_EQ(
         segmented_offset.back() - segmented_offset.front(),
         segmented_feature_key.size());
-      LI << "dumped unit [" << UnitID(grp_id, global_range).toString() <<
+      LI << identity_ << " dumped unit [" << UnitID(grp_id, global_range).toString() <<
         "]; off.front: " << segmented_offset.front() <<
         "; off.back: " << segmented_offset.back() <<
         "; fea_key.size: " << segmented_feature_key.size();
@@ -213,8 +213,10 @@ void Ocean::prefetch(
   // otherwise, I do not know how to load it
   UnitHashMap::accessor accessor;
   if (!units_.find(accessor, unit_id)) {
-    LI << "prefetch skipped [" << unit_id.toString() <<
-      "] [" << task_id << "]";
+    if (FLAGS_verbose) {
+      LI << "prefetch skipped [" << unit_id.toString() <<
+        "] [" << task_id << "]";
+    }
     return;
   }
 
@@ -225,8 +227,10 @@ void Ocean::prefetch(
   // enqueue
   prefetch_queue_.push(std::make_pair(unit_id, task_id));
 
-  LI << "prefetch added [" << unit_id.toString() <<
-    "] [" << task_id << "]";
+  if (FLAGS_verbose) {
+    LI << "prefetch added [" << unit_id.toString() <<
+      "] [" << task_id << "]";
+  }
 }
 
 Ocean::DataPack Ocean::get(
@@ -240,8 +244,10 @@ Ocean::DataPack Ocean::get(
     return DataPack();
   }
 
-  LI << "Ocean::get tries to read unit [" << unit_id.toString() <<
-    "] [" << task_id << "]";
+  if (FLAGS_verbose) {
+    LI << "Ocean::get tries to read unit [" << unit_id.toString() <<
+      "] [" << task_id << "]";
+  }
   if (UnitStatus::LOADED == accessor->second.status) {
     return accessor->second.data_pack;
   } else if (UnitStatus::LOADING == accessor->second.status) {
@@ -288,8 +294,10 @@ void Ocean::drop(
   if ((*accessor_ptr)->second.in_use_tasks.empty()) {
     (*accessor_ptr)->second.setStatus(UnitStatus::DROPPING);
     write_queue_.push(accessor_ptr);
-    LI << "Ocean::drop added unit to write queue [" << unit_id.toString() <<
-      "] [" << task_id << "]";
+    if (FLAGS_verbose) {
+      LI << "Ocean::drop added unit to write queue [" << unit_id.toString() <<
+        "] [" << task_id << "]";
+    }
   }
 }
 
@@ -307,7 +315,7 @@ bool Ocean::saveModel(const string& path) {
   // open file
   std::ofstream out(path);
   CHECK(out.good());
-  LI << "Ocean::saveModel is dumping model... ";
+  LI << identity_ << " Ocean::saveModel is dumping model... ";
 
   // neo model features
   neo::proto::ModelFeatures model_features;
@@ -397,7 +405,7 @@ bool Ocean::saveModel(const string& path) {
     model_features.Clear();
   }
 
-  LI << "Ocean::saveModel dumped model";
+  LI << identity_ << " Ocean::saveModel dumped model";
   return true;
 }
 
@@ -682,14 +690,17 @@ void Ocean::prefetchThreadFunc() {
     TaskID task_id = prefetch_job.second;
     if (tasks_do_not_prefetch_.count(task_id) > 0) {
       if (FLAGS_verbose) {
-        LI << "prefetch thread skipped unit since associated task has been loaded [" <<
+        LI << identity_ << " prefetch thread skipped unit " <<
+          "since associated task has been loaded [" <<
           unit_id.toString() << "] [" << task_id << "]";
       }
       continue;
     }
 
     // hang on if in-memory unit count limit reached
-    LI << "in_memory_unit_count_: " << in_memory_unit_count_;
+    if (FLAGS_verbose) {
+      LI << identity_ << " in_memory_unit_count_: " << in_memory_unit_count_;
+    }
     {
       std::unique_lock<std::mutex> l(in_memory_limit_mu_);
       in_memory_unit_not_full_cv_.wait(
@@ -785,8 +796,10 @@ void Ocean::writeThreadFunc() {
     // mark as dropped
     unit_body.setStatus(UnitStatus::DROPPED);
 
-    LI << "Ocean::writeThreadFunc dropped unit: [" <<
-      (*accessor_ptr)->first.toString() << "]";
+    if (FLAGS_verbose) {
+      LI << identity_ << " Ocean::writeThreadFunc dropped unit: [" <<
+        (*accessor_ptr)->first.toString() << "]";
+    }
   };
 }
 

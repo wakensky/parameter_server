@@ -10,10 +10,6 @@ const static NodeID kServerGroup = Van::id("all_servers");
 const static NodeID kWorkerGroup = Van::id("all_workers");
 // kServerGroup + kWorkerGroup
 const static NodeID kActiveGroup = Van::id("all_actives");
-// the nodes maintaining a replica of the key segment I own
-const static NodeID kReplicaGroup = Van::id("all_replicas");
-// the owner nodes of the key segments this node backup
-const static NodeID kOwnerGroup = Van::id("all_owners");
 // all live nodes, including scheduler, workers, servers, unused nodes...
 const static NodeID kLiveGroup = Van::id("all_lives");
 

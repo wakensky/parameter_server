@@ -52,11 +52,9 @@ int SlotReader::read(std::shared_ptr<KVVector<Key,double>> w, ExampleInfo* info)
     loaded_file_count_ = 0;
   }
   {
-    if (FLAGS_verbose) {
-      for (size_t i = 0; i < data_.file_size(); ++i) {
-        LI << "I will load data file [" << i + 1 << "/" <<
-          data_.file_size() << "] [" << data_.file(i) << "]";
-      }
+    for (size_t i = 0; i < data_.file_size(); ++i) {
+      LI << identity_ << " will load data file [" << i + 1 << "/" <<
+        data_.file_size() << "] [" << data_.file(i) << "]";
     }
 
     ThreadPool pool(FLAGS_num_downloading_threads);
@@ -82,10 +80,8 @@ int SlotReader::read(std::shared_ptr<KVVector<Key,double>> w, ExampleInfo* info)
 bool SlotReader::readOneFile(
   const DataConfig& data,
   std::shared_ptr<KVVector<Key,double>> w) {
-  if (true) {
-    LI << "loading data file [" << data.file(0) << "]; loaded [" <<
-      loaded_file_count_ << "/" << data_.file_size() << "]";
-  }
+  LI << identity_ << " is loading data file [" << data.file(0) << "]; loaded [" <<
+    loaded_file_count_ << "/" << data_.file_size() << "]";
 
   string info_name = path_picker_->getPath(
     identity_ + "-" + std::to_string(DJBHash32(data.file(0))) +
@@ -95,10 +91,8 @@ bool SlotReader::readOneFile(
     // the data is already in cache_dir
     Lock l(mu_);
     info_ = mergeExampleInfo(info_, info);
-    if (true) {
-      LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
-        loaded_file_count_++ << "/" << data_.file_size() << "]";
-    }
+    LI << identity_ << " has loaded data file [" << data.file(0) << "]; loaded [" <<
+      loaded_file_count_++ << "/" << data_.file_size() << "]";
     return true;
   }
 
@@ -137,6 +131,7 @@ bool SlotReader::readOneFile(
       const int count_min_k, const float count_min_n) {
       const string kPartitionSuffix = ".partition";
       CHECK(nullptr != path_picker);
+
       // lambda: append "start\tsize\tEleNum\n" to the file that contains partition info
       //   We named a compressed block "partition" here
       auto appendPartitionInfo = [] (
@@ -269,10 +264,6 @@ bool SlotReader::readOneFile(
       }
     }
 
-    if (FLAGS_verbose) {
-      LI << "dumping vslots ...";
-    }
-
     // dump memory image to file
     // release vslots
     for (int i = 0; i < kSlotIDmax; ++i) {
@@ -284,10 +275,6 @@ bool SlotReader::readOneFile(
         this->path_picker_, i, cacheName(data, i),
         w, time_++, count_min_k_, count_min_n_));
       vslot.clear();
-    }
-
-    if (FLAGS_verbose) {
-      LI << "vslots dumped";
     }
   };
 
@@ -322,10 +309,8 @@ bool SlotReader::readOneFile(
     info_ = mergeExampleInfo(info_, info);
     loaded_file_count_++;
 
-    if (true) {
-      LI << "loaded data file [" << data.file(0) << "]; loaded [" <<
-        loaded_file_count_ << "/" << data_.file_size() << "]";
-    }
+    LI << identity_ << " has loaded data file [" << data.file(0) << "]; loaded [" <<
+      loaded_file_count_++ << "/" << data_.file_size() << "]";
   }
   return true;
 }
@@ -426,7 +411,6 @@ void SlotReader::getAllPartitions(
   for (int file_idx = 0; file_idx < data_.file_size(); ++file_idx) {
     string data_path = path_picker_->getPath(cacheName(
       ithFile(data_, file_idx), slot_id) + "." + type_str);
-    LI << data_path;
 
     string partition_info_path = data_path + ".partition";
     File* partition_info_file = File::open(partition_info_path, "r");
