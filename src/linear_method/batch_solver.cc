@@ -1,8 +1,7 @@
+#include "linear_method/batch_solver.h"
 #include <sys/stat.h>
 #include <gperftools/malloc_extension.h>
-#include "linear_method/batch_solver.h"
 #include "util/split.h"
-#include "base/matrix_io_inl.h"
 #include "base/localizer.h"
 #include "base/sparse_matrix.h"
 #include "data/common.h"
@@ -172,49 +171,7 @@ void BatchSolver::runIteration() {
   }
 }
 
-bool BatchSolver::dataCache(const string& name, bool load) {
-  if (!conf_.has_local_cache()) return false;
-  return false;  // FIXME
-  // load / save label
-  auto cache = conf_.local_cache();
-  auto y_conf = ithFile(cache, 0, name + "_label_" + myNodeID());
-  if (load) {
-    MatrixPtrList<double> y_list;
-    if (!readMatrices<double>(y_conf, &y_list) || !(y_list.size()==1)) return false;
-    y_ = y_list[0];
-  } else {
-    if (!y_->writeToBinFile(y_conf.file(0))) return false;
-  }
-  // load / save feature groups
-  string info_file = cache.file(0) + name + "_" + myNodeID() + ".info";
-  InstanceInfo info = y_->info().ins_info();
-  if (load && !readFileToProto(info_file, &info)) return false;
-  InstanceInfo new_info;
-  for (int i = 0; i < info.fea_grp_size(); ++i) {
-    int id = info.fea_grp(i).grp_id();
-    string x_name = name + "_fea_grp_" + std::to_string(id) + "_" + myNodeID();
-    auto x_conf = ithFile(cache, 0, x_name);
-    string key_name = name + "_key_" + std::to_string(id) + "_" + myNodeID();
-    auto key_conf = ithFile(cache, 0, key_name);
-    if (load) {
-      MatrixPtrList<double> x_list;
-      if (!readMatrices<double>(x_conf, &x_list) || !(x_list.size()==1)) return false;
-      X_[id] = x_list[0];
-      if (!w_->key(id).readFromFile(SizeR(0, X_[id]->cols()), key_conf)) return false;
-    } else {
-      if (!X_[id]) continue;
-      if (w_->key(id).empty()) LL << id << " " << X_[id]->debugString();
-      if (!(X_[id]->writeToBinFile(x_conf.file(0))
-            && w_->key(id).writeToFile(key_conf.file(0)))) return false;
-      *new_info.add_fea_grp() = info.fea_grp(i);
-    }
-  }
-  if (!load && !writeProtoToASCIIFile(new_info, info_file)) return false;
-  return true;
-}
-
 int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
-  bool hit_cache = loadCache("train");
   const int starting_time = msg->task.time() + 1;
   const int finishing_time = starting_time + 1000000;
 
@@ -240,7 +197,7 @@ int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
   } else {
     w_->waitInMsg(kWorkerGroup, finishing_time);
   }
-  return hit_cache;
+  return false;
 }
 
 void BatchSolver::preprocessData(const MessageCPtr& msg) {

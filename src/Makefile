@@ -60,13 +60,11 @@ SRCS = $(PROTOS_CC) \
 	system/validation.cc \
 	filter/filter.cc \
 	data/common.cc \
-	data/text_parser.cc \
 	data/example_parser.cc \
 	data/slot_reader.cc \
 	linear_method/linear_method.cc \
 	linear_method/batch_solver.cc \
-	linear_method/darling.cc \
-	linear_method/ftrl.cc
+	linear_method/darling.cc
 
 
 TESTS = \
@@ -77,8 +75,6 @@ TESTS = \
 	countmin_test \
 	snappy_test \
 	shared_array_test \
-	grad_desc_test \
-	ftrl_test \
 	# sparse_matrix_perf \
 	auc_test \
 	io_test \

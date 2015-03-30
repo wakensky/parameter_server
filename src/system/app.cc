@@ -1,6 +1,5 @@
 #include "system/app.h"
 #include "linear_method/linear_method.h"
-#include "neural_network/sgd_solver.h"
 namespace PS {
 
 DEFINE_bool(test_fault_tol, false, "");
@@ -10,8 +9,6 @@ AppPtr App::create(const AppConfig& conf) {
   if (conf.has_linear_method()) {
     ptr = LM::LinearMethod::create(conf.linear_method());
     CHECK(ptr);
-  } else if (conf.has_neural_network()) {
-    ptr = AppPtr(new NN::SGDSolver());
   } else {
     CHECK(false) << "unknown app: " << conf.DebugString();
   }

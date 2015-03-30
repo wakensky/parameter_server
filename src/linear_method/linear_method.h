@@ -2,9 +2,6 @@
 #include "system/app.h"
 #include "parameter/kv_vector.h"
 #include "proto/linear_method.pb.h"
-
-#include "linear_method/loss_inl.h"
-#include "linear_method/penalty_inl.h"
 #include "base/auc.h"
 // #include "linear_method/learner/learner.h"
 // #include "linear_method/learner/aggregate_gradient.h"
@@ -63,8 +60,6 @@ class LinearMethod : public App {
   Timer total_timer_;
   Timer busy_timer_;
 
-  LossPtr<double> loss_;
-  PenaltyPtr<double> penalty_;
   // shared_ptr<AggGradLearner<double>> learner_;
 
   AUC validation_auc_;

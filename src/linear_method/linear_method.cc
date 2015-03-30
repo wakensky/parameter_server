@@ -1,32 +1,21 @@
 #include "linear_method/linear_method.h"
 #include "base/range.h"
 #include "util/eigen3.h"
-#include "base/matrix_io_inl.h"
 #include "proto/instance.pb.h"
-#include "base/io.h"
 #include "linear_method/darling.h"
-#include "linear_method/ftrl.h"
 #include "linear_method/batch_solver.h"
-#include "linear_method/model_evaluation.h"
 namespace PS {
 namespace LM {
 
 AppPtr LinearMethod::create(const Config& conf) {
   if (!conf.has_solver()) {
-    if (conf.has_validation_data() && conf.has_model_input()) {
-      return AppPtr(new ModelEvaluation());
-    }
+    CHECK(false) << "Solver should be provided in configuration";
   } else if (conf.solver().minibatch_size() <= 0) {
     // batch solver
     if (conf.has_darling()) {
       return AppPtr(new Darling());
     } else {
       return AppPtr(new BatchSolver());
-    }
-  } else {
-    // online sovler
-    if (conf.has_ftrl()) {
-      return AppPtr(new FTRL());
     }
   }
   return AppPtr(nullptr);
@@ -35,14 +24,6 @@ AppPtr LinearMethod::create(const Config& conf) {
 void LinearMethod::init() {
   CHECK(app_cf_.has_linear_method());
   conf_ = app_cf_.linear_method();
-
-  if (conf_.has_loss()) {
-    loss_ = Loss<double>::create(conf_.loss());
-  }
-
-  if (conf_.has_penalty()) {
-    penalty_ = Penalty<double>::create(conf_.penalty());
-  }
 
   click_sum_ = 0;
   prediction_sum_ = 0;

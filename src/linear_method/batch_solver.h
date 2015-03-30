@@ -28,10 +28,6 @@ class BatchSolver : public LinearMethod {
   void computeEvaluationAUC(AUCData *data);
   void saveModel(const MessageCPtr& msg);
 
-  bool loadCache(const string& name) { return dataCache(name, true); }
-  bool saveCache(const string& name) { return dataCache(name, false); }
-  bool dataCache(const string& name, bool load);
-
   typedef shared_ptr<KVVector<Key, double>> KVVectorPtr;
   KVVectorPtr w_;
 

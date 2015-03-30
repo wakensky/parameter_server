@@ -1,6 +1,5 @@
-#include <gperftools/malloc_extension.h>
 #include "linear_method/darling.h"
-#include "base/matrix_io.h"
+#include <gperftools/malloc_extension.h>
 #include "base/sparse_matrix.h"
 
 namespace PS {
