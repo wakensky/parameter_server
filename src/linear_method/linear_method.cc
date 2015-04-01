@@ -1,4 +1,5 @@
 #include "linear_method/linear_method.h"
+#include <gperftools/profiler.h>
 #include "base/range.h"
 #include "util/eigen3.h"
 #include "proto/instance.pb.h"
@@ -57,13 +58,22 @@ void LinearMethod::process(const MessagePtr& msg) {
       DataInfo info;
       info.set_hit_cache(loadData(msg, info.mutable_example_info()));
       sys_.replyProtocalMessage(msg, info);
+#ifdef TCMALLOC
+      ProfilerFlush();
+#endif
       break;
     }
     case Call::PREPROCESS_DATA:
       preprocessData(msg);
+#ifdef TCMALLOC
+      ProfilerFlush();
+#endif
       break;
     case Call::UPDATE_MODEL:
       updateModel(msg);
+#ifdef TCMALLOC
+      ProfilerFlush();
+#endif
       break;
     case Call::SAVE_MODEL:
       saveModel(msg);

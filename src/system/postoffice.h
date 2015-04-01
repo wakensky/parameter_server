@@ -48,8 +48,10 @@ class Postoffice {
  private:
   DISALLOW_COPY_AND_ASSIGN(Postoffice);
   Postoffice():
-    manage_task_done_(false) {
-    // do nothing
+    manage_task_done_(false),
+    dashboard_out_("./dashboard.out") {
+    CHECK(dashboard_out_) << "Cannot open ./dashboard.out for write [" <<
+      strerror(errno) << "]";
   }
 
   void manageApp(const Task& pt);
@@ -78,6 +80,7 @@ class Postoffice {
   // If I have finished MANAGE task, I have connected to the scheduler certainly
   bool manage_task_done_;
   Dashboard dashboard_;
+  std::ofstream dashboard_out_;
 
   Ocean ocean_;
   Validation validation_;

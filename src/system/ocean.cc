@@ -188,9 +188,10 @@ bool Ocean::dumpColumnPartitionedSArray(
       }
     }
   } catch (std::exception& e) {
-    LL << "SArray writeToFile failed on path [" << full_path <<
+    LL << identity_ << ": SArray writeToFile failed on path [" << full_path <<
       "] anchor [" << anchor.toString() <<
-      "] DataSource [" << printDataSource(data_source) << "]";
+      "] DataSource [" << printDataSource(data_source) <<
+      "] error [" << strerror(errno) << "]";
     return false;
   }
 
@@ -782,7 +783,10 @@ void Ocean::writeThreadFunc() {
           DataSource::SECOND_ORDER_GRADIENT == static_cast<DataSource>(data_source)) {
         SArray<char> array = unit_body.data_pack.arrays.at(data_source);
         if (!array.empty()) {
-          CHECK(array.writeToFile(unit_body.path_pack.path.at(data_source), false));
+          CHECK(array.writeToFile(unit_body.path_pack.path.at(data_source), false)) <<
+            identity_ << ": writeThreadFunc write back failed on path [" <<
+            unit_body.path_pack.path.at(data_source) << "] error [" <<
+            strerror(errno) << "]";
         }
         CHECK_EQ(array.size(), File::size(unit_body.path_pack.path.at(data_source)));
       }

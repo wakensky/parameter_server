@@ -96,7 +96,8 @@ template<typename V> SArray<V> SlotReader::value(int slot_id) const {
     val.resize(n+uncomp.size());
     for (size_t i = 0; i < uncomp.size(); ++i) val[n+i] = uncomp[i];
   }
-  CHECK_EQ(val.size(), nnzEle(slot_id)) << slot_id;
+  CHECK_EQ(val.size(), nnzEle(slot_id)) << val.size() << " vs " <<
+    nnzEle(slot_id) << " on slot " << slot_id;
   return val;
 }
 

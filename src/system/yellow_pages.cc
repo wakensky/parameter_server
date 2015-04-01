@@ -12,7 +12,12 @@ void YellowPages::add(shared_ptr<Customer> customer) {
 void YellowPages::add(const Node& node) {
   nodes_[node.id()] = node;
   // connect anyway, it's safe to connect to the same node twice
-  CHECK(van_.connect(node).ok());
+  Status ret = van_.connect(node);
+  CHECK(ret.ok()) <<
+    "destination: " << node.id() <<
+    " " << node.hostname() << " " << node.port() << "; Iam: " <<
+    van_.myNode().id() << " " << van_.myNode().hostname() <<
+    " " << van_.myNode().port() << "; [" << ret.ToString() << "]";
   if (node.role() == Node::WORKER) ++ num_workers_;
   if (node.role() == Node::SERVER) ++ num_servers_;
 }

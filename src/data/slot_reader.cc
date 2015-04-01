@@ -104,12 +104,6 @@ bool SlotReader::readOneFile(
     SArray<uint16> row_siz;
     size_t cumulative_row_siz_size;
 
-    bool writeToFile(const string& name) {
-      return val.compressTo().writeToFile(name+".value")
-          && col_idx.compressTo().writeToFile(name+".colidx")
-          && row_siz.compressTo().writeToFile(name+".rowsiz");
-    }
-
     VSlot() :
       cumulative_row_siz_size(0) {
       // do nothing
@@ -148,7 +142,8 @@ bool SlotReader::readOneFile(
       string path = path_picker->getPath(prefix + ".value");
       size_t start = File::size(path);
       auto val_compressed = val.compressTo();
-      CHECK(val_compressed.appendToFile(path));
+      CHECK(val_compressed.appendToFile(path)) <<
+        hostname() << " path [" << path << "][" << strerror(errno) << "]";
       appendPartitionInfo(start, val_compressed.activeMemSize(),
                           val.size(), path + kPartitionSuffix);
 
@@ -156,7 +151,8 @@ bool SlotReader::readOneFile(
       path = path_picker->getPath(prefix + ".colidx");
       start = File::size(path);
       auto col_compressed = col_idx.compressTo();
-      CHECK(col_compressed.appendToFile(path));
+      CHECK(col_compressed.appendToFile(path)) <<
+        hostname() << " path [" << path << "][" << strerror(errno) << "]";
       appendPartitionInfo(start, col_compressed.activeMemSize(),
                           col_idx.size(), path + kPartitionSuffix);
 
@@ -164,7 +160,8 @@ bool SlotReader::readOneFile(
       path = path_picker->getPath(prefix + ".rowsiz");
       start = File::size(path);
       auto row_compressed = row_siz.compressTo();
-      CHECK(row_compressed.appendToFile(path));
+      CHECK(row_compressed.appendToFile(path)) <<
+        hostname() << " path [" << path << "][" << strerror(errno) << "]";
       appendPartitionInfo(start, row_compressed.activeMemSize(),
                           row_siz.size(), path + kPartitionSuffix);
 
@@ -214,7 +211,8 @@ bool SlotReader::readOneFile(
         path = path_picker->getPath(prefix + ".colidx_sorted_uniq");
         start = File::size(path);
         auto unique_key_compressed = unique_key.compressTo();
-        CHECK(unique_key_compressed.appendToFile(path));
+        CHECK(unique_key_compressed.appendToFile(path)) <<
+          hostname() << " path [" << path << "][" << strerror(errno) << "]";
         appendPartitionInfo(start, unique_key_compressed.activeMemSize(),
                             unique_key.size(), path + kPartitionSuffix);
       }

@@ -83,9 +83,19 @@ Status Van::connect(const Node& node) {
 
   // connect
   string addr = "tcp://" + address(node);
-  if (zmq_connect(sender, addr.c_str()) != 0)
-    return Status:: NetError(
+  while (true) {
+    int ret = zmq_connect(sender, addr.c_str());
+    if (0 == ret) {
+      // success
+      break;
+    } else if (0 != ret &&  EINTR != errno){
+      // fail
+      return Status:: NetError(
         "connect to " + addr + " failed: " + zmq_strerror(errno));
+    }
+
+    // may be interupted by google profiler
+  }
   senders_[id] = sender;
 
   if (FLAGS_print_van) {

@@ -266,7 +266,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
           std::stringstream ss;
           ss << myNodeID() << ".key_stash." << fea_grp_.at(grp_order);
           const string key_path = path_picker_.getPath(ss.str());
-          CHECK(w_->key(fea_grp_.at(grp_order)).writeToFile(key_path));
+          CHECK(w_->key(fea_grp_.at(grp_order)).writeToFile(key_path)) <<
+            myNodeID() << " at " << hostname() << " .writeToFile failed on path [" <<
+            key_path << "] error [" << strerror(errno) << "]";
 
           // release w_->key
           w_->key(fea_grp_.at(grp_order)).clear();

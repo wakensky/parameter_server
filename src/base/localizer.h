@@ -169,7 +169,9 @@ MatrixPtr<V> Localizer<I,V>::remapIndex(
       // dump local keys
       string path = path_picker->getPath(
         node_id + ".partitioned_remapped_idx." + std::to_string(my_partition_idx));
-      CHECK(remapped_idx.writeToFile(path));
+      CHECK(remapped_idx.writeToFile(path)) <<
+        node_id << " at " << hostname() << " writeToFile failed on path [" <<
+        path << "] error [" << strerror(errno) << "]";
       remapped_idx_path.at(my_partition_idx) = path;
       global_matched += in_partition_matched;
     };

@@ -36,6 +36,9 @@ void Postoffice::run() {
   yellow_pages_.init();
   heartbeat_collector_.init(FLAGS_interface, myNode().hostname());
 
+  // wakensky
+  LL << myNode().hostname() << " waken";
+
   if (FLAGS_log_to_file) {
     google::SetLogDestination(google::INFO, ("./log_" + myNode().id() + "_").c_str());
     FLAGS_logtostderr = 0;
@@ -248,7 +251,10 @@ void Postoffice::heartbeat() {
 
 void Postoffice::monitor() {
   while (!done_) {
-    std::cerr << dashboard_.report() << "\n\n";
+    string report = dashboard_.report();
+    report += "\n\n";
+    dashboard_out_.write(report.c_str(), report.size());
+    dashboard_out_.flush();
     std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
   }
 }

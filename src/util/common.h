@@ -108,6 +108,18 @@ static uint32_t DJBHash32(const std::string& str) {
   return hash;
 }
 
+static string hostname() {
+  const size_t kBufLen = 1024;
+  char buf[kBufLen + 1];
+
+  string ret;
+  if (0 == gethostname(buf, kBufLen)) {
+    buf[kBufLen - 1] = '\0';
+    ret = buf;
+  }
+  return ret;
+}
+
 const uint64 kLower54Bits = 0x3FFFFFFFFFFFFF;
 const uint64 kHigher10Bits = 0xFFC0000000000000;
 

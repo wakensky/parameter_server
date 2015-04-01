@@ -41,7 +41,7 @@ void Dashboard::addReport(const NodeID& node, const HeartbeatReport& report) {
     Lock l(mu_);
     auto& rp = data_[node];
     hb.set_task_id(rp.task_id());
-    hb.set_time_stamp(rp.time_stamp());
+    hb.set_time_stamp(time(nullptr));
     rp = hb;
   }
 }
