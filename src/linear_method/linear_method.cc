@@ -78,6 +78,10 @@ void LinearMethod::process(const MessagePtr& msg) {
     case Call::SAVE_MODEL:
       saveModel(msg);
       break;
+    case Call::TRANSLATE_MODEL:
+      translateModel(msg);
+    case Call::DISTRIBUTE_MODEL:
+      distributeModel(msg);
     case Call::RECOVER:
       // FIXME
       // W_.recover();
@@ -185,11 +189,11 @@ void LinearMethod::startSystem() {
 
 void LinearMethod::showTime(int iter) {
   if (iter == -3) {
-    fprintf(stderr, "|    time (sec.)\n");
+    prog_file_ << "|    time (sec.)\n";
   } else if (iter == -2) {
-    fprintf(stderr, "|(app:min max) total\n");
+    prog_file_ << "|(app:min max) total\n";
   } else if (iter == -1) {
-    fprintf(stderr, "+-----------------\n");
+    prog_file_ << "+-----------------\n";
   } else {
     auto prog = g_progress_[iter];
     double ttl_t = prog.total_time() - (
@@ -203,45 +207,57 @@ void LinearMethod::showTime(int iter) {
     }
     // double mean = busy_t.sum() / n;
     // double var = (busy_t - mean).matrix().norm() / std::sqrt((double)n);
-    fprintf(stderr, "|%6.1f%6.1f%6.1f\n", busy_t.minCoeff(), busy_t.maxCoeff(), ttl_t);
+    const size_t kBufLen = 1024;
+    char buf[kBufLen + 1];
+    snprintf(buf, kBufLen, "|%6.1f%6.1f%6.1f\n", busy_t.minCoeff(), busy_t.maxCoeff(), ttl_t);
+    prog_file_ << buf;
   }
+  prog_file_.flush();
 }
 
 
 void LinearMethod::showObjective(int iter) {
   if (iter == -3) {
-    fprintf(stderr, "     |        training        ");
+    prog_file_ << "     |        training        ";
   } else if (iter == -2) {
-    fprintf(stderr, "iter |  objective    relative ");
+    prog_file_ << "iter |  objective    relative ";
   } else if (iter == -1) {
-    fprintf(stderr, " ----+------------------------");
+    prog_file_ << " ----+------------------------";
   } else {
+    const size_t kBufLen = 1024;
+    char buf[kBufLen + 1];
     auto prog = g_progress_[iter];
-    fprintf(stderr, "%4d | %.5e  %.3e ",
+    snprintf(buf, kBufLen, "%4d | %.5e  %.3e ",
             iter, prog.objv(), prog.relative_objv()); //o, prog.training_auc());
+    prog_file_ << buf;
   }
+  prog_file_.flush();
 }
 
 void LinearMethod::showNNZ(int iter) {
   if (iter == -3) {
-    fprintf(stderr, "|  sparsity ");
+    prog_file_ << "|  sparsity ";
   } else if (iter == -2) {
-    fprintf(stderr, "|     |w|_0 ");
+    prog_file_ << "|     |w|_0 ";
   } else if (iter == -1) {
-    fprintf(stderr, "+-----------");
+    prog_file_ << "+-----------";
   } else {
+    const size_t kBufLen = 1024;
+    char buf[kBufLen + 1];
     auto prog = g_progress_[iter];
-    fprintf(stderr, "|%10lu ", (size_t)prog.nnz_w());
+    snprintf(buf, kBufLen, "|%10lu ", (size_t)prog.nnz_w());
+    prog_file_ << buf;
   }
+  prog_file_.flush();
 }
 
 void LinearMethod::showAUC(int iter) {
   if (iter == -3) {
-    fprintf(stderr, "| AUC ");
+    prog_file_ << "| AUC ";
   } else if (iter == -2) {
-    fprintf(stderr, "|    AUC    pa    ca    ");
+    prog_file_ << "|    AUC    pa    ca    ";
   } else if (iter == -1) {
-    fprintf(stderr, "+----------------------");
+    prog_file_ << "+----------------------";
   } else {
     double click_average = 0.0;
     double prediction_average = 0.0;
@@ -249,8 +265,11 @@ void LinearMethod::showAUC(int iter) {
       click_average = click_sum_ / num_validation_examples_;
       prediction_average = prediction_sum_ / num_validation_examples_;
     }
-    fprintf(stderr, "|%.6e  %.6e  %.6e  ",
+    const size_t kBufLen = 1024;
+    char buf[kBufLen + 1];
+    snprintf(buf, kBufLen, "|%.6e  %.6e  %.6e  ",
       validation_auc_.evaluate(), prediction_average, click_average);
+    prog_file_ << buf;
 
     // clean up
     validation_auc_.clear();
@@ -258,6 +277,7 @@ void LinearMethod::showAUC(int iter) {
     click_sum_ = 0.0;
     prediction_sum_ = 0.0;
   }
+  prog_file_.flush();
 }
 
 } // namespace LM

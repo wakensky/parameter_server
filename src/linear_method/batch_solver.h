@@ -26,6 +26,8 @@ class BatchSolver : public LinearMethod {
   virtual void showProgress(int iter) = 0;
 
   virtual void saveModel(const MessageCPtr& msg);
+  virtual void translateModel(const MessageCPtr& msg) = 0;
+  virtual void distributeModel(const MessageCPtr& msg) = 0;
 
   typedef shared_ptr<KVVector<Key, double>> KVVectorPtr;
   KVVectorPtr w_;

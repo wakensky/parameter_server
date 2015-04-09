@@ -13,6 +13,9 @@ DEFINE_int32(num_workers, 0, "number of clients");
 DEFINE_int32(num_unused, 0, "number of unused nodes");
 DEFINE_int32(num_threads, 2, "number of computational threads");
 DEFINE_string(app, "../config/rcv1_l1lr.config", "the configuration file of app");
+DEFINE_string(hdfs_dir_regex, "",
+  "HDFS input directory specified by command line aguments, "
+  "which will take place of AppConfig::linear_method::training_data::file");
 DECLARE_string(interface);
 
 // TODO move to configure
@@ -64,13 +67,35 @@ void Postoffice::run() {
     // get all node information
     yellow_pages_.add(myNode());
     if (FLAGS_num_workers || FLAGS_num_servers) {
-      nodes_are_ready_.get_future().wait();
+      if (std::future_status::timeout ==
+          nodes_are_ready_.get_future().wait_for(std::chrono::minutes(5))) {
+        CHECK(false) << "[FATAL TIMEOUT] Not all workers/servers connected to scheduler";
+      }
       LL << "Scheduler connected " << FLAGS_num_servers << " servers and "
          << FLAGS_num_workers << " workers";
     }
 
-    // run the application
+    // Parse application configuration
     AppConfig conf; readFileToProtoOrDie(FLAGS_app, &conf);
+    if (!FLAGS_hdfs_dir_regex.empty()) {
+      // Make sure LM.Config.training_data.hdfs is on
+      CHECK(conf.linear_method().training_data().has_hdfs()) <<
+        "You must fill linear_method::training_data::hdfs in [" << FLAGS_app << "] " <<
+        "since FLAGS_hdfs_dir_regex is given [" << FLAGS_hdfs_dir_regex << "]";
+
+      // wakensky
+      LI << "hdfs_dir: " << FLAGS_hdfs_dir_regex;
+
+      // Substitute LM.Config.training_data with FLAGS_hdfs_dir_regex
+      conf.mutable_linear_method()->mutable_training_data()->clear_file();
+      conf.mutable_linear_method()->mutable_training_data()->\
+        add_file(FLAGS_hdfs_dir_regex);
+
+      // wakensky
+      LI << "training_data.file(0): " << conf.linear_method().training_data().file(0);
+    }
+
+    // run the application
     AppPtr app = App::create(conf);
     yellow_pages_.add(app);
     app->run();
@@ -250,11 +275,21 @@ void Postoffice::heartbeat() {
 }
 
 void Postoffice::monitor() {
+  std::vector<string> dead_nodes;
   while (!done_) {
-    string report = dashboard_.report();
+    string report = dashboard_.report(dead_nodes);
     report += "\n\n";
     dashboard_out_.write(report.c_str(), report.size());
     dashboard_out_.flush();
+
+    // Deal with unexpectedly down nodes
+    if (!dead_nodes.empty()) {
+      for (const auto& node: dead_nodes) {
+        LL << node;
+      }
+      CHECK(false) << "========FATAL ERROR========\nDead nodes detected";
+    }
+
     std::this_thread::sleep_for(std::chrono::seconds(FLAGS_report_interval));
   }
 }

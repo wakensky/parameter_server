@@ -3,6 +3,7 @@ import "proto/range.proto";
 import "proto/evaluation.proto";
 import "proto/example.proto";
 import "proto/config.proto";
+import "proto/neo_model.proto";
 
 message Config {
   optional DataConfig training_data = 1;
@@ -18,6 +19,8 @@ message Config {
   optional SolverConfig solver = 14;
   optional DarlingConfig darling = 15;
   optional FTRLConfig ftrl = 16;
+  optional neo.proto.Translater neo_translater = 17;
+  optional neo.proto.ModelMeta neo_meta = 18;
 }
 
 message SolverConfig {
@@ -132,6 +135,8 @@ message Call {
     RECOVER = 6;
     COMPUTE_VALIDATION_AUC = 7;
     REPORT_PROGRESS = 8;
+    TRANSLATE_MODEL = 9;
+    DISTRIBUTE_MODEL = 10;
     // SAVE_AS_DENSE = 7;     // save X * w in a given key range
   }
   required Command cmd = 1;
@@ -144,6 +149,7 @@ message Call {
   repeated int32 fea_grp = 8;
   optional bool hit_cache = 9;
   optional int32 iteration = 10;  // iteration ID
+  optional string neo_ip_port = 11;
 }
 
 // deprecated

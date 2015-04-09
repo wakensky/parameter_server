@@ -12,6 +12,15 @@ namespace LM {
 // linear classification/regerssion
 class LinearMethod : public App {
  public:
+  LinearMethod():
+    prog_file_("./" + myNodeID() + ".progress") {
+    if (!prog_file_) {
+      std::stringstream ss;
+      ss << "LinearMethod open [" << ("./" + myNodeID() + ".progress") <<
+        " failed. [" << strerror(errno) << "]";
+      throw std::runtime_error(ss.str());
+    }
+  }
   static AppPtr create(const Config& conf);
   virtual void init();
 
@@ -23,10 +32,12 @@ class LinearMethod : public App {
   void startSystem();
 
   // load the data, and return 1 if hit cache, 0 if normal
-  virtual int loadData(const MessageCPtr& msg, ExampleInfo* info) { return 0; }
-  virtual void preprocessData(const MessageCPtr& msg) { }
-  virtual void saveModel(const MessageCPtr& msg) { }
-  virtual void updateModel(const MessagePtr& msg) { }
+  virtual int loadData(const MessageCPtr& msg, ExampleInfo* info) = 0;
+  virtual void preprocessData(const MessageCPtr& msg) = 0;
+  virtual void saveModel(const MessageCPtr& msg) = 0;
+  virtual void translateModel(const MessageCPtr& msg) = 0;
+  virtual void distributeModel(const MessageCPtr& msg) = 0;
+  virtual void updateModel(const MessagePtr& msg) = 0;
   virtual Progress evaluateProgress() { return Progress(); }
 
   void showTime(int iter);
@@ -65,6 +76,8 @@ class LinearMethod : public App {
   size_t num_validation_examples_;
   double click_sum_;
   double prediction_sum_;
+
+  std::ofstream prog_file_;
 };
 
 } // namespace LM

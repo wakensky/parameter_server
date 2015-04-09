@@ -36,7 +36,7 @@ void App::stopAll() {
   }
   pool->submit(terminate);
   // terminate.set_type(Task::TERMINATE_CONFIRM);
-  usleep(800);
+  usleep(10 * 1000 * 1000);
   LI << "System stopped\n";
 }
 

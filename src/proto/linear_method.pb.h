@@ -29,6 +29,7 @@
 #include "proto/evaluation.pb.h"
 #include "proto/example.pb.h"
 #include "proto/config.pb.h"
+#include "proto/neo_model.pb.h"
 // @@protoc_insertion_point(includes)
 
 namespace PS {
@@ -99,11 +100,13 @@ enum Call_Command {
   Call_Command_SAVE_MODEL = 5,
   Call_Command_RECOVER = 6,
   Call_Command_COMPUTE_VALIDATION_AUC = 7,
-  Call_Command_REPORT_PROGRESS = 8
+  Call_Command_REPORT_PROGRESS = 8,
+  Call_Command_TRANSLATE_MODEL = 9,
+  Call_Command_DISTRIBUTE_MODEL = 10
 };
 bool Call_Command_IsValid(int value);
 const Call_Command Call_Command_Command_MIN = Call_Command_LOAD_DATA;
-const Call_Command Call_Command_Command_MAX = Call_Command_REPORT_PROGRESS;
+const Call_Command Call_Command_Command_MAX = Call_Command_DISTRIBUTE_MODEL;
 const int Call_Command_Command_ARRAYSIZE = Call_Command_Command_MAX + 1;
 
 const ::google::protobuf::EnumDescriptor* Call_Command_descriptor();
@@ -289,6 +292,24 @@ class Config : public ::google::protobuf::Message {
   inline ::PS::LM::FTRLConfig* release_ftrl();
   inline void set_allocated_ftrl(::PS::LM::FTRLConfig* ftrl);
 
+  // optional .neo.proto.Translater neo_translater = 17;
+  inline bool has_neo_translater() const;
+  inline void clear_neo_translater();
+  static const int kNeoTranslaterFieldNumber = 17;
+  inline const ::neo::proto::Translater& neo_translater() const;
+  inline ::neo::proto::Translater* mutable_neo_translater();
+  inline ::neo::proto::Translater* release_neo_translater();
+  inline void set_allocated_neo_translater(::neo::proto::Translater* neo_translater);
+
+  // optional .neo.proto.ModelMeta neo_meta = 18;
+  inline bool has_neo_meta() const;
+  inline void clear_neo_meta();
+  static const int kNeoMetaFieldNumber = 18;
+  inline const ::neo::proto::ModelMeta& neo_meta() const;
+  inline ::neo::proto::ModelMeta* mutable_neo_meta();
+  inline ::neo::proto::ModelMeta* release_neo_meta();
+  inline void set_allocated_neo_meta(::neo::proto::ModelMeta* neo_meta);
+
   // @@protoc_insertion_point(class_scope:PS.LM.Config)
  private:
   inline void set_has_training_data();
@@ -317,6 +338,10 @@ class Config : public ::google::protobuf::Message {
   inline void clear_has_darling();
   inline void set_has_ftrl();
   inline void clear_has_ftrl();
+  inline void set_has_neo_translater();
+  inline void clear_has_neo_translater();
+  inline void set_has_neo_meta();
+  inline void clear_has_neo_meta();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -333,9 +358,11 @@ class Config : public ::google::protobuf::Message {
   ::PS::LM::SolverConfig* solver_;
   ::PS::LM::DarlingConfig* darling_;
   ::PS::LM::FTRLConfig* ftrl_;
+  ::neo::proto::Translater* neo_translater_;
+  ::neo::proto::ModelMeta* neo_meta_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(13 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(15 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2flinear_5fmethod_2eproto();
   friend void protobuf_AssignDesc_proto_2flinear_5fmethod_2eproto();
@@ -1354,6 +1381,8 @@ class Call : public ::google::protobuf::Message {
   static const Command RECOVER = Call_Command_RECOVER;
   static const Command COMPUTE_VALIDATION_AUC = Call_Command_COMPUTE_VALIDATION_AUC;
   static const Command REPORT_PROGRESS = Call_Command_REPORT_PROGRESS;
+  static const Command TRANSLATE_MODEL = Call_Command_TRANSLATE_MODEL;
+  static const Command DISTRIBUTE_MODEL = Call_Command_DISTRIBUTE_MODEL;
   static inline bool Command_IsValid(int value) {
     return Call_Command_IsValid(value);
   }
@@ -1433,6 +1462,18 @@ class Call : public ::google::protobuf::Message {
   inline ::google::protobuf::int32 iteration() const;
   inline void set_iteration(::google::protobuf::int32 value);
 
+  // optional string neo_ip_port = 11;
+  inline bool has_neo_ip_port() const;
+  inline void clear_neo_ip_port();
+  static const int kNeoIpPortFieldNumber = 11;
+  inline const ::std::string& neo_ip_port() const;
+  inline void set_neo_ip_port(const ::std::string& value);
+  inline void set_neo_ip_port(const char* value);
+  inline void set_neo_ip_port(const char* value, size_t size);
+  inline ::std::string* mutable_neo_ip_port();
+  inline ::std::string* release_neo_ip_port();
+  inline void set_allocated_neo_ip_port(::std::string* neo_ip_port);
+
   // @@protoc_insertion_point(class_scope:PS.LM.Call)
  private:
   inline void set_has_cmd();
@@ -1447,6 +1488,8 @@ class Call : public ::google::protobuf::Message {
   inline void clear_has_hit_cache();
   inline void set_has_iteration();
   inline void clear_has_iteration();
+  inline void set_has_neo_ip_port();
+  inline void clear_has_neo_ip_port();
 
   ::google::protobuf::UnknownFieldSet _unknown_fields_;
 
@@ -1456,10 +1499,11 @@ class Call : public ::google::protobuf::Message {
   bool kkt_filter_reset_;
   bool hit_cache_;
   ::google::protobuf::RepeatedField< ::google::protobuf::int32 > fea_grp_;
+  ::std::string* neo_ip_port_;
   ::google::protobuf::int32 iteration_;
 
   mutable int _cached_size_;
-  ::google::protobuf::uint32 _has_bits_[(7 + 31) / 32];
+  ::google::protobuf::uint32 _has_bits_[(8 + 31) / 32];
 
   friend void  protobuf_AddDesc_proto_2flinear_5fmethod_2eproto();
   friend void protobuf_AssignDesc_proto_2flinear_5fmethod_2eproto();
@@ -2048,6 +2092,82 @@ inline void Config::set_allocated_ftrl(::PS::LM::FTRLConfig* ftrl) {
     set_has_ftrl();
   } else {
     clear_has_ftrl();
+  }
+}
+
+// optional .neo.proto.Translater neo_translater = 17;
+inline bool Config::has_neo_translater() const {
+  return (_has_bits_[0] & 0x00002000u) != 0;
+}
+inline void Config::set_has_neo_translater() {
+  _has_bits_[0] |= 0x00002000u;
+}
+inline void Config::clear_has_neo_translater() {
+  _has_bits_[0] &= ~0x00002000u;
+}
+inline void Config::clear_neo_translater() {
+  if (neo_translater_ != NULL) neo_translater_->::neo::proto::Translater::Clear();
+  clear_has_neo_translater();
+}
+inline const ::neo::proto::Translater& Config::neo_translater() const {
+  return neo_translater_ != NULL ? *neo_translater_ : *default_instance_->neo_translater_;
+}
+inline ::neo::proto::Translater* Config::mutable_neo_translater() {
+  set_has_neo_translater();
+  if (neo_translater_ == NULL) neo_translater_ = new ::neo::proto::Translater;
+  return neo_translater_;
+}
+inline ::neo::proto::Translater* Config::release_neo_translater() {
+  clear_has_neo_translater();
+  ::neo::proto::Translater* temp = neo_translater_;
+  neo_translater_ = NULL;
+  return temp;
+}
+inline void Config::set_allocated_neo_translater(::neo::proto::Translater* neo_translater) {
+  delete neo_translater_;
+  neo_translater_ = neo_translater;
+  if (neo_translater) {
+    set_has_neo_translater();
+  } else {
+    clear_has_neo_translater();
+  }
+}
+
+// optional .neo.proto.ModelMeta neo_meta = 18;
+inline bool Config::has_neo_meta() const {
+  return (_has_bits_[0] & 0x00004000u) != 0;
+}
+inline void Config::set_has_neo_meta() {
+  _has_bits_[0] |= 0x00004000u;
+}
+inline void Config::clear_has_neo_meta() {
+  _has_bits_[0] &= ~0x00004000u;
+}
+inline void Config::clear_neo_meta() {
+  if (neo_meta_ != NULL) neo_meta_->::neo::proto::ModelMeta::Clear();
+  clear_has_neo_meta();
+}
+inline const ::neo::proto::ModelMeta& Config::neo_meta() const {
+  return neo_meta_ != NULL ? *neo_meta_ : *default_instance_->neo_meta_;
+}
+inline ::neo::proto::ModelMeta* Config::mutable_neo_meta() {
+  set_has_neo_meta();
+  if (neo_meta_ == NULL) neo_meta_ = new ::neo::proto::ModelMeta;
+  return neo_meta_;
+}
+inline ::neo::proto::ModelMeta* Config::release_neo_meta() {
+  clear_has_neo_meta();
+  ::neo::proto::ModelMeta* temp = neo_meta_;
+  neo_meta_ = NULL;
+  return temp;
+}
+inline void Config::set_allocated_neo_meta(::neo::proto::ModelMeta* neo_meta) {
+  delete neo_meta_;
+  neo_meta_ = neo_meta;
+  if (neo_meta) {
+    set_has_neo_meta();
+  } else {
+    clear_has_neo_meta();
   }
 }
 
@@ -3147,6 +3267,76 @@ inline ::google::protobuf::int32 Call::iteration() const {
 inline void Call::set_iteration(::google::protobuf::int32 value) {
   set_has_iteration();
   iteration_ = value;
+}
+
+// optional string neo_ip_port = 11;
+inline bool Call::has_neo_ip_port() const {
+  return (_has_bits_[0] & 0x00000080u) != 0;
+}
+inline void Call::set_has_neo_ip_port() {
+  _has_bits_[0] |= 0x00000080u;
+}
+inline void Call::clear_has_neo_ip_port() {
+  _has_bits_[0] &= ~0x00000080u;
+}
+inline void Call::clear_neo_ip_port() {
+  if (neo_ip_port_ != &::google::protobuf::internal::kEmptyString) {
+    neo_ip_port_->clear();
+  }
+  clear_has_neo_ip_port();
+}
+inline const ::std::string& Call::neo_ip_port() const {
+  return *neo_ip_port_;
+}
+inline void Call::set_neo_ip_port(const ::std::string& value) {
+  set_has_neo_ip_port();
+  if (neo_ip_port_ == &::google::protobuf::internal::kEmptyString) {
+    neo_ip_port_ = new ::std::string;
+  }
+  neo_ip_port_->assign(value);
+}
+inline void Call::set_neo_ip_port(const char* value) {
+  set_has_neo_ip_port();
+  if (neo_ip_port_ == &::google::protobuf::internal::kEmptyString) {
+    neo_ip_port_ = new ::std::string;
+  }
+  neo_ip_port_->assign(value);
+}
+inline void Call::set_neo_ip_port(const char* value, size_t size) {
+  set_has_neo_ip_port();
+  if (neo_ip_port_ == &::google::protobuf::internal::kEmptyString) {
+    neo_ip_port_ = new ::std::string;
+  }
+  neo_ip_port_->assign(reinterpret_cast<const char*>(value), size);
+}
+inline ::std::string* Call::mutable_neo_ip_port() {
+  set_has_neo_ip_port();
+  if (neo_ip_port_ == &::google::protobuf::internal::kEmptyString) {
+    neo_ip_port_ = new ::std::string;
+  }
+  return neo_ip_port_;
+}
+inline ::std::string* Call::release_neo_ip_port() {
+  clear_has_neo_ip_port();
+  if (neo_ip_port_ == &::google::protobuf::internal::kEmptyString) {
+    return NULL;
+  } else {
+    ::std::string* temp = neo_ip_port_;
+    neo_ip_port_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+    return temp;
+  }
+}
+inline void Call::set_allocated_neo_ip_port(::std::string* neo_ip_port) {
+  if (neo_ip_port_ != &::google::protobuf::internal::kEmptyString) {
+    delete neo_ip_port_;
+  }
+  if (neo_ip_port) {
+    set_has_neo_ip_port();
+    neo_ip_port_ = neo_ip_port;
+  } else {
+    clear_has_neo_ip_port();
+    neo_ip_port_ = const_cast< ::std::string*>(&::google::protobuf::internal::kEmptyString);
+  }
 }
 
 // -------------------------------------------------------------------

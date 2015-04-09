@@ -137,8 +137,13 @@ DataConfig searchFiles(const DataConfig& config) {
       // match regex
       reg_errno = regexec(&reg, file_name.c_str(), kNMatch, pmatch, 0);
       if (0 == reg_errno) {
-        auto l = config.format() == DataConfig::TEXT ? f : removeExtension(f);
-        matched_files.push_back(getPath(l) + "/" + getFilename(l));
+        // On HDFS, file names are absolute
+        // On local filesystem, file names does not contain directory information
+        if (config.has_hdfs()) {
+          matched_files.push_back(getPath(f) + "/" + getFilename(f));
+        } else {
+          matched_files.push_back(dir.file(0) + "/" + f);
+        }
       } else if (REG_NOMATCH != reg_errno) {
         regerror(reg_errno, &reg, err_buf, kErrBufLen);
         LL << "searchFiles try to match regrex [" <<

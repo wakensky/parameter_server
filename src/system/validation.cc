@@ -22,14 +22,7 @@ Validation::Validation():
 }
 
 Validation::~Validation() {
-  go_on_ = false;
-
-  // join prediction thread
-  if (predict_thread_ptr_) {
-    submit(0, Range<Ocean::FullKey>(), kFakeTaskID,
-      SArray<Ocean::Value>());
-    predict_thread_ptr_->join();
-  }
+  // do nothing
 }
 
 void Validation::init(
@@ -44,6 +37,7 @@ void Validation::init(
   enable_ = conf_.has_validation_data() && conf_.validation_data().file_size() > 0;
   predict_thread_ptr_.reset(
     new std::thread(&Validation::predictThreadFunc, this));
+  predict_thread_ptr_->detach();
   slot_reader_ptr_.reset(new SlotReader());
 }
 

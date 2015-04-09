@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include <gperftools/malloc_extension.h>
 #include "util/split.h"
+#include "util/zookeeper_helper.h"
 #include "base/localizer.h"
 #include "base/sparse_matrix.h"
 #include "data/common.h"
@@ -26,6 +27,7 @@ void BatchSolver::init() {
 void BatchSolver::run() {
   // start the system
   LinearMethod::startSystem();
+  prog_file_ << "ManageNode finished successfully" << std::endl;
 
   // load data
   auto active_nodes = taskpool(kActiveGroup);
@@ -39,6 +41,7 @@ void BatchSolver::run() {
   });
   LI << "Loaded " << g_train_info_.num_ex() << " examples in "
      << toc(load_time) << " sec";
+  prog_file_ << "LoadData finished successfully" << std::endl;
 
   // partition feature blocks
   CHECK(conf_.has_solver());
@@ -84,6 +87,7 @@ void BatchSolver::run() {
   }
   LI << "Preprocessing is finished in " << toc(preprocess_time) << " sec";
   LI << "Features are partitioned into " << fea_blk_.size() << " blocks";
+  prog_file_ << "Preprocess finished successfully" << std::endl;
 
   // a simple block order
   for (int i = 0; i < fea_blk_.size(); ++i) blk_order_.push_back(i);
@@ -116,11 +120,52 @@ void BatchSolver::run() {
 
   total_timer_.restart();
   runIteration();
+  prog_file_ << "Iteration finished successfully" << std::endl;
 
-#if 0
+  // Save model
   Task save_model = newTask(Call::SAVE_MODEL);
   active_nodes->submitAndWait(save_model);
-#endif
+  prog_file_ << "SaveModel finished successfully" << std::endl;
+
+  // Translate model for NEO
+  try {
+    // Fetch NEO's ip:port configuration
+    ZookeeperHelper zk_helper(conf_.neo_translater().zk_host());
+    string ip_port = zk_helper.get(conf_.neo_translater().zk_path());
+    if (ip_port.empty()) {
+      std::stringstream ss;
+      ss << "ZookeeperHelper cannot find path [" <<
+        conf_.neo_translater().zk_path() << "]";
+      throw std::runtime_error(ss.str());
+    }
+    // Broadcast
+    Task translate_model = newTask(Call::TRANSLATE_MODEL);
+    set(&translate_model)->set_neo_ip_port(ip_port);
+    active_nodes->submitAndWait(translate_model);
+  } catch (std::exception& e) {
+    LL << "H TRANSLATE_MODEL failed [" << e.what() << "]";
+  }
+  prog_file_ << "TranslateModel finished successfully" << std::endl;
+
+  // Distribute model to NEO
+  auto distribute_one_server = [](RNodePtr remote_node) {
+    Task distribute_model = newTask(Call::DISTRIBUTE_MODEL);
+    remote_node->submitAndWait(distribute_model);
+  };
+  if (conf_.neo_translater().will_transfer()) {
+    ThreadPool pool(8);
+    auto all_servers = exec_.group(kServerGroup);
+    for (const auto& svr: all_servers) {
+      pool.add([svr, distribute_one_server](){
+        distribute_one_server(svr);
+      });
+    }
+    pool.startWorkers();
+  }
+  prog_file_ << "DistributeModel finished successfully" << std::endl;
+
+
+  prog_file_ << "Morpheus Training System finished successfully" << std::endl;
 }
 
 int BatchSolver::loadData(const MessageCPtr& msg, ExampleInfo* info) {
@@ -383,24 +428,9 @@ void BatchSolver::preprocessData(const MessageCPtr& msg) {
 
 void BatchSolver::saveModel(const MessageCPtr& msg) {
   if (!IamServer()) return;
-  if (!conf_.has_model_output()) return;
 
-  auto output = conf_.model_output();
-  if (output.format() == DataConfig::TEXT) {
-    CHECK(output.file_size());
-    CHECK(get(msg).has_iteration());
-
-    // make sure the corresponding directory exists
-    std::stringstream ss;
-    ss << output.file(0) << "/iter_" << get(msg).iteration();
-    system((std::string("mkdir -p ") + ss.str()).c_str());
-
-    ss << "/ctr_" << myNodeID();
-    CHECK(ocean_.saveModel(ss.str()));
-    LI << myNodeID() << " writes model to " << ss.str();
-  } else {
-    LL << "didn't implement yet";
-  }
+  CHECK(ocean_.saveModel());
+  LI << myNodeID() << " dumped model successfully";
 }
 
 } // namespace LM

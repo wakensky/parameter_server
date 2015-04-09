@@ -23,6 +23,24 @@ message ModelMeta
     repeated int32 sparse_slot = 13 [packed=true];
     optional uint64 sparse_model_size = 14;
     optional RealtimeConfig realtime_config = 15;
+    
+}
+
+// Configuration that needed when dock PS_CDN model to NEO
+message Translater 
+{
+    // Coefficient times on second-order gradient that produced by PS_CDN.
+    //   Since PS_CDN can produce rather exact second-order gradient, 
+    //      and FTRL-proximal does not care second-order gradient too much, 
+    //      default value 1.0 is good enough under most conditions.
+    optional float coefficient_n = 1[default=1.0];
+    // Zookeeper that stores ip/port for NEO cluster.
+    optional string zk_host = 2;
+    optional string zk_path = 3;
+    // Whether transfer NEO-format model files to destination hosts.
+    optional bool will_transfer = 5[default=true];
+    // Transfer produced NEO-format model file to ip:remote_dir/
+    optional string neo_model_dir = 6;
 }
 
 message ModelFeatures
@@ -42,3 +60,4 @@ message SparseModel
     repeated int64 sparse_id = 3 [packed=true];
     repeated int32 timestamp = 4 [packed=true];
 }
+

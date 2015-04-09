@@ -24,6 +24,7 @@ int main(int argc, char *argv[]) {
 #endif
 
   PS::Postoffice::instance().run();
+  LL << "exists main function";
 
   return 0;
 }

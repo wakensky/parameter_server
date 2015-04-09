@@ -3,6 +3,10 @@
 
 namespace PS {
 
+DEFINE_int32(dead_interval, 300,
+  "If a worker/server does not heartbeat in dead_interval seconds, "
+  "I consider it as dead. Default: 300 seconds");
+
 bool NodeIDCmp::operator()(const NodeID& a, const NodeID& b) {
   string a_primary, a_secondary;
   splitNodeID(a, a_primary, a_secondary);
@@ -76,21 +80,33 @@ string Dashboard::title() {
   return ss.str();
 }
 
-string Dashboard::report() {
+string Dashboard::report(std::vector<string>& dead_nodes) {
+  dead_nodes.clear();
+
   mu_.lock();
   auto copy = data_;
   mu_.unlock();
+
   std::stringstream ss;
   ss << title() << "\n";
   for (const auto& it : copy) {
-    ss << report(it.first, it.second) << "\n";
+    ss << report(it.first, it.second, dead_nodes) << "\n";
   }
   return ss.str();
 }
 
-string Dashboard::report(const NodeID& node, const HeartbeatReport& report) {
+string Dashboard::report(
+  const NodeID& node,
+  const HeartbeatReport& report,
+  std::vector<string>& dead_nodes) {
   std::stringstream ss;
   const size_t WIDTH = 10;
+
+  if (time(nullptr) - report.time_stamp() > FLAGS_dead_interval) {
+    std::stringstream node_info;
+    node_info << "[DETECT DEAD NODE] " << node << " " << report.hostname();
+    dead_nodes.push_back(node_info.str());
+  }
 
   std::stringstream busy_time_with_ratio;
   busy_time_with_ratio << report.busy_time_milli() <<

@@ -14,6 +14,8 @@ class Darling : public BatchSolver {
   virtual void runIteration();
   virtual void preprocessData(const MessageCPtr& msg);
   virtual void updateModel(const MessagePtr& msg);
+  virtual void translateModel(const MessageCPtr& msg);
+  virtual void distributeModel(const MessageCPtr& msg);
 
  protected:
   SArrayList<double> computeGradients(int grp, SizeR global_range, int task_id);

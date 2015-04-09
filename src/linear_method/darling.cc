@@ -84,12 +84,14 @@ void Darling::runIteration() {
     double ratio = conf_.darling().kkt_filter_threshold_ratio();
     kkt_filter_threshold_ = vio / (double)g_train_info_.num_ex() * ratio;
 
+#if 0
     // save model each iteration
     Task save_model = newTask(Call::SAVE_MODEL);
     save_model.set_wait_time(time);
     save_model.mutable_linear_method()->set_iteration(iter);
     time = pool->submitAndWait(save_model);
     LL << "H has dumped model for iteration " << iter;
+#endif
 
     // check if finished
     double rel = g_progress_[iter].relative_objv();
@@ -651,15 +653,20 @@ void Darling::updateWeight(
 
 void Darling::showKKTFilter(int iter) {
   if (iter == -3) {
-    fprintf(stderr, "|      KKT filter     ");
+    prog_file_ << "|      KKT filter     ";
   } else if (iter == -2) {
-    fprintf(stderr, "| threshold  #activet ");
+    prog_file_ << "| threshold  #activet ";
   } else if (iter == -1) {
-    fprintf(stderr, "+---------------------");
+    prog_file_ << "+---------------------";
   } else {
+    size_t kBufLen = 1024;
+    char buf[kBufLen + 1];
     auto prog = g_progress_[iter];
-    fprintf(stderr, "| %.1e %11llu ", kkt_filter_threshold_, (uint64)prog.nnz_active_set());
+    snprintf(buf, kBufLen, "| %.1e %11llu ",
+             kkt_filter_threshold_, (uint64)prog.nnz_active_set());
+    prog_file_ << buf;
   }
+  prog_file_.flush();
 }
 
 void Darling::showProgress(int iter) {
@@ -728,6 +735,18 @@ Progress Darling::evaluateProgress() {
     prog.set_nnz_active_set(nnz_as);
   }
   return prog;
+}
+
+void Darling::translateModel(const MessageCPtr& msg) {
+  if (!IamServer()) return;
+  ocean_.translateNeoModel(get(msg).neo_ip_port());
+  LI << myNodeID() << " translated model successfully";
+}
+
+void Darling::distributeModel(const MessageCPtr& msg) {
+  if (!IamServer()) return;
+  ocean_.distributeNeoModel();
+  LI << myNodeID() << " distributed model successfully";
 }
 
 } // namespace LM

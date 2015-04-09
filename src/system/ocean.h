@@ -185,7 +185,18 @@ class Ocean {
 
     // save {parameter_key, parameter_value} pairs to path
     // NOT THREAD SAFE
-    bool saveModel(const string& path);
+    bool saveModel();
+
+    // Translate dumped model to the format that NEO could understand.
+    // Partition the dumped model with ip-port combination which specified
+    //   in Zookeeper (broadcasted by scheduler).
+    // Transfer Neo models to destination hosts via scp if
+    //   will_transfer is on.
+    // neo_ip_port: eg. "10.4.160.4:3679,10.4.161.3:2897"
+    bool translateNeoModel(const string& neo_ip_port);
+
+    // Scp all dumped model files to corresponding remote host
+    bool distributeNeoModel();
 
     // save blockcache and anchor information to disk
     // NOT THREAD SAFE
@@ -269,9 +280,16 @@ class Ocean {
       const TaskID task_id,
       const PathPack& path_pack,
       DataPack* data_pack);
+    // List all model files' path under PathPicker::PathType directories
+    bool listModels(
+      std::vector<string>& out_path_vec,
+      const PathPicker::PathType dir_type,
+      const string& pattern);
 
   private: // attributes
     string identity_;
+    const string kDumpedModelMiddleName{"neo_model_features"};
+    const string kNEOModelMiddleName{"cdn_model_for_neo"};
 
     using UnitHashMap = tbb::concurrent_hash_map<UnitID, UnitBody, UnitIDHash>;
     std::unordered_map<GroupID, std::vector<Range<FullKey>>> group_partition_ranges_;
@@ -313,12 +331,6 @@ class Ocean {
     // If Ocean prefetch these tasks again,
     //   nobody will invoke Ocean::drop on them.
     tbb::concurrent_unordered_set<TaskID> tasks_do_not_prefetch_;
-
-
-
-
-
-
 
 };  // class Ocean
 };  // namespace PS

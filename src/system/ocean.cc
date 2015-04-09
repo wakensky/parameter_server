@@ -10,6 +10,7 @@
 #include <gperftools/malloc_extension.h>
 #include "proto/neo_model.pb.h"
 #include "base/shared_array_inl.h"
+#include "system/produced_neo_model.h"
 
 namespace PS {
 
@@ -27,34 +28,18 @@ Ocean::Ocean() :
   for (int i = 0; i < FLAGS_num_threads; ++i) {
     prefetch_threads_.push_back(std::move(
       std::thread(&Ocean::prefetchThreadFunc, this)));
+    prefetch_threads_.back().detach();
   }
   // launch write threads
   for (int i = 0; i < 4 * FLAGS_num_threads; ++i) {
     write_threads_.push_back(std::move(
       std::thread(&Ocean::writeThreadFunc, this)));
+    write_threads_.back().detach();
   }
 }
 
 Ocean::~Ocean() {
-  go_on_ = false;
-  // join prefetch threads
-  for (auto& thread : prefetch_threads_) {
-    for (int i = 0; i < FLAGS_num_threads + 1; ++i) {
-      // pump in some illegal prefetch jobs
-      //  push threads moving on
-      prefetch(0, Range<FullKey>(), kFakeTaskID);
-    }
-    thread.join();
-  }
-  // join write threads
-  for (auto& thread : write_threads_) {
-    // pump in some illegal write jobs
-    //   push threads moving on
-    for (int i = 0; i < FLAGS_num_threads + 1; ++i) {
-      write_queue_.push(nullptr);
-    }
-    thread.join();
-  }
+  // do nothing
 }
 
 void Ocean::init(
@@ -312,10 +297,8 @@ SizeR Ocean::fetchAnchor(
   }
 }
 
-bool Ocean::saveModel(const string& path) {
+bool Ocean::saveModel() {
   // open file
-  std::ofstream out(path);
-  CHECK(out.good());
   LI << identity_ << " Ocean::saveModel is dumping model... ";
 
   // neo model features
@@ -366,13 +349,6 @@ bool Ocean::saveModel(const string& path) {
       for (size_t i = 0; i < parameter_key.size(); ++i) {
         double v = parameter_value[i];
         if (!(v != v || 0 == v) || FLAGS_keep_invalid_features_in_model) {
-          // dump model (plain text)
-#if 0
-          out << parameter_key[i] << "\t" <<
-            std::setprecision(std::numeric_limits<double>::digits10+2) <<
-            v << "\n";
-#endif
-
           // fill neo's model_features
           model_features.add_fid(parameter_key[i]);
           // NEO considers those features who are eliminated by L1-regulization
@@ -384,11 +360,15 @@ bool Ocean::saveModel(const string& path) {
 
           // Write model_features to disk periodicly
           if (dumped_feature_count > 0 && 0 == dumped_feature_count % 500000) {
-            std::ofstream model_features_out(
-              path + ".neo_model_features." + std::to_string(model_partition_id++));
-            CHECK(model_features_out);
-
-            CHECK(model_features.SerializeToOstream(&model_features_out));
+            const string path = path_picker_->getPath(
+              std::to_string(model_partition_id++) + "." + identity_ + "." + kDumpedModelMiddleName,
+              PathPicker::PathType::DUMPED_MODEL);
+            std::ofstream model_features_out(path);
+            CHECK(model_features_out) << "Open [" << path << "] for write failed; [" <<
+              strerror(errno) << "]";
+            CHECK(model_features.SerializeToOstream(&model_features_out)) <<
+              "model_features.SerializeToOstream failed on [" << path << "] [" <<
+              strerror(errno) << "]";
             model_features.Clear();
           }
         }
@@ -398,15 +378,191 @@ bool Ocean::saveModel(const string& path) {
 
   // Remaining features
   {
-    std::ofstream model_features_out(
-      path + ".neo_model_features." + std::to_string(model_partition_id++));
-    CHECK(model_features_out);
-
+    const string path = path_picker_->getPath(
+      identity_ + "." + kDumpedModelMiddleName + "." + std::to_string(model_partition_id++),
+      PathPicker::PathType::DUMPED_MODEL);
+    std::ofstream model_features_out(path);
+    CHECK(model_features_out) << "Open [" << path << "] for write failed; [" <<
+      strerror(errno) << "]";
     CHECK(model_features.SerializeToOstream(&model_features_out));
+    CHECK(model_features.SerializeToOstream(&model_features_out)) <<
+      "model_features.SerializeToOstream failed on [" << path << "] [" <<
+      strerror(errno) << "]";
     model_features.Clear();
   }
 
   LI << identity_ << " Ocean::saveModel dumped model";
+  return true;
+}
+
+bool Ocean::translateNeoModel(const string& neo_ip_port) {
+  if (neo_ip_port.empty()) {
+    LL << __PRETTY_FUNCTION__ << " got empty ip:port str";
+    return false;
+  }
+
+  // One {IP, PORT} pair each item; like {"10.4.160.2","2798"}
+  std::vector<std::pair<string, string>> ip_port_vec;
+  {
+    auto tmp_vec = split(neo_ip_port, ',');
+    for (const auto& item: tmp_vec) {
+      auto atom = split(item, ':');
+      if (atom.size() != 2) {
+        LL << __PRETTY_FUNCTION__ << " got wrong ip:port string [" << item << "]";
+        return false;
+      }
+
+      ip_port_vec.push_back(std::make_pair(atom[0], atom[1]));
+    }
+  }
+
+  // List all dumped model files' path under certain directories.
+  std::vector<string> input_model_vec;
+  if (!listModels(input_model_vec,
+                  PathPicker::PathType::DUMPED_MODEL,
+                  identity_ + "." + kDumpedModelMiddleName)) {
+    LL << identity_ << " cannot find any dumped model [" <<
+      kDumpedModelMiddleName << "]";
+    return false;
+  }
+
+  // Generate produced NeoModel files
+  std::vector<std::shared_ptr<ProducedNeoModel>> produced_model_ptrs;
+  for (const auto& ip_port_pair: ip_port_vec) {
+    const string path = path_picker_->getPath(
+      identity_ + "." + kNEOModelMiddleName + "." + ip_port_pair.first + "." + ip_port_pair.second,
+      PathPicker::PathType::NEO_MODEL);
+    produced_model_ptrs.push_back(
+      std::shared_ptr<ProducedNeoModel>(
+        new ProducedNeoModel(
+          path, ip_port_pair.first,
+          conf_.neo_meta(), conf_.neo_translater())));
+  }
+
+  // Traverse all dumped model files.
+  // Produce Neo-Format models incrementally.
+  for (const auto& input_path: input_model_vec) {
+    std::ifstream in(input_path);
+    if (!in) {
+      LL << identity_ << " found an dumped model file that could not open [" <<
+        input_path << "]; skipped";
+      continue;
+    }
+
+    // Parse from file
+    neo::proto::ModelFeatures in_model;
+    if (!in_model.ParseFromIstream(&in)) {
+      LL << identity_ << " Parse input ModelFeatures proto file failed [" << input_path << "]; skipped";
+      continue;
+    }
+    if (in_model.fid_size() != in_model.value_size()) {
+      LL << identity_ << " fid size and value size is not consistent in [" << input_path << "]; skipped";
+      continue;
+    }
+    if (in_model.fid_size() != in_model.n_size()) {
+      LL << identity_ << " fid size and n size is not consistent in [" << input_path << "]; skipped";
+      continue;
+    }
+
+    // Scatter fid set to ProducedNeoModels
+    for (size_t i = 0; i < in_model.fid_size(); ++i) {
+      const uint64 fid = in_model.fid(i);
+      auto ptr = produced_model_ptrs.at(fid % produced_model_ptrs.size());
+      ptr->addFeature(fid, in_model.value(i), in_model.n(i));
+    }
+  }
+
+  return true;
+}
+
+bool Ocean::distributeNeoModel() {
+  // List all translated model files
+  std::vector<string> translated_model_path;
+  if (!listModels(translated_model_path,
+                  PathPicker::PathType::NEO_MODEL,
+                  identity_ + "." + kNEOModelMiddleName)) {
+    LL << identity_ << " cannot find any translated model [" <<
+      kDumpedModelMiddleName << "]";
+    return false;
+  }
+
+  // remote ip --> model files that should be sent to it
+  std::unordered_map<string, std::vector<string>> model_map;
+  auto get_ip = [](const string& full_path) -> string {
+    auto tmp_vec = split(full_path, '.');
+    if (tmp_vec.size() < 5) {
+      LL << "extract ip from [" << full_path << "] failed";
+      return string();
+    }
+
+    const size_t start_segment_idx = tmp_vec.size() - 5;
+    std::stringstream ss;
+    ss << tmp_vec[start_segment_idx] << "." <<
+      tmp_vec[start_segment_idx + 1] << "." <<
+      tmp_vec[start_segment_idx + 2] << "." <<
+      tmp_vec[start_segment_idx + 3];
+    return ss.str();
+  };
+
+  // Fill model_map
+  for (const auto& full_path: translated_model_path) {
+    string ip = get_ip(full_path);
+    if (!ip.empty()) {
+      model_map[ip].push_back(full_path);
+    }
+  }
+
+  auto scp_to_remote = [](
+    const string& remote_ip,
+    const string& remote_dir,
+    const string& identity,
+    const std::vector<string>& full_path_vec) {
+    if (remote_ip.empty() || remote_dir.empty() || full_path_vec.empty()) {
+      LL << __PRETTY_FUNCTION__ << " got scp_to_remote illegal args";
+      return;
+    }
+
+    std::stringstream ss;
+    ss << "scp -o \"StrictHostKeyChecking no\" ";
+    for (const auto& full_path: full_path_vec) {
+      ss << full_path << " ";
+    }
+    ss << "tiger@" << remote_ip << ":" << remote_dir << "/";
+
+    bool is_successful = false;
+    size_t tries = 0;
+    while (!is_successful && tries < 3) {
+      if (0 == system(ss.str().c_str())) {
+        is_successful = true;
+      } else {
+        tries++;
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+      }
+    }
+    CHECK(is_successful) << identity <<
+      " distributes model failed [" << ss.str() << "] after 3 tries";
+  };
+
+  // From unordered_map To vector
+  // Random shuffle
+  // Avoid too many servers scp to one destination at the same time
+  std::vector<std::pair<string, std::vector<string>>> destination_vec;
+  for (const auto& item: model_map) {
+    destination_vec.push_back(std::make_pair(item.first, item.second));
+  }
+  std::srand(time(nullptr));
+  std::random_shuffle(destination_vec.begin(), destination_vec.end());
+
+  // Distribute
+  string remote_dir = conf_.neo_translater().neo_model_dir();
+  {
+    ThreadPool pool(FLAGS_num_threads);
+    for (const auto& item: destination_vec) {
+      pool.add([this, &item, &remote_dir, scp_to_remote](){
+        scp_to_remote(item.first, remote_dir, identity_, item.second);});
+    }
+    pool.startWorkers();
+  }
   return true;
 }
 
@@ -899,6 +1055,28 @@ string Ocean::printDataSource(const DataSource data_source) {
     default:
       return "UNKNOWN_DATASOURCE";
   };
+}
+
+bool Ocean::listModels(
+  std::vector<string>& out_path_vec,
+  const PathPicker::PathType dir_type,
+  const string& pattern) {
+  out_path_vec.clear();
+  auto directories = path_picker_->allPath(dir_type);
+  if (directories.empty()) {
+    return false;
+  }
+
+  for (const auto& dir: directories) {
+    DataConfig dt;
+    dt.add_file(dir + "/" + pattern);
+    auto ret = searchFiles(dt);
+
+    for (size_t i = 0; i < ret.file_size(); ++i) {
+      out_path_vec.push_back(ret.file(i));
+    }
+  }
+  return true;
 }
 
 
